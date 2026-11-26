@@ -1,0 +1,39 @@
+{
+  "rule_id": "IN-MOTOR-DEPRECIATION-2024",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "India Motor Tariff Standard Depreciation & Excess Schedule",
+  "source_reference": "Indian Motor Tariff (IMT) GR-9 / Synthetic Insurer Schedule V1",
+  "owner": "Motor Underwriting & Claims Product Owner",
+  "effective_from": "2024-04-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "part_category_rates": {
+    "rubber_nylon_plastic_tyres_tubes_batteries_airbags": "0.50",
+    "fibreglass": "0.30",
+    "glass": "0.00",
+    "painting_material_component_ratio": "0.50",
+    "labour": "0.00",
+    "consumables_default": "1.00"
+  },
+  "metal_wood_age_schedule": [
+    { "max_months": 6, "rate": "0.00", "label": "Up to 6 months" },
+    { "max_months": 12, "rate": "0.05", "label": "6 months to 1 year" },
+    { "max_months": 24, "rate": "0.10", "label": "1 to 2 years" },
+    { "max_months": 36, "rate": "0.15", "label": "2 to 3 years" },
+    { "max_months": 48, "rate": "0.25", "label": "3 to 4 years" },
+    { "max_months": 60, "rate": "0.35", "label": "4 to 5 years" },
+    { "max_months": 120, "rate": "0.40", "label": "5 to 10 years" },
+    { "max_months": 9999, "rate": "0.50", "label": "Above 10 years" }
+  ],
+  "compulsory_deductible_by_vehicle_class_inr": {
+    "private_car_under_1500cc": "1000.00",
+    "private_car_over_1500cc": "2000.00",
+    "two_wheeler": "100.00",
+    "ev_private_car": "1500.00",
+    "commercial_goods": "2500.00"
+  },
+  "zero_depreciation_addon_waives_part_depreciation": true,
+  "consumables_addon_covers_consumables": true,
+  "constructive_total_loss_idv_ratio_threshold": "0.75"
+}

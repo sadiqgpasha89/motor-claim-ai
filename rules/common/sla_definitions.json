@@ -1,0 +1,63 @@
+{
+  "rule_id": "COMMON-SLA-CATALOGUE-V1",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Stage-Level SLA Timers & Escalation Definitions",
+  "source_reference": "IRDAI Master Circular 2024 + Insurer Operational SLOs",
+  "owner": "Claims Operations Director",
+  "effective_from": "2024-09-05T00:00:00Z",
+  "status": "published",
+  "timers": [
+    {
+      "stage": "fnol_acknowledgement",
+      "start_event": "ClaimIntimated",
+      "stop_event": "ClaimAcknowledged",
+      "regulatory_hours": 24,
+      "internal_target_minutes": 2,
+      "warning_pct": 50,
+      "owner_role": "fnol_executive",
+      "escalation_role": "claims_manager"
+    },
+    {
+      "stage": "surveyor_allocation",
+      "start_event": "ClaimCreated",
+      "stop_event": "SurveyorAssigned",
+      "regulatory_hours": 24,
+      "internal_target_hours": 6,
+      "warning_pct": 75,
+      "owner_role": "claims_handler",
+      "escalation_role": "claims_manager"
+    },
+    {
+      "stage": "survey_report_submission",
+      "start_event": "SurveyorAssigned",
+      "stop_event": "SurveyReportReceived",
+      "regulatory_hours": 360,
+      "internal_target_hours": 168,
+      "warning_pct": 80,
+      "owner_role": "surveyor",
+      "escalation_role": "claims_manager",
+      "breach_daily_penalty_inr": "500.00"
+    },
+    {
+      "stage": "claim_decision",
+      "start_event": "SurveyReportReceived",
+      "stop_event": "SettlementRecommended",
+      "regulatory_hours": 168,
+      "internal_target_hours": 48,
+      "warning_pct": 75,
+      "owner_role": "claims_handler",
+      "escalation_role": "claims_manager"
+    },
+    {
+      "stage": "grievance_resolution",
+      "start_event": "GrievanceOpened",
+      "stop_event": "GrievanceResolved",
+      "regulatory_hours": 336,
+      "internal_target_hours": 120,
+      "warning_pct": 75,
+      "owner_role": "claims_manager",
+      "escalation_role": "auditor"
+    }
+  ]
+}

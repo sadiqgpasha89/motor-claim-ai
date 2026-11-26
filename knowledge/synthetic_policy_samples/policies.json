@@ -1,0 +1,90 @@
+[
+  {
+    "document_id": "POL-WORDING-PC-2024",
+    "uin": "DEMO-IRDAI-PC-2024-V1",
+    "product_name": "Private Car Package Policy (DEMO / SYNTHETIC)",
+    "jurisdiction": "IN",
+    "effective_from": "2024-04-01",
+    "clauses": [
+      {
+        "clause_id": "SEC-1-1",
+        "section": "Section I — Loss of or Damage to the Vehicle Insured",
+        "page": 3,
+        "title": "Insured Perils (Own Damage)",
+        "text": "The Company will indemnify the Insured against loss of or damage to the vehicle insured hereunder and/or its accessories whilst thereon by fire, explosion, self-ignition or lightning; burglary, housebreaking or theft; riot and strike; earthquake; flood, typhoon, hurricane, storm, tempest, inundation, cyclone, hailstorm, frost; accidental external means; malicious act; terrorist activity; whilst in transit by road, rail, inland waterway, lift, elevator or air; landslide or rockslide."
+      },
+      {
+        "clause_id": "SEC-1-2",
+        "section": "Section I — Depreciation & Deductions",
+        "page": 4,
+        "title": "Standard Parts Depreciation Schedule",
+        "text": "Subject to Zero Depreciation endorsement if opted, a deduction for depreciation shall be made at 50% for all rubber/nylon/plastic parts, tyres, tubes, batteries and airbags; 30% for fibreglass components; 0% for glass parts; and age-graded rates from 0% to 50% for metal and wooden parts based on vehicle age from date of first registration."
+      },
+      {
+        "clause_id": "SEC-1-3",
+        "section": "Section I — Exclusions",
+        "page": 5,
+        "title": "General Exclusions (Consequential Loss, Wear & Tear, Invalid Licence, Intoxication)",
+        "text": "The Company shall not be liable to make any payment in respect of consequential loss, depreciation (unless covered by add-on), wear and tear, mechanical or electrical breakdown, failures or breakages; damage caused by driving under the influence of intoxicating liquor or drugs; or any accident occurring whilst the vehicle is driven by a person not holding an effective and valid driving licence under the Motor Vehicles Act."
+      },
+      {
+        "clause_id": "SEC-1-4",
+        "section": "Section I — Constructive Total Loss",
+        "page": 6,
+        "title": "Total Loss / Constructive Total Loss Criterion",
+        "text": "The insured vehicle shall be treated as a Constructive Total Loss (CTL) if the aggregate cost of retrieval and/or repair of the vehicle, subject to terms and conditions of the policy, exceeds 75% of the Insured's Declared Value (IDV) of the vehicle."
+      },
+      {
+        "clause_id": "ADDON-ZD-01",
+        "section": "Add-on Endorsement — Zero Depreciation Cover",
+        "page": 11,
+        "title": "Nil Depreciation Waiver",
+        "text": "In consideration of payment of additional premium, the Company agrees to waive the standard depreciation deductions applicable under Section I for replaced rubber, plastic, nylon, fibreglass, and metal parts during partial own-damage repairs, subject to compulsory excess and claim-count limits specified in the policy schedule."
+      },
+      {
+        "clause_id": "ADDON-CONS-01",
+        "section": "Add-on Endorsement — Consumables Cover",
+        "page": 12,
+        "title": "Engine Oil, Coolant & Nut-Bolt Consumables",
+        "text": "Covers cost of consumables such as engine oil, gearbox oil, brake oil, coolant, AC gas, grease, washers, clips, nuts, bolts and oil filters necessarily replaced during admissible accidental damage repairs."
+      },
+      {
+        "clause_id": "SEC-2-1",
+        "section": "Section II — Liability to Third Parties",
+        "page": 7,
+        "title": "Third-Party Bodily Injury, Fatality & Property Damage",
+        "text": "Subject to limits of liability under the Motor Vehicles Act, the Company will indemnify the Insured in the event of an accident caused by or arising out of the use of the vehicle against all sums including claimant's costs and expenses which the Insured shall become legally liable to pay in respect of death of or bodily injury to any person and damage to property other than property belonging to the Insured."
+      },
+      {
+        "clause_id": "COND-CLAIM-01",
+        "section": "Conditions — Claim Intimation & Documentation",
+        "page": 9,
+        "title": "Notice of Loss & Fair Documentation",
+        "text": "Notice shall be given to the Company upon occurrence of any accidental loss or damage. In alignment with IRDAI Master Circular 2024, no claim shall be rejected solely for delayed intimation or non-submission of non-essential documents where the delay is reasonably explained and loss authenticity is verifiable; missing records trigger structured follow-up."
+      }
+    ]
+  },
+  {
+    "document_id": "POL-WORDING-EV-2025",
+    "uin": "DEMO-IRDAI-EV-2025-V1",
+    "product_name": "EV Motor & High-Voltage Battery Protect Endorsement (DEMO / SYNTHETIC)",
+    "jurisdiction": "IN",
+    "effective_from": "2025-01-01",
+    "clauses": [
+      {
+        "clause_id": "EV-BAT-01",
+        "section": "EV Endorsement — Traction Battery & BMS",
+        "page": 2,
+        "title": "High-Voltage Battery Pack, BMS & Water Ingress",
+        "text": "Covers consequential damage or short-circuit to the high-voltage lithium-ion/LFP traction battery pack, Battery Management System (BMS), onboard charger and drive motor resulting from accidental external impact, water ingress/flooding, or thermal surge. Mandatory inspection by an EV-certified specialist and OEM diagnostic scan is required before repair authorisation."
+      },
+      {
+        "clause_id": "EV-SAFE-01",
+        "section": "EV Endorsement — Safety Isolation Protocol",
+        "page": 3,
+        "title": "High-Voltage Isolation & Certified Garage Requirement",
+        "text": "Repairs involving orange high-voltage cabling, battery enclosure deformation, thermal warning indicators or flood immersion must only be performed at an OEM-authorised or EV-certified network repair facility following high-voltage isolation procedures."
+      }
+    ]
+  }
+]

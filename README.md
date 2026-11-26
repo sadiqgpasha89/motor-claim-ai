@@ -1,0 +1,66 @@
+# MotorClaim AI Intelligence Solution
+
+> **Enterprise Agentic AI Motor-Insurance Claims Platform (India-first)**  
+> **Data Mode:** `DEMO / SYNTHETIC` — All seeded customers, policies, vehicles, garages, surveyors, rate cards, and payments are synthetic test data.
+
+An enterprise, human-accountable motor-insurance claims platform implementing the full vertical slice from FNOL intake to evidence vault, OCR extraction, policy-clause RAG coverage verification, IRDAI 2024 triage & SLA timers, assistive damage & rate-card estimate validation, explainable SIU fraud governance, deterministic `Decimal` settlement calculation, maker-checker approvals, idempotent payment reconciliation, and immutable audit trails.
+
+## Architecture & Repository Layout
+
+- `apps/api/` — FastAPI backend REST API (`/api/v1/...`), OpenAPI docs at `/docs`, correlation ID middleware, domain error handler.
+- `apps/web/` — Next.js 14 + TypeScript + Tailwind enterprise Command Centre, Claim 360, Guided FNOL, Customer Portal, SIU Workbench, Surveyor/Garage Portal, Rules & Policy KB, and Operations/SLA console.
+- `agents/` — 11 bounded, tool-permissioned specialised agents (`fnol_concierge`, `document_intelligence`, `coverage_intelligence`, `claim_triage`, `damage_assessment`, `estimate_validation`, `fraud_intelligence`, `provider_coordination`, `settlement_recommendation`, `customer_communication`, `qa_compliance`).
+- `services/` — Modular domain services (`claims`, `workflow`, `agent_runtime`, `document_ai`, `damage_ai`, `fraud_intelligence`, `rules_engine`, `settlement`, `integrations`).
+- `packages/` — Shared `contracts`, `security` (JWT, tenant/ABAC isolation, PII masking, prompt-injection & malware upload checks), `observability`, and `config`.
+- `rules/` — Effective-dated, versioned JSON rule catalogues (`IN-IRDAI-MC-2024`, `IN-MOTOR-DEPRECIATION-2024`, `IN-DOA-MATRIX-2026`, `COMMON-SLA-CATALOGUE-V1`).
+- `knowledge/` — Synthetic Indian motor policy wordings (`POL-WORDING-PC-2024`, `POL-WORDING-EV-2025`) & OEM/OES parts rate card (`RC-IN-2026-DEMO-V1`).
+- `tests/` — Unit, E2E integration, security/IDOR/prompt-injection, and model-eval/outage-fallback suites.
+- `docs/` — Architecture, lifecycle, agent contracts, API, data dictionary, integrations, security/privacy, model governance, regulatory matrix, operations runbook, and test strategy.
+
+## Quick Start (Local)
+
+### 1. Backend API (FastAPI + SQLite / PostgreSQL)
+
+```bash
+uv venv .venv
+uv pip install --python .venv/bin/python -e ".[dev]"
+.venv/bin/uvicorn apps.api.main:app --reload --port 8000
+```
+
+The API automatically initializes the schema and seeds the `DEMO / SYNTHETIC` dataset (including `CLM-DEMO-2026-0001` and 11 edge-case scenarios) on startup. Interactive OpenAPI docs are available at `http://localhost:8000/docs`.
+
+### 2. Frontend Web Portal (Next.js)
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. Use the **Active Persona** switcher in the top header to test different roles (`policyholder@demo.in`, `fnol@demo.in`, `handler@demo.in`, `handler2@demo.in`, `surveyor@demo.in`, `garage@demo.in`, `siu@demo.in`, `manager@demo.in`, `legal@demo.in`, `finance@demo.in`, `auditor@demo.in`, `admin@demo.in`).
+
+### 3. Docker Compose (PostgreSQL + pgvector + Redis + API + Web)
+
+```bash
+docker compose up --build
+```
+
+## Running Tests & Quality Checks
+
+```bash
+# Backend unit, integration, security & model eval tests
+.venv/bin/pytest -v
+
+# Backend lint & type check
+.venv/bin/ruff check apps services packages agents scripts tests
+.venv/bin/mypy --explicit-package-bases apps packages services agents
+
+# Frontend typecheck, lint & production build
+cd apps/web && npm run typecheck && npm run lint && npm run build
+```
+
+## Known Limitations (Synthetic MVP Scope)
+
+- External core policy/claims, IIISLA surveyor registry, OEM parts, WhatsApp/SMS, and NEFT/IMPS payment integrations operate through clearly labelled `MOCK` adapters (`INTEGRATION_MODE=mock`).
+- AI/OCR/Vision models default to deterministic local adapters (`AI_PROVIDER_MODE=stub`) unless live provider credentials and private endpoints are configured.
+- Production deployment requires legal/compliance sign-off on the effective-dated regulatory rules in `rules/india/` and enterprise OIDC/SAML SSO wiring.
