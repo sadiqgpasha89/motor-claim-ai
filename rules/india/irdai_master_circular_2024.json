@@ -1,0 +1,35 @@
+{
+  "rule_id": "IN-IRDAI-MC-2024",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "IRDAI Master Circular on Protection of Policyholders' Interests, 2024 (Motor Controls)",
+  "source_reference": "IRDAI/PP&GR/CIR/MISC/117/9/2024 (dated 5 September 2024)",
+  "owner": "Claims Compliance Owner (India)",
+  "effective_from": "2024-09-05T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "disclaimer": "Reference configuration for synthetic/demo use. Legal/compliance sign-off required prior to production go-live.",
+  "controls": {
+    "mandatory_survey_threshold_inr": "50000.00",
+    "surveyor_allocation_sla_hours": 24,
+    "survey_report_due_days": 15,
+    "survey_delay_claimant_penalty_per_day_inr": "500.00",
+    "claim_decision_after_report_days": 7,
+    "claim_decision_max_from_allocation_days": 15,
+    "delayed_settlement_interest_spread_pct": "2.00",
+    "grievance_acknowledgement_immediate": true,
+    "grievance_resolution_days": 14,
+    "allow_auto_reject_for_missing_documents": false,
+    "allow_auto_reject_for_delayed_intimation": false,
+    "allow_ai_repudiation_without_human": false
+  },
+  "special_mandatory_survey_perils": [
+    "theft",
+    "total_loss",
+    "fire",
+    "flood",
+    "ev_high_voltage",
+    "tp_bodily_injury",
+    "tp_fatality"
+  ]
+}

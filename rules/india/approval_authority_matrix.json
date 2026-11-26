@@ -1,0 +1,41 @@
+{
+  "rule_id": "IN-DOA-MATRIX-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Delegation of Authority & Maker-Checker Approval Matrix",
+  "source_reference": "Insurer Board-Approved Claims Authority Policy (Synthetic V1)",
+  "owner": "Chief Claims Officer & Finance Controller",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "maker_checker_required": true,
+  "forbid_same_user_maker_checker": true,
+  "forbid_bulk_approval": true,
+  "authority_tiers": [
+    {
+      "role": "claims_handler",
+      "max_settlement_inr": "75000.00",
+      "allowed_claim_types": ["own_damage", "cashless", "reimbursement"],
+      "disallowed_conditions": ["fraud_alert_open", "total_loss", "repudiation", "tp_injury", "ev_battery"]
+    },
+    {
+      "role": "claims_manager",
+      "max_settlement_inr": "500000.00",
+      "allowed_claim_types": ["own_damage", "cashless", "reimbursement", "theft", "total_loss", "commercial_fleet"],
+      "disallowed_conditions": ["tp_fatality"]
+    },
+    {
+      "role": "legal_tp",
+      "max_settlement_inr": "1500000.00",
+      "allowed_claim_types": ["third_party", "own_damage"],
+      "disallowed_conditions": []
+    },
+    {
+      "role": "finance_approver",
+      "max_settlement_inr": "5000000.00",
+      "allowed_claim_types": ["own_damage", "cashless", "reimbursement", "theft", "total_loss", "third_party", "commercial_fleet"],
+      "disallowed_conditions": [],
+      "required_for_payment_release": true
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "rate_card_id": "RC-IN-2026-DEMO-V1",
+  "title": "Synthetic OEM/OES Motor Parts & Labour Rate Card (DEMO / SYNTHETIC)",
+  "currency": "INR",
+  "effective_from": "2026-01-01",
+  "parts": [
+    {
+      "part_code": "PRT-FRT-BMP-01",
+      "name": "Front Bumper Assembly (Primed)",
+      "category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "oem_price": "12500.00",
+      "oes_price": "9800.00",
+      "std_labour_inr": "3200.00",
+      "paint_inr": "4500.00"
+    },
+    {
+      "part_code": "PRT-HL-LED-RH",
+      "name": "Headlamp Assembly LED RH",
+      "category": "glass",
+      "oem_price": "18400.00",
+      "oes_price": "14900.00",
+      "std_labour_inr": "1200.00",
+      "paint_inr": "0.00"
+    },
+    {
+      "part_code": "PRT-FND-RH-01",
+      "name": "Front Fender Panel RH (Steel)",
+      "category": "metal",
+      "oem_price": "7800.00",
+      "oes_price": "6200.00",
+      "std_labour_inr": "2800.00",
+      "paint_inr": "3800.00"
+    },
+    {
+      "part_code": "PRT-BON-01",
+      "name": "Bonnet / Hood Panel (Steel)",
+      "category": "metal",
+      "oem_price": "16200.00",
+      "oes_price": "13400.00",
+      "std_labour_inr": "3500.00",
+      "paint_inr": "5200.00"
+    },
+    {
+      "part_code": "PRT-RAD-SUP-01",
+      "name": "Radiator Core Support",
+      "category": "metal",
+      "oem_price": "9400.00",
+      "oes_price": "7900.00",
+      "std_labour_inr": "4000.00",
+      "paint_inr": "1200.00"
+    },
+    {
+      "part_code": "PRT-WS-LAM-01",
+      "name": "Front Windshield Laminated Glass",
+      "category": "glass",
+      "oem_price": "11200.00",
+      "oes_price": "8900.00",
+      "std_labour_inr": "2200.00",
+      "paint_inr": "0.00"
+    },
+    {
+      "part_code": "PRT-EV-BAT-TRAY",
+      "name": "EV Traction Battery Underbody Shield & Tray",
+      "category": "metal",
+      "oem_price": "42000.00",
+      "oes_price": "42000.00",
+      "std_labour_inr": "12500.00",
+      "paint_inr": "0.00"
+    },
+    {
+      "part_code": "PRT-CONS-KIT-01",
+      "name": "AC Gas, Coolant & Fasteners Kit",
+      "category": "consumables_default",
+      "oem_price": "2400.00",
+      "oes_price": "2100.00",
+      "std_labour_inr": "0.00",
+      "paint_inr": "0.00"
+    }
+  ],
+  "max_allowed_variance_pct": "12.00"
+}
