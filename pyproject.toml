@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "motor-claim-ai"
 version = "0.1.0"
@@ -46,3 +50,7 @@ python_version = "3.12"
 warn_return_any = true
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apps*", "services*", "packages*", "agents*", "scripts*"]
