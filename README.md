@@ -14,8 +14,22 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 - `packages/` — Shared `contracts`, `security` (JWT, tenant/ABAC isolation, PII masking, prompt-injection & malware upload checks), `observability`, and `config`.
 - `rules/` — Effective-dated, versioned JSON rule catalogues (`IN-IRDAI-MC-2024`, `IN-MOTOR-DEPRECIATION-2024`, `IN-DOA-MATRIX-2026`, `COMMON-SLA-CATALOGUE-V1`).
 - `knowledge/` — Synthetic Indian motor policy wordings (`POL-WORDING-PC-2024`, `POL-WORDING-EV-2025`) & OEM/OES parts rate card (`RC-IN-2026-DEMO-V1`).
+- `migrations/` — Alembic database migrations (`alembic upgrade head` / `alembic downgrade -1`).
 - `tests/` — Unit, E2E integration, security/IDOR/prompt-injection, and model-eval/outage-fallback suites.
-- `docs/` — Architecture, lifecycle, agent contracts, API, data dictionary, integrations, security/privacy, model governance, regulatory matrix, operations runbook, and test strategy.
+
+## Documentation, Diagrams, Guide & Article
+
+| Deliverable | Document | Description |
+|---|---|---|
+| **System Design** | [docs/architecture.md](docs/architecture.md) | Layered system design, C4/deployment Mermaid diagrams, invariants, and ADRs |
+| **Solution Engineering** | [docs/solution-engineering.md](docs/solution-engineering.md) | Two-plane architecture, `Decimal` math, RBAC/ABAC, prompt-injection defense, idempotency |
+| **Class Diagrams** | [docs/class-diagrams.md](docs/class-diagrams.md) | Mermaid UML class diagrams for domain models, 11 agents, settlement, and security |
+| **Pipelines** | [docs/pipelines.md](docs/pipelines.md) | End-to-end claim, Document AI, Hybrid RAG, Estimate validation, Payment, and CI/CD pipelines |
+| **How It Works Guide** | [docs/how-it-works-guide.md](docs/how-it-works-guide.md) | Role-by-role guide, `CLM-DEMO-2026-0001` walkthrough, and all 11 edge-case scenarios |
+| **Medium Article** | [docs/medium-article.md](docs/medium-article.md) | Publication-ready engineering article explaining the architecture and design lessons |
+| **Lifecycle & Agents** | [docs/claims-lifecycle.md](docs/claims-lifecycle.md), [docs/agents.md](docs/agents.md) | State transitions, pathway controls, and agent tool allowlists |
+| **API & Data** | [docs/api.md](docs/api.md), [docs/data-dictionary.md](docs/data-dictionary.md), [docs/integrations.md](docs/integrations.md) | REST endpoints, canonical entities, and mock/live adapter contracts |
+| **Governance & Ops** | [docs/security-and-privacy.md](docs/security-and-privacy.md), [docs/model-governance.md](docs/model-governance.md), [docs/regulatory-matrix.md](docs/regulatory-matrix.md), [docs/operations-runbook.md](docs/operations-runbook.md), [docs/test-strategy.md](docs/test-strategy.md) | Security/DPDP controls, IRDAI matrix, runbooks, and test strategy |
 
 ## Quick Start (Local)
 
