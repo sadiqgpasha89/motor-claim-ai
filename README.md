@@ -1,6 +1,7 @@
 # MotorClaim AI Intelligence Solution
 
 > **Enterprise Agentic AI Motor-Insurance Claims Platform (India-first)**  
+> **Live Project Site (GitHub Pages):** https://sadiqgpasha89.github.io/motor-claim-ai/  
 > **Data Mode:** `DEMO / SYNTHETIC` — All seeded customers, policies, vehicles, garages, surveyors, rate cards, and payments are synthetic test data.
 
 An enterprise, human-accountable motor-insurance claims platform implementing the full vertical slice from FNOL intake to evidence vault, OCR extraction, policy-clause RAG coverage verification, IRDAI 2024 triage & SLA timers, assistive damage & rate-card estimate validation, explainable SIU fraud governance, deterministic `Decimal` settlement calculation, maker-checker approvals, idempotent payment reconciliation, and immutable audit trails.
@@ -21,6 +22,7 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 
 | Deliverable | Document | Description |
 |---|---|---|
+| **GitHub Pages Showcase** | [sadiqgpasha89.github.io/motor-claim-ai](https://sadiqgpasha89.github.io/motor-claim-ai/) | Interactive project portal with system design, Mermaid diagrams, and settlement simulator |
 | **System Design** | [docs/architecture.md](docs/architecture.md) | Layered system design, C4/deployment Mermaid diagrams, invariants, and ADRs |
 | **Solution Engineering** | [docs/solution-engineering.md](docs/solution-engineering.md) | Two-plane architecture, `Decimal` math, RBAC/ABAC, prompt-injection defense, idempotency |
 | **Class Diagrams** | [docs/class-diagrams.md](docs/class-diagrams.md) | Mermaid UML class diagrams for domain models, 11 agents, settlement, and security |
