@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MotorClaim AI Intelligence Solution — Architecture, Pipelines & Guide</title>
+  <meta name="description" content="Enterprise Agentic AI Motor-Insurance Claims Intelligence, Automation & Decision-Support Platform (India-first, IRDAI 2024 aligned)." />
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --accent: #0f172a;
+      --blue: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --emerald: #047857;
+      --emerald-soft: #ecfdf5;
+      --amber: #b45309;
+      --amber-soft: #fffbeb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .banner {
+      background: #451a03;
+      color: #fef3c7;
+      font-size: 12px;
+      padding: 8px 20px;
+      text-align: center;
+      font-weight: 500;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .nav-wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      font-weight: 800;
+      font-size: 18px;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--ink); }
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc;
+      border-radius: 16px;
+      padding: 40px 32px;
+      margin-bottom: 28px;
+    }
+    .hero .pill {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(59, 130, 246, 0.22);
+      color: #bfdbfe;
+      border: 1px solid rgba(147, 197, 253, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(26px, 4vw, 38px);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      margin: 0 0 22px;
+      color: #cbd5e1;
+      max-width: 820px;
+      font-size: 16px;
+    }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary { background: #ffffff; color: #0f172a; }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: #ffffff; border-color: rgba(255,255,255,0.25); }
+    .btn:hover { text-decoration: none; opacity: 0.92; }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .stat-num { font-size: 28px; font-weight: 800; color: var(--ink); }
+    .stat-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+    section { margin-top: 38px; }
+    h2 {
+      font-size: 22px;
+      margin: 0 0 8px;
+      letter-spacing: -0.01em;
+    }
+    .section-sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .tab-btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--ink);
+      color: #ffffff;
+      border-color: var(--ink);
+    }
+    .diagram-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 11px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 700;
+      color: var(--ink);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    code {
+      background: #f1f5f9;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-blue { background: var(--blue-soft); color: var(--blue); }
+    .badge-green { background: var(--emerald-soft); color: var(--emerald); }
+    .badge-amber { background: var(--amber-soft); color: var(--amber); }
+    .sim-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .sim-row label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    input[type="number"], select {
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    footer {
+      margin-top: 56px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    DEMO / SYNTHETIC ENVIRONMENT — India-First IRDAI 2024 Controls · Deterministic Decimal Math · Human-in-the-Loop Governance
+  </div>
+
+  <header>
+    <div class="nav-wrap">
+      <a href="#top" class="brand">MotorClaim AI Intelligence</a>
+      <nav class="nav-links" aria-label="Site navigation">
+        <a href="#architecture">System Design</a>
+        <a href="#agents">11 Bounded Agents</a>
+        <a href="#pipelines">Pipelines</a>
+        <a href="#classes">Class Diagrams</a>
+        <a href="#calculator">Settlement Simulator</a>
+        <a href="#scenarios">Demo &amp; Guide</a>
+        <a href="#docs">Docs &amp; Medium Article</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top" class="container">
+    <div class="hero">
+      <span class="pill">Enterprise Agentic AI Blueprint Implementation</span>
+      <h1>MotorClaim AI Intelligence Solution</h1>
+      <p>
+        An enterprise, human-accountable motor-insurance claims platform combining a deterministic Python
+        <code>Decimal</code> &amp; IRDAI rules core with 11 tool-permissioned specialised AI agents,
+        hybrid policy-clause RAG, explainable SIU fraud governance, maker-checker approvals, and idempotent payment reconciliation.
+      </p>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank" rel="noopener">View GitHub Repository</a>
+        <a class="btn btn-secondary" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank" rel="noopener">Read Medium Article</a>
+        <a class="btn btn-secondary" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/how-it-works-guide.md" target="_blank" rel="noopener">Operator &amp; Demo Guide</a>
+      </div>
+    </div>
+
+    <div class="grid-4">
+      <div class="card">
+        <div class="stat-label">Specialised Agents</div>
+        <div class="stat-num">11</div>
+        <p class="section-sub" style="margin:6px 0 0;">Least-privilege tool allowlists + PII stripping + outage fallback</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">Role Workspaces</div>
+        <div class="stat-num">12 Personas</div>
+        <p class="section-sub" style="margin:6px 0 0;">Server-side RBAC + tenant &amp; partner ABAC isolation</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">India IRDAI Controls</div>
+        <div class="stat-num">&#8377;50,000</div>
+        <p class="section-sub" style="margin:6px 0 0;">Mandatory survey threshold, 24h/15d/7d/14d SLA timers</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">Seeded Scenarios</div>
+        <div class="stat-num">12 Claims</div>
+        <p class="section-sub" style="margin:6px 0 0;">Primary E2E flow + 11 regulatory, EV, TP, SIU &amp; timeout edge cases</p>
+      </div>
+    </div>
+
+    <section id="architecture">
+      <h2>System Design &amp; Two-Plane Architecture</h2>
+      <p class="section-sub">
+        Probabilistic AI accelerates extraction, retrieval, and anomaly triage, while deterministic services own state transitions, money calculations, and approvals.
+      </p>
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart TB
+    subgraph Channels["Channels &amp; Portals"]
+        WEB["Next.js 14 Enterprise &amp; Customer Portal (apps/web)"]
+        APIEXT["Partner / Broker REST Clients"]
+    end
+    subgraph Edge["FastAPI Edge &amp; Security"]
+        GW["Correlation-ID Middleware &amp; Error Catalogue"]
+        SEC["JWT Auth · Tenant/Partner ABAC · PII Masking · Prompt-Injection &amp; EICAR Filter"]
+    end
+    subgraph Core["Deterministic Domain Core"]
+        SM["Claim State Machine &amp; SLA Timers"]
+        RULES["Versioned IRDAI Rules &amp; Hybrid Policy RAG"]
+        CALC["Decimal Settlement Calculator &amp; Maker-Checker DoA"]
+        AUDIT["Append-Only SHA-256 Audit &amp; Transactional Outbox"]
+    end
+    subgraph AI["Bounded AI Plane"]
+        MGW["Model Gateway (Stub / Gemini / Anthropic + Outage Fallback)"]
+        AGENTS["11 Tool-Permissioned BoundedAgents"]
+    end
+    subgraph Data["Storage &amp; Adapters"]
+        DB[("PostgreSQL 16 + pgvector / SQLite")]
+        VAULT[("SHA-256 Evidence Vault")]
+        ADAPT["Mock / Live Enterprise Adapters (Core, Roster, Parts, Payment)"]
+    end
+    WEB --> GW
+    APIEXT --> GW
+    GW --> SEC --> SM
+    SM --> RULES
+    SM --> CALC
+    SM --> AUDIT
+    SM --> AGENTS
+    AGENTS --> MGW
+    SM --> DB
+    SM --> VAULT
+    SM --> ADAPT
+        </pre>
+      </div>
+    </section>
+
+    <section id="agents">
+      <h2>11 Bounded Specialised Agents</h2>
+      <p class="section-sub">
+        Implemented in <code>agents/specialists.py</code> inheriting from <code>BoundedAgent</code>. Calling any tool outside <code>allowed_tools</code> raises <code>ToolPermissionError</code>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Allowed Tools</th>
+            <th>Hard Safety &amp; Governance Boundary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>fnol_concierge</code></td><td><code>create_intimation</code>, <code>policy_lookup</code>, <code>faq_retrieval</code>, <code>request_upload</code></td><td>Never blocks registration for missing docs; cannot decide coverage</td></tr>
+          <tr><td><code>document_intelligence</code></td><td><code>evidence_read</code>, <code>ocr_extract</code>, <code>schema_validate</code>, <code>duplicate_check</code></td><td>Quarantines prompt injection; marks OCR unverified until human review</td></tr>
+          <tr><td><code>coverage_intelligence</code></td><td><code>policy_read</code>, <code>policy_rag</code>, <code>deterministic_coverage_rules</code></td><td>Produces clause-cited factsheet; never repudiates autonomously</td></tr>
+          <tr><td><code>claim_triage</code></td><td><code>claim_facts_read</code>, <code>triage_rules_read</code>, <code>queue_recommend</code></td><td>Routes EV, TP injury, and &ge; &#8377;50k losses using operational signals only</td></tr>
+          <tr><td><code>damage_assessment</code></td><td><code>vision_model</code>, <code>image_quality_check</code>, <code>vehicle_taxonomy</code></td><td>Separates <code>visible_observed</code> vs <code>inferred_possible</code></td></tr>
+          <tr><td><code>estimate_validation</code></td><td><code>parts_catalogue</code>, <code>rate_card_read</code>, <code>estimate_parser</code>, <code>duplicate_line_rules</code></td><td>Flags duplicate lines &amp; &gt;12% variance without silently altering quotes</td></tr>
+          <tr><td><code>fraud_intelligence</code></td><td><code>fraud_feature_service</code>, <code>fraud_rules</code>, <code>entity_graph_query</code></td><td>Alert-only with benign explanations; never rejects or holds payout alone</td></tr>
+          <tr><td><code>provider_coordination</code></td><td><code>verified_roster_read</code>, <code>provider_scorecard</code>, <code>schedule_notify</code></td><td>Blocks unlicensed surveyors; respects customer garage selection</td></tr>
+          <tr><td><code>settlement_recommendation</code></td><td><code>deterministic_calculator</code>, <code>policy_facts_read</code>, <code>survey_report_read</code></td><td>Always returns <code>needs_human</code> for Maker-Checker DoA sign-off</td></tr>
+          <tr><td><code>customer_communication</code></td><td><code>approved_templates</code>, <code>communication_preference</code>, <code>claim_status_read</code></td><td>Adverse/legal communications require human approval before dispatch</td></tr>
+          <tr><td><code>qa_compliance</code></td><td><code>readonly_audit</code>, <code>workflow_read</code>, <code>rules_read</code>, <code>evidence_read</code></td><td>Read-only pre-closure check; cannot override failed controls</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="pipelines">
+      <h2>Core Operational &amp; Security Pipelines</h2>
+      <p class="section-sub">Switch between the end-to-end claim lifecycle, adversarial upload quarantine, and maker-checker payment pipelines.</p>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="showPipeline('e2e', this)">1. End-to-End Claim Pipeline</button>
+        <button class="tab-btn" onclick="showPipeline('doc', this)">2. Document AI &amp; Injection Quarantine</button>
+        <button class="tab-btn" onclick="showPipeline('pay', this)">3. Maker-Checker &amp; Payment Recon</button>
+      </div>
+      <div id="pipe-e2e" class="diagram-box">
+        <pre class="mermaid">
+flowchart LR
+    A["FNOL Intimation\n(Idempotent)"] --> B["Evidence Vault &amp; OCR\n(MIME + Malware + Injection)"]
+    B --> C["Hybrid Policy RAG\n(Clause Citations)"]
+    C --> D["IRDAI Triage\n(&#8377;50k Survey Rule)"]
+    D --> E["Damage AI &amp; Rate Card\n(Duplicates / Variance)"]
+    E --> F["Surveyor Report &amp; SIU\n(Alert-Only)"]
+    F --> G["Decimal Settlement\n&amp; Maker-Checker"]
+    G --> H["Idempotent Payment\n&amp; QA Closure"]
+        </pre>
+      </div>
+      <div id="pipe-doc" class="diagram-box hidden">
+        <pre class="mermaid">
+sequenceDiagram
+    participant U as Uploader
+    participant Sec as sanitizer.py
+    participant Doc as DocumentIntelligence
+    U->>Sec: Upload file bytes
+    Sec->>Sec: Magic-byte MIME + EICAR malware + SHA-256
+    Sec->>Doc: sanitize_untrusted_text()
+    Doc->>Doc: Flag prompt injection or reg/policy mismatch
+    Doc-->>U: Route to needs_human if flagged
+        </pre>
+      </div>
+      <div id="pipe-pay" class="diagram-box hidden">
+        <pre class="mermaid">
+sequenceDiagram
+    participant M as Handler 1 (Maker)
+    participant D as DoA Authority Matrix
+    participant C as Handler 2 / Manager
+    participant F as Finance Approver
+    M->>D: Calculate Decimal Settlement (pending_checker)
+    M->>D: Attempt self-approval -> 403 NOT_AUTHORISED
+    C->>D: Checker approves within DoA limit
+    F->>F: POST /payments (idempotency_key + timeout_reconcile_pending)
+    F->>F: POST /payments/{id}/reconcile -> UTR confirmed
+        </pre>
+      </div>
+    </section>
+
+    <section id="classes">
+      <h2>UML Class Diagrams</h2>
+      <p class="section-sub">Core domain entities and bounded agent contract hierarchy (see full diagrams in <code>docs/class-diagrams.md</code>).</p>
+      <div class="diagram-box">
+        <pre class="mermaid">
+classDiagram
+    class Claim {
+        +String claim_number
+        +String status
+        +Decimal estimated_loss_inr
+        +Boolean requires_mandatory_survey
+    }
+    class Evidence {
+        +String doc_type
+        +String sha256
+        +Boolean prompt_injection_flagged
+    }
+    class Estimate {
+        +Decimal total_claimed_inr
+        +Decimal total_approved_inr
+        +JSON anomalies
+    }
+    class Settlement {
+        +Decimal gross_assessed_inr
+        +Decimal depreciation_deduction_inr
+        +Decimal addon_waiver_inr
+        +Decimal net_payable_inr
+        +String approval_status
+    }
+    class Approval {
+        +String maker_user_id
+        +String checker_user_id
+        +String decision
+    }
+    class Payment {
+        +String idempotency_key
+        +Decimal amount_inr
+        +String status
+    }
+    Claim "1" --> "*" Evidence
+    Claim "1" --> "*" Estimate
+    Claim "1" --> "*" Settlement
+    Settlement "1" --> "*" Approval
+    Settlement "1" --> "*" Payment
+        </pre>
+      </div>
+    </section>
+
+    <section id="calculator">
+      <h2>Interactive Deterministic Settlement Simulator</h2>
+      <p class="section-sub">
+        Illustrates the exact IMT depreciation &amp; add-on rules implemented in Python <code>Decimal</code> inside <code>services/settlement/calculator.py</code> on the sample <code>CLM-DEMO-2026-0001</code> approved lines (&#8377;48,700 gross).
+      </p>
+      <div class="card">
+        <div class="sim-row">
+          <label><input type="checkbox" id="sim-zd" checked onchange="recalcDemo()" /> Zero Depreciation Add-on (<code>ADDON-ZD-01</code>)</label>
+          <label><input type="checkbox" id="sim-cons" checked onchange="recalcDemo()" /> Consumables Add-on (<code>ADDON-CONS-01</code>)</label>
+          <label>Vehicle Age (months):
+            <select id="sim-age" onchange="recalcDemo()">
+              <option value="0">0–6 months (0% metal)</option>
+              <option value="0.05">6–12 months (5% metal)</option>
+              <option value="0.10" selected>12–24 months (10% metal)</option>
+              <option value="0.25">36–48 months (25% metal)</option>
+              <option value="0.40">60–120 months (40% metal)</option>
+            </select>
+          </label>
+          <label>Compulsory Excess (&#8377;):
+            <input type="number" id="sim-excess" value="1000" min="0" step="500" onchange="recalcDemo()" />
+          </label>
+        </div>
+        <div class="grid-4" style="margin-bottom:0;">
+          <div><div class="stat-label">Gross Assessed</div><div class="stat-num" id="out-gross">&#8377;48,700.00</div></div>
+          <div><div class="stat-label">Applied Depreciation</div><div class="stat-num" id="out-dep">&#8377;0.00</div></div>
+          <div><div class="stat-label">Zero-Dep Waiver</div><div class="stat-num" id="out-waiver">&#8377;7,030.00</div></div>
+          <div><div class="stat-label">Net Payable</div><div class="stat-num" style="color:var(--emerald);" id="out-net">&#8377;47,700.00</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="scenarios">
+      <h2>Quick Start &amp; Seeded Edge Cases</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0;">Run Locally in 2 Commands</h3>
+          <pre>uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"
+.venv/bin/uvicorn apps.api.main:app --reload --port 8000</pre>
+          <pre>cd apps/web && npm install && npm run dev</pre>
+          <p class="section-sub" style="margin-bottom:0;">
+            Or run the full Postgres + pgvector + Redis stack with <code>docker compose up --build</code>.
+          </p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">12 Seeded Demo &amp; Edge-Case Claims</h3>
+          <ul style="margin:0; padding-left:18px; font-size:13px; color:var(--muted);">
+            <li><code>CLM-DEMO-2026-0001</code> — Full E2E cashless OD with duplicate estimate anomaly</li>
+            <li><code>CLM-DEMO-2026-0002</code> — Incomplete docs accepted without blocking</li>
+            <li><code>CLM-DEMO-2026-0003</code> — RC registration mismatch needing human fix</li>
+            <li><code>CLM-DEMO-2026-0004</code> — Dark/blurry photo guided recapture</li>
+            <li><code>CLM-DEMO-2026-0005</code> — &#8377;49,500 survey threshold boundary</li>
+            <li><code>CLM-DEMO-2026-0006</code> — Overdue 15-day surveyor SLA + &#8377;500/day alert</li>
+            <li><code>CLM-DEMO-2026-0007..0011</code> — Supplement, cleared SIU, payment recon, TP injury, EV battery</li>
+            <li><code>CLM-OTH-2026-0001</code> — Isolated secondary tenant (403 IDOR verified)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="docs">
+      <h2>Engineering Blueprint &amp; Medium Article</h2>
+      <div class="grid-2">
+        <div class="card">
+          <span class="badge badge-blue">Documentation Suite</span>
+          <ul style="font-size:14px; padding-left:18px; margin-bottom:0;">
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/architecture.md" target="_blank" rel="noopener">System Design &amp; Architecture</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/solution-engineering.md" target="_blank" rel="noopener">Solution Engineering Deep Dive</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/class-diagrams.md" target="_blank" rel="noopener">UML Class Diagrams (Mermaid)</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/pipelines.md" target="_blank" rel="noopener">Operational, AI &amp; CI/CD Pipelines</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/how-it-works-guide.md" target="_blank" rel="noopener">Operator, Developer &amp; Demo Guide</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="badge badge-green">Featured Article</span>
+          <h3 style="margin:10px 0 8px;">Why Naive AI Chatbots Fail in Insurance Claims — And How We Built a Governed Multi-Agent Platform</h3>
+          <p class="section-sub">
+            Covers why regulatory thresholds belong in versioned rules (not prompts), separating probabilistic assistance from deterministic authority, prompt-injection containment, and maker-checker payment safety.
+          </p>
+          <a class="btn btn-primary" style="background:var(--ink); color:#fff;" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank" rel="noopener">Read Full Medium Article</a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <span>MotorClaim AI Intelligence Solution · Synthetic Demo Architecture</span>
+      <span><a href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank" rel="noopener">github.com/sadiqgpasha89/motor-claim-ai</a></span>
+    </footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+
+    function showPipeline(key, btn) {
+      ["e2e", "doc", "pay"].forEach(function (k) {
+        document.getElementById("pipe-" + k).classList.toggle("hidden", k !== key);
+      });
+      document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+    }
+
+    function fmt(n) {
+      return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function recalcDemo() {
+      var zd = document.getElementById("sim-zd").checked;
+      var cons = document.getElementById("sim-cons").checked;
+      var metalRate = parseFloat(document.getElementById("sim-age").value);
+      var excess = Math.max(0, parseFloat(document.getElementById("sim-excess").value || "0"));
+
+      // Approved lines for CLM-DEMO-2026-0001:
+      // Bumper (plastic 50%): 12500, Headlamp (glass 0%): 18400, Fender (metal): 7800, Labour (0%): 7600, Consumables: 2400
+      var gross = 12500 + 18400 + 7800 + 7600 + 2400; // 48700
+      var rawPartDep = (12500 * 0.50) + (7800 * metalRate);
+      var consDep = cons ? 0 : 2400;
+      var waiver = zd ? rawPartDep : 0;
+      var appliedDep = (zd ? 0 : rawPartDep) + consDep;
+      var net = Math.max(0, gross - appliedDep - excess);
+
+      document.getElementById("out-gross").textContent = fmt(gross);
+      document.getElementById("out-dep").textContent = fmt(appliedDep);
+      document.getElementById("out-waiver").textContent = fmt(waiver);
+      document.getElementById("out-net").textContent = fmt(net);
+    }
+    recalcDemo();
+  </script>
+</body>
+</html>
