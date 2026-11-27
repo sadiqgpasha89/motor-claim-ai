@@ -1361,11 +1361,75 @@
       "</div>";
   };
 
+  window.renderEcosystemDashboard = function (filterType) {
+    var tbody = el("eco-dashboard-body");
+    if (!tbody || !DATA.ecosystemProviders) return;
+    var f = filterType || "all";
+    var rows = DATA.ecosystemProviders.filter(function (p) {
+      return f === "all" || p.type === f;
+    });
+    tbody.innerHTML = rows
+      .map(function (p) {
+        var availCls = p.availability === "Available" ? "badge-green" : p.availability === "Busy" ? "badge-amber" : "badge-rose";
+        var slaCls = p.sla === "Within SLA" ? "badge-green" : p.sla === "At Risk" ? "badge-amber" : "badge-rose";
+        var loadCls = p.currentLoad === "Low" ? "badge-green" : p.currentLoad === "Medium" ? "badge-amber" : "badge-rose";
+        var licCls = p.licence.indexOf("EXPIRED") >= 0 ? "badge-rose" : "badge-slate";
+        return (
+          "<tr>" +
+          "<td><strong>" + escapeHtml(p.name) + '</strong><br/><span style="font-size:11px; color:#64748b; text-transform:uppercase;">' + escapeHtml(p.type) + "</span></td>" +
+          '<td><span class="badge ' + availCls + '">' + escapeHtml(p.availability) + "</span></td>" +
+          '<td><span class="badge ' + slaCls + '">' + escapeHtml(p.sla) + "</span></td>" +
+          "<td><strong>" + p.rating.toFixed(1) + "</strong></td>" +
+          '<td><span class="badge ' + loadCls + '">' + escapeHtml(p.currentLoad) + "</span> <span style=\"font-size:11px; color:#64748b;\">(" + escapeHtml(p.loadRatio) + ")</span></td>" +
+          "<td><strong>" + escapeHtml(p.city) + "</strong><br/><span style=\"font-size:11px; color:#475569;\">" + escapeHtml(p.skills.join(", ")) + "</span></td>" +
+          '<td><span class="badge ' + licCls + '">' + escapeHtml(p.licence) + '</span><br/><span style="font-size:11px; color:#475569;">Parts: ' + escapeHtml(p.parts) + "</span></td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+  };
+
+  window.runEcoSim = function (mode) {
+    var out = el("eco-sim-output");
+    if (!out) return;
+    var logs = {
+      preferred_honoured:
+        "[ProviderCoordination] Customer requested: Garage A — Apex Motors (Mumbai Andheri) | Claim: Maruti Baleno OD (₹64,200)\n" +
+        "  • Surveyor Licence Check: R. K. Sharma (IRDAI-SLA-DEMO-4421) -> VERIFIED (expires in 365d)\n" +
+        "  • Surveyor Score (93.6/100): Geo=30 (Andheri zone match) + Skill=25 (OEM Maruti) + Capacity=15 (Low 3/12) + SLA=15 (Within SLA) + Rating=9.6 (4.8★)\n" +
+        "  • Garage Check: Garage A is network-verified, Within SLA, Low load (5/20), Rating 4.7★ -> CUSTOMER PREFERENCE HONOURED\n" +
+        "  • Parts & Logistics: Front Bumper & Headlamp IN STOCK (1d); Pickup scheduled + WhatsApp notification sent.",
+      unauthorized_override:
+        "[Guardrail Triggered] Actor 'claims_handler' attempted override_customer_preference=true (Garage A -> Garage B) without Manager authorization.\n" +
+        "  • Result: 403 NOT_AUTHORISED | Agent status: NEEDS_HUMAN | Action: override_guardrail [blocked_policy]\n" +
+        "  • Policy Rule: CUSTOMER-PREFERENCE-AUTH-GUARD-V1 — Customer choice & contractual rules cannot be overridden without Claims Manager/Admin + documented override_reason.\n" +
+        "  • Retained: Garage A — Apex Motors Cashless Hub.",
+      ev_safety_contract:
+        "[Contractual EV Safety Rule] Customer preferred non-EV Garage A on Tata Nexon EV claim (ev_battery_impacted=true).\n" +
+        "  • Contractual Mandate: POL-WORDING-EV-2025:EV-SAFE-01 prohibits servicing HV traction battery at non-EV workshops.\n" +
+        "  • Redirected to: VoltCare OEM EV Specialist Centre (score 94.8/100, EV HV Certified, Within SLA, Low load 2/10, Rating 4.9★)\n" +
+        "  • Logistics: SafeTow EV Flatbed Recovery dispatched + HV OEM Battery Tray ordered (ETA 3d) + Customer notified.",
+      expired_licence:
+        "[IIISLA Licence Verification Gate] Attempted assignment of Legacy Unverified Assessor (IRDAI-SLA-EXP-0009).\n" +
+        "  • Registry Response: verified=false (licence_status='expired', expired 30 days ago) -> 400 VALIDATION_ERROR / blocked_policy\n" +
+        "  • Auto-Fallback: Selected Surveyor C / R. K. Sharma (verified IIISLA, Within SLA, Available).",
+      resched_followup_repair:
+        "[Full Ecosystem Lifecycle] Claim CLM-ECO-2026\n" +
+        "  • Inspection Rescheduled: Customer requested afternoon slot -> reschedule_count=1, WhatsApp notice sent.\n" +
+        "  • Surveyor Report Follow-up: Follow-up #1 triggered + SLA task assigned to surveyor.\n" +
+        "  • Repair Milestones: intake_confirmed -> teardown -> body_paint -> qc_pending -> repair_completed\n" +
+        "  • Repair Completion Confirmed: Garage QC signed off, delivery scheduled, customer handover WhatsApp notification sent!"
+    };
+    out.textContent = logs[mode] || logs.preferred_honoured;
+  };
+
   document.addEventListener("DOMContentLoaded", function () {
     renderOrchestratorEngine();
     if (window.runOrchLab) window.runOrchLab("parallel_wave");
     if (window.applyRiskPreset) window.applyRiskPreset("low_fast_track");
     if (window.renderDamageAiLab) window.renderDamageAiLab("guardrail_uncertain");
+    if (window.renderEcosystemDashboard) window.renderEcosystemDashboard("all");
+    if (window.runEcoSim) window.runEcoSim("preferred_honoured");
     renderActiveWorkflow();
     renderQuestions();
     renderCapabilityMatrix();

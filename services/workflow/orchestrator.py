@@ -1506,14 +1506,36 @@ class ClaimOrchestrator:
             )
 
         elif agent_name == "provider_coordination":
-            if resp.status == AgentStatus.COMPLETED and claim.requires_mandatory_survey:
-                self._safe_transition(
-                    claim,
-                    ClaimStatus.SURVEY_REQUIRED.value,
-                    reason="Verified IIISLA surveyor & EV-safe garage coordinated",
-                    trigger_event="ProviderCoordinated",
-                    next_expected_action="Run conditional damage assessment & parallel fraud analysis",
+            from services.claims.models import EcosystemCoordination
+            from services.workflow.ecosystem import coordinate_claim_ecosystem
+
+            if resp.status == AgentStatus.COMPLETED:
+                existing_eco = (
+                    self.db.query(EcosystemCoordination)
+                    .filter(EcosystemCoordination.claim_id == claim.id)
+                    .first()
                 )
+                if not existing_eco or (existing_eco.garage_id is None and existing_eco.surveyor_id is None):
+                    try:
+                        coordinate_claim_ecosystem(
+                            self.db,
+                            claim,
+                            user=self.user,
+                            preferred_garage_id=claim.assigned_garage_id,
+                            preferred_surveyor_id=claim.assigned_surveyor_id,
+                            towing_needed=bool(resp.result.get("towing_coordinated", claim.towing_needed)),
+                            notify_customer=False,
+                        )
+                    except DomainError:
+                        pass
+                if claim.requires_mandatory_survey:
+                    self._safe_transition(
+                        claim,
+                        ClaimStatus.SURVEY_REQUIRED.value,
+                        reason="Verified IIISLA surveyor & EV-safe garage coordinated across ecosystem",
+                        trigger_event="ProviderCoordinated",
+                        next_expected_action="Run conditional damage assessment & parallel fraud analysis",
+                    )
 
         elif agent_name == "damage_assessment":
             if resp.status == AgentStatus.NEEDS_HUMAN:
@@ -2570,6 +2592,9 @@ class ClaimOrchestrator:
                 "requires_mandatory_survey": claim.requires_mandatory_survey,
                 "ev_battery_impacted": claim.ev_battery_impacted,
                 "is_ev": vehicle.is_ev if vehicle else False,
+                "incident_location": claim.incident_location,
+                "peril_cause": claim.peril_cause,
+                "vehicle_make": vehicle.make if vehicle else "",
                 "towing_needed": claim.towing_needed,
                 "vehicle_immobile": claim.vehicle_immobile,
                 "preferred_garage_id": claim.assigned_garage_id,

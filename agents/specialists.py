@@ -1273,7 +1273,7 @@ class FraudIntelligenceAgent(BoundedAgent):
 
 class ProviderCoordinationAgent(BoundedAgent):
     agent_name = "provider_coordination"
-    prompt_version = "provider-v2.0"
+    prompt_version = "provider-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["provider_coordination"].allowed_tools)
 
     def _run(
@@ -1289,31 +1289,113 @@ class ProviderCoordinationAgent(BoundedAgent):
         requires_survey = bool(facts.get("requires_mandatory_survey", True))
         ev_required = bool(facts.get("ev_battery_impacted", False)) or bool(facts.get("is_ev", False))
         towing_needed = bool(facts.get("towing_needed", False)) or bool(facts.get("vehicle_immobile", False))
+        pickup_required = bool(facts.get("pickup_required", False))
+        delivery_required = bool(facts.get("delivery_required", False))
         preferred_garage_id = facts.get("preferred_garage_id") or facts.get("assigned_garage_id")
+        selected_garage_id = facts.get("selected_garage_id")
+        preferred_surveyor_id = facts.get("preferred_surveyor_id")
+        override_pref = bool(facts.get("override_customer_preference", False))
+        override_contract = bool(facts.get("override_contract_rule", False))
+        override_reason = str(facts.get("override_reason", "") or "").strip()
+        actor_role = str(facts.get("actor_role") or request.actor_role or "claims_handler")
+        authorized_override = actor_role in {"claims_manager", "admin"} and bool(override_reason)
+
         candidate = facts.get("recommended_provider")
         surveyor_cand = facts.get("recommended_surveyor") or candidate
         garage_cand = facts.get("recommended_garage")
 
         actions: list[AgentActionExecution] = []
-        tools_used = ["verified_roster_read", "provider_scorecard"]
-        pref_honoured = True
-        ev_override_applied = False
+        tools_used = ["verified_roster_read", "verify_surveyor_license", "provider_scorecard"]
+        ev_override_applied = bool(facts.get("ev_safety_override_applied", False))
+        pref_honoured = not ev_override_applied
+        override_blocked = False
+        override_block_reason = ""
+        selection_reasons: list[str] = []
 
-        if requires_survey:
+        # Guardrail: Never override customer choice or contractual rules without proper authorization
+        if (override_pref or override_contract or (selected_garage_id and preferred_garage_id and selected_garage_id != preferred_garage_id)) and not authorized_override:
+            override_blocked = True
+            override_block_reason = (
+                "Blocked unauthorized override: customer preferred garage or contractual rules cannot be overridden "
+                "without Claims Manager / Admin authorization and documented rationale."
+            )
+            actions.append(
+                AgentActionExecution(
+                    action_id=f"act-guard-{self._decision_id('guard')[-6:]}",
+                    action_type="override_guardrail",
+                    tool_name="provider_scorecard",
+                    status="blocked_policy",
+                    target_type="claim",
+                    target_id=request.claim_id,
+                    summary=override_block_reason,
+                    payload={
+                        "actor_role": actor_role,
+                        "preferred_garage_id": preferred_garage_id,
+                        "requested_garage_id": selected_garage_id,
+                    },
+                )
+            )
+            actions.append(
+                executor.create_claim_task(
+                    agent_name=self.agent_name,
+                    task_type="ecosystem_authorization_review",
+                    title="Authorization required for customer preference / contractual override",
+                    description=override_block_reason,
+                    assigned_role="claims_manager",
+                    priority="high",
+                    reason_code="RC_UNAUTHORIZED_OVERRIDE_BLOCKED",
+                    due_hours=8,
+                )
+            )
+            tools_used.append("create_claim_task")
+
+        # Optional pre-supplied candidate scoring explanation from Ecosystem service or DB
+        surveyor_license_verified = bool(facts.get("surveyor_license_verified", True))
+        requested_surv_status = str(facts.get("requested_surveyor_licence_status", "verified"))
+        if requested_surv_status != "verified":
+            surveyor_license_verified = False
+            override_blocked = True
+            override_block_reason = f"Blocked unlicensed surveyor (IIISLA licence_status={requested_surv_status})."
+            actions.append(
+                AgentActionExecution(
+                    action_id=f"act-lic-{self._decision_id('lic')[-6:]}",
+                    action_type="license_verification",
+                    tool_name="verify_surveyor_license",
+                    status="blocked_policy",
+                    target_type="provider",
+                    target_id=str(preferred_surveyor_id or ""),
+                    summary=override_block_reason,
+                    payload={"licence_status": requested_surv_status},
+                )
+            )
+
+        if requires_survey and not override_blocked:
             sched = executor.schedule_inspection(
                 agent_name=self.agent_name,
-                surveyor_id=facts.get("preferred_surveyor_id"),
+                surveyor_id=preferred_surveyor_id,
                 ev_required=ev_required,
             )
             actions.append(sched)
             tools_used.extend(["schedule_inspection", "schedule_notify"])
             if not surveyor_cand and sched.target_id:
                 surveyor_cand = {"id": sched.target_id, "summary": sched.summary}
+            if sched.summary:
+                selection_reasons.append(sched.summary)
 
-        if garage_cand or preferred_garage_id or executor.db is not None:
+        if facts.get("reschedule_appointment_at"):
+            resched = executor.reschedule_inspection(
+                agent_name=self.agent_name,
+                new_appointment_at=str(facts["reschedule_appointment_at"]),
+                reason=str(facts.get("reschedule_reason", "Customer / garage requested slot change")),
+            )
+            actions.append(resched)
+            tools_used.append("reschedule_inspection")
+
+        if not override_blocked and (garage_cand or preferred_garage_id or executor.db is not None):
+            target_gar_id = str(selected_garage_id or preferred_garage_id) if (selected_garage_id or preferred_garage_id) else None
             gar_exec = executor.notify_garage(
                 agent_name=self.agent_name,
-                garage_id=str(preferred_garage_id) if preferred_garage_id else None,
+                garage_id=target_gar_id,
                 ev_required=ev_required,
             )
             actions.append(gar_exec)
@@ -1321,56 +1403,166 @@ class ProviderCoordinationAgent(BoundedAgent):
             if preferred_garage_id and gar_exec.target_id and gar_exec.target_id != str(preferred_garage_id):
                 pref_honoured = False
                 ev_override_applied = ev_required
+                selection_reasons.append(
+                    f"EV HV contractual safety mandate (POL-WORDING-EV-2025:EV-SAFE-01) redirected non-EV preferred garage "
+                    f"{preferred_garage_id} to EV-certified {gar_exec.payload.get('garage_name', gar_exec.target_id)}."
+                )
+            elif preferred_garage_id and gar_exec.target_id == str(preferred_garage_id):
+                selection_reasons.append(f"Honoured customer-preferred garage {gar_exec.payload.get('garage_name', preferred_garage_id)}.")
+            elif gar_exec.summary:
+                selection_reasons.append(gar_exec.summary)
             if not garage_cand and gar_exec.target_id:
                 garage_cand = {"id": gar_exec.target_id, "summary": gar_exec.summary}
+
+        # Parts availability check
+        parts_check = executor.check_parts_availability(
+            agent_name=self.agent_name,
+            garage_name=str((garage_cand or {}).get("name") or (garage_cand or {}).get("summary") or "Network Garage"),
+            parts_stock_status=str(facts.get("parts_stock_status", "in_stock")),
+            parts_lead_time_days=int(facts.get("parts_lead_time_days", 2)),
+            part_items=facts.get("part_items"),
+        )
+        actions.append(parts_check)
+        tools_used.append("check_parts_availability")
 
         if towing_needed:
             actions.append(executor.dispatch_towing(agent_name=self.agent_name, ev_flatbed=ev_required))
             tools_used.append("dispatch_towing")
 
-        has_provider = bool(surveyor_cand or garage_cand or not requires_survey or any(a.status == "executed" for a in actions))
-        status = AgentStatus.COMPLETED if has_provider else AgentStatus.NEEDS_HUMAN
-        conf = 0.92 if has_provider else 0.42
-        routing = (
-            "customer_garage_overridden_ev_safety"
-            if ev_override_applied
-            else ("providers_scheduled" if has_provider else "escalate_capacity_shortage")
+        if pickup_required or delivery_required:
+            mode = "pickup_and_delivery" if (pickup_required and delivery_required) else ("pickup" if pickup_required else "delivery")
+            actions.append(executor.schedule_pickup_delivery(agent_name=self.agent_name, mode=mode, ev_flatbed=ev_required))
+            tools_used.append("schedule_pickup_delivery")
+
+        if facts.get("followup_surveyor"):
+            actions.append(
+                executor.send_surveyor_followup(
+                    agent_name=self.agent_name,
+                    notes=str(facts.get("followup_notes", "IRDAI 15-day report SLA follow-up")),
+                    escalate_to_manager=bool(facts.get("escalate_followup", False)),
+                )
+            )
+            tools_used.append("send_surveyor_followup")
+
+        if facts.get("confirm_repair_completion"):
+            actions.append(
+                executor.confirm_repair_completion(
+                    agent_name=self.agent_name,
+                    milestone=str(facts.get("repair_milestone", "repair_completed")),
+                    notes=str(facts.get("repair_notes", "Repair & QC verified")),
+                )
+            )
+            tools_used.append("confirm_repair_completion")
+
+        if facts.get("notify_customer", True) and not override_blocked:
+            actions.append(
+                executor.send_customer_update(
+                    agent_name=self.agent_name,
+                    channel=str(facts.get("notification_channel", "whatsapp")),
+                    language=str(facts.get("language") or request.locale or "en-IN"),
+                    template_id="ECOSYSTEM_COORDINATION_UPDATE",
+                    subject=f"Claims Ecosystem & Repair Coordination: {request.claim_id}",
+                    body=" ".join(selection_reasons) or "Surveyor, garage, parts, and logistics coordinated.",
+                    is_adverse=False,
+                )
+            )
+            tools_used.append("send_customer_update")
+
+        has_provider = bool(
+            (surveyor_cand or garage_cand or not requires_survey or any(a.status == "executed" for a in actions))
+            and not override_blocked
         )
-        reason_codes = ["RC_VERIFIED_LICENCE_FILTER", "RC_SLA_24H_15D_ENFORCED"]
-        if ev_override_applied:
+        status = AgentStatus.NEEDS_HUMAN if override_blocked or not has_provider else AgentStatus.COMPLETED
+        conf = 0.45 if override_blocked else (0.93 if has_provider else 0.42)
+        routing = (
+            "blocked_unauthorized_override_or_licence"
+            if override_blocked
+            else (
+                "customer_garage_overridden_ev_safety"
+                if ev_override_applied
+                else ("ecosystem_coordinated" if has_provider else "escalate_capacity_shortage")
+            )
+        )
+        reason_codes = ["RC_VERIFIED_LICENCE_FILTER", "RC_GEOGRAPHY_SKILL_CAPACITY_SLA_SCORED", "RC_SLA_24H_15D_ENFORCED"]
+        if override_blocked:
+            reason_codes.append("RC_UNAUTHORIZED_OVERRIDE_OR_LICENCE_BLOCKED")
+        elif ev_override_applied:
             reason_codes.append("RC_EV_GARAGE_SAFETY_OVERRIDE")
         elif pref_honoured:
             reason_codes.append("RC_CUSTOMER_PREFERENCE_HONOURED")
         if towing_needed:
             reason_codes.append("RC_TOWING_COORDINATED")
+        if pickup_required or delivery_required:
+            reason_codes.append("RC_PICKUP_DELIVERY_COORDINATED")
+        if parts_check.payload.get("parts_status") in {"partial_backorder", "backordered"}:
+            reason_codes.append("RC_PARTS_BACKORDER_FLAGGED")
+
+        selection_explanation = str(facts.get("selection_explanation") or " ".join(selection_reasons)).strip() or (
+            "Coordinated verified IIISLA surveyor, network/preferred garage, parts check, and logistics by geography, skill, capacity, and SLA."
+        )
+        score_breakdown = facts.get("score_breakdown") or {
+            "weights": {"geography": 30, "skill": 25, "capacity": 20, "sla": 15, "rating": 10},
+            "surveyor_score": facts.get("surveyor_score_breakdown"),
+            "garage_score": facts.get("garage_score_breakdown"),
+        }
 
         result = {
             "recommended_provider": candidate or surveyor_cand or garage_cand,
             "recommended_surveyor": surveyor_cand,
             "recommended_garage": garage_cand,
+            "surveyor_license_verified": surveyor_license_verified,
+            "selection_explanation": selection_explanation,
+            "score_breakdown": score_breakdown,
             "towing_coordinated": towing_needed,
+            "pickup_delivery_coordinated": pickup_required or delivery_required,
             "ev_capable_required": ev_required,
             "customer_preference_honoured": pref_honoured,
             "ev_safety_override_applied": ev_override_applied,
+            "override_blocked": override_blocked,
+            "override_block_reason": override_block_reason,
+            "parts_availability": parts_check.payload,
+            "inspection_schedule": {
+                "status": "rescheduled" if facts.get("reschedule_appointment_at") else ("scheduled" if requires_survey and not override_blocked else "not_required"),
+                "rescheduled_at": facts.get("reschedule_appointment_at"),
+            },
+            "repair_status": {
+                "milestone": facts.get("repair_milestone", "intake_confirmed" if garage_cand else "not_started"),
+                "completion_confirmed": bool(facts.get("confirm_repair_completion", False)),
+            },
+            "surveyor_followup": {
+                "triggered": bool(facts.get("followup_surveyor", False)),
+            },
             "sla_deadlines": {"allocation_sla_hours": 24, "survey_report_due_days": 15},
         }
         decision = DecisionIntelligence(
             decision_id=self._decision_id(self.agent_name),
             reason_codes=reason_codes,
             evidence=[
-                f"Mandatory survey={requires_survey}, EV required={ev_required}, Towing={towing_needed}",
-                f"Surveyor={surveyor_cand}, Garage={garage_cand}",
+                f"Location={facts.get('incident_location', 'unspecified')}, Mandatory survey={requires_survey}, EV={ev_required}, Towing={towing_needed}",
+                f"Surveyor={surveyor_cand}, Garage={garage_cand}, Parts={parts_check.payload.get('parts_status')}",
+                f"Explanation={selection_explanation}",
             ],
-            policy_rule_refs=["IN-IRDAI-MC-2024:24h_15d_SLA", "POL-WORDING-EV-2025:EV-SAFE-01"],
+            policy_rule_refs=[
+                "IN-IRDAI-MC-2024:24h_15d_SLA",
+                "POL-WORDING-EV-2025:EV-SAFE-01",
+                "CUSTOMER-PREFERENCE-AUTH-GUARD-V1",
+            ],
             confidence=conf,
             confidence_band=self._band(conf),
             routing_outcome=routing,
             explanation=(
-                "Coordinated lowest-load licensed surveyor, EV-capable/preferred garage, and towing dispatch within IRDAI SLA."
-                if has_provider
-                else "No available licensed surveyor/EV-capable garage within city capacity; escalated to SLA Operations."
+                override_block_reason
+                if override_blocked
+                else (
+                    selection_explanation
+                    if has_provider
+                    else "No available licensed surveyor/EV-capable garage within city capacity; escalated to SLA Operations."
+                )
             ),
-            alternatives_considered=["assign_unlicensed_or_non_ev_garage (blocked by safety & IIISLA licence guard)"],
+            alternatives_considered=[
+                "assign_unlicensed_or_non_ev_garage (blocked by safety & IIISLA licence guard)",
+                "override_customer_choice_without_manager_auth (strictly prohibited)",
+            ],
         )
 
         return AgentInvocationResponse(
@@ -1380,15 +1572,22 @@ class ProviderCoordinationAgent(BoundedAgent):
             published_result=result,
             confidence=conf,
             confidence_band=self._band(conf),
-            missing_information=[] if has_provider else ["No available licensed surveyor/EV-capable garage in city"],
-            limitations=["Respects customer choice of network garage unless EV high-voltage safety requires certified workshop."],
+            missing_information=[] if (has_provider and not override_blocked) else [override_block_reason or "No available licensed surveyor/EV-capable garage in city"],
+            limitations=[
+                "Never overrides customer garage choice or contractual rules without Claims Manager / Admin authorization.",
+                "Never assigns an unverified or expired IIISLA surveyor.",
+            ],
             actions_executed=actions,
             decision=decision,
             model_id=model_id,
             model_version=model_version,
             prompt_version=self.prompt_version,
             rule_versions=request.rule_versions,
-            suggested_next_action="confirm_assignment" if has_provider else "escalate_sla_capacity",
+            suggested_next_action=(
+                "manager_authorization_review"
+                if override_blocked
+                else ("confirm_assignment" if has_provider else "escalate_sla_capacity")
+            ),
             tools_invoked=list(dict.fromkeys(tools_used)),
         )
 

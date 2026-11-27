@@ -248,13 +248,31 @@ class ControlledActionExecutor:
             Provider.is_available.is_(True),
         )
         if surveyor_id:
-            surveyor = q.filter(Provider.id == surveyor_id).first()
+            cand = self.db.query(Provider).filter(
+                Provider.tenant_id == self.claim.tenant_id,
+                Provider.provider_type == "surveyor",
+                Provider.id == surveyor_id,
+            ).first()
+            if cand:
+                lic = IntegrationAdapterRegistry.verify_surveyor_licence(
+                    licence_id=cand.licence_or_contract_id,
+                    licence_status=cand.licence_status,
+                    licence_expiry_at=cand.licence_expiry_at,
+                )
+                surveyor = cand if (lic["verified"] and cand.is_available and cand.active_load < cand.max_capacity) else None
+            else:
+                surveyor = None
         else:
-            candidates = q.order_by(Provider.active_load.asc(), Provider.quality_score.desc()).all()
-            if ev_required:
-                ev_cands = [c for c in candidates if c.ev_capable]
-                candidates = ev_cands or candidates
-            surveyor = next((c for c in candidates if c.active_load < c.max_capacity), None)
+            from services.workflow.ecosystem import select_best_surveyor
+
+            all_provs = q.all()
+            sel = select_best_surveyor(
+                all_provs,
+                incident_location=self.claim.incident_location,
+                required_skills=["ev_hv"] if ev_required else [],
+                ev_required=ev_required,
+            )
+            surveyor = sel["selected"]
 
         if not surveyor:
             self.create_claim_task(
@@ -772,4 +790,176 @@ class ControlledActionExecutor:
             target_id=comm.id,
             summary=f"{'Queued adverse notice for human approval' if is_adverse else 'Dispatched update'} ({language}) via {channel}",
             payload={"communication_id": comm.id, "delivery_status": delivery_status, "language": language},
+        )
+
+    def reschedule_inspection(
+        self,
+        *,
+        agent_name: str,
+        new_appointment_at: str,
+        reason: str,
+    ) -> AgentActionExecution:
+        if self.db is None or self.claim is None:
+            return AgentActionExecution(
+                action_id=self._aid(),
+                action_type="reschedule_inspection",
+                tool_name="reschedule_inspection",
+                status="simulated",
+                target_type="survey_assignment",
+                target_id="sim-resched",
+                summary=f"[Simulated] Reschedule inspection to {new_appointment_at} ({reason})",
+                payload={"new_appointment_at": new_appointment_at, "reason": reason},
+            )
+        from services.workflow.ecosystem import reschedule_claim_inspection
+
+        dt = datetime.fromisoformat(new_appointment_at.replace("Z", "+00:00"))
+        actor = self.user or UserContext(
+            user_id=f"agent:{agent_name}",
+            tenant_id=self.claim.tenant_id,
+            email=f"{agent_name}@system.local",
+            name=agent_name,
+            role=Role.CLAIMS_HANDLER,
+        )
+        coord = reschedule_claim_inspection(self.db, self.claim, user=actor, new_appointment_at=dt, reason=reason)
+        return AgentActionExecution(
+            action_id=self._aid(),
+            action_type="reschedule_inspection",
+            tool_name="reschedule_inspection",
+            status="executed",
+            target_type="ecosystem_coordination",
+            target_id=coord.id,
+            summary=f"Rescheduled inspection to {new_appointment_at} (reschedule #{coord.inspection_reschedule_count})",
+            payload={"reschedule_count": coord.inspection_reschedule_count, "reason": reason},
+        )
+
+    def check_parts_availability(
+        self,
+        *,
+        agent_name: str,
+        garage_name: str = "Network Garage",
+        parts_stock_status: str = "in_stock",
+        parts_lead_time_days: int = 2,
+        part_items: list[dict[str, Any]] | None = None,
+    ) -> AgentActionExecution:
+        res = IntegrationAdapterRegistry.check_parts_availability(
+            garage_name=garage_name,
+            parts_stock_status=parts_stock_status,
+            parts_lead_time_days=parts_lead_time_days,
+            part_items=part_items or [{"part_code": "PRT-FRT-BMP-01", "description": "Front Bumper Assembly"}],
+        )
+        return AgentActionExecution(
+            action_id=self._aid(),
+            action_type="check_parts_availability",
+            tool_name="check_parts_availability",
+            status="executed" if self.db is not None else "simulated",
+            target_type="parts_catalogue",
+            target_id=res["parts_status"],
+            summary=f"Parts check: {res['parts_status']} across {len(res['items'])} part(s)",
+            payload=res,
+        )
+
+    def schedule_pickup_delivery(
+        self,
+        *,
+        agent_name: str,
+        mode: str = "pickup",
+        ev_flatbed: bool = False,
+    ) -> AgentActionExecution:
+        res = IntegrationAdapterRegistry.dispatch_pickup_delivery(
+            mode=mode,
+            location=self.claim.incident_location if self.claim else "Customer Location",
+            garage_name="Assigned Garage",
+            ev_flatbed=ev_flatbed,
+        )
+        return AgentActionExecution(
+            action_id=self._aid(),
+            action_type="schedule_pickup_delivery",
+            tool_name="schedule_pickup_delivery",
+            status="executed" if self.db is not None else "simulated",
+            target_type="logistics",
+            target_id=res["dispatch_ref"],
+            summary=f"Scheduled vehicle {mode} ({res['dispatch_ref']})",
+            payload=res,
+        )
+
+    def send_surveyor_followup(
+        self,
+        *,
+        agent_name: str,
+        notes: str = "IRDAI 15-day report SLA follow-up",
+        escalate_to_manager: bool = False,
+    ) -> AgentActionExecution:
+        if self.db is None or self.claim is None:
+            return AgentActionExecution(
+                action_id=self._aid(),
+                action_type="send_surveyor_followup",
+                tool_name="send_surveyor_followup",
+                status="simulated",
+                target_type="survey_assignment",
+                target_id="sim-followup",
+                summary=f"[Simulated] Surveyor report follow-up ({notes})",
+                payload={"escalate_to_manager": escalate_to_manager},
+            )
+        from services.workflow.ecosystem import send_surveyor_report_followup
+
+        actor = self.user or UserContext(
+            user_id=f"agent:{agent_name}",
+            tenant_id=self.claim.tenant_id,
+            email=f"{agent_name}@system.local",
+            name=agent_name,
+            role=Role.CLAIMS_HANDLER,
+        )
+        coord = send_surveyor_report_followup(
+            self.db, self.claim, user=actor, notes=notes, escalate_to_manager=escalate_to_manager
+        )
+        return AgentActionExecution(
+            action_id=self._aid(),
+            action_type="send_surveyor_followup",
+            tool_name="send_surveyor_followup",
+            status="executed",
+            target_type="ecosystem_coordination",
+            target_id=coord.id,
+            summary=f"Sent surveyor report follow-up #{coord.surveyor_followup_count}",
+            payload={"followup_count": coord.surveyor_followup_count, "status": coord.surveyor_followup_status},
+        )
+
+    def confirm_repair_completion(
+        self,
+        *,
+        agent_name: str,
+        milestone: str = "repair_completed",
+        notes: str = "QC passed and handover ready",
+    ) -> AgentActionExecution:
+        if self.db is None or self.claim is None:
+            return AgentActionExecution(
+                action_id=self._aid(),
+                action_type="confirm_repair_completion",
+                tool_name="confirm_repair_completion",
+                status="simulated",
+                target_type="ecosystem_coordination",
+                target_id="sim-repair-done",
+                summary=f"[Simulated] Confirm repair completion ({milestone})",
+                payload={"milestone": milestone, "notes": notes},
+            )
+        from services.workflow.ecosystem import update_repair_milestone_and_confirm
+
+        actor = self.user or UserContext(
+            user_id=f"agent:{agent_name}",
+            tenant_id=self.claim.tenant_id,
+            email=f"{agent_name}@system.local",
+            name=agent_name,
+            role=Role.CLAIMS_HANDLER,
+        )
+        coord = update_repair_milestone_and_confirm(
+            self.db, self.claim, user=actor, milestone=milestone, notes=notes, confirm_completion=True
+        )
+        return AgentActionExecution(
+            action_id=self._aid(),
+            action_type="confirm_repair_completion",
+            tool_name="confirm_repair_completion",
+            status="executed",
+            target_type="ecosystem_coordination",
+            target_id=coord.id,
+            summary=f"Confirmed repair completion ({milestone})",
+            payload={"milestone": milestone, "confirmed": coord.repair_completion_confirmed},
         )

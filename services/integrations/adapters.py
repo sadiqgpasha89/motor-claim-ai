@@ -114,3 +114,98 @@ class IntegrationAdapterRegistry:
             "utr": f"UTR-RECON-{gateway_reference[-8:]}",
             "reconciled_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    @staticmethod
+    def verify_surveyor_licence(
+        *,
+        licence_id: str,
+        licence_status: str,
+        licence_expiry_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        exp = licence_expiry_at
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        not_expired = exp is None or exp > now
+        verified = licence_status == "verified" and not_expired
+        reason = (
+            "IIISLA licence active and verified"
+            if verified
+            else ("IIISLA licence expired" if not not_expired else f"IIISLA licence status='{licence_status}' (not verified)")
+        )
+        return {
+            "verified": verified,
+            "licence_id": licence_id,
+            "licence_status": licence_status,
+            "not_expired": not_expired,
+            "reason": reason,
+            "mode": "MOCK_IIISLA_REGISTRY",
+            "checked_at": now.isoformat(),
+        }
+
+    @staticmethod
+    def check_parts_availability(
+        *,
+        garage_name: str,
+        parts_stock_status: str,
+        parts_lead_time_days: int,
+        part_items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        results: list[dict[str, Any]] = []
+        any_backorder = False
+        any_partial = parts_stock_status == "partial_backorder"
+        for idx, item in enumerate(part_items):
+            code = str(item.get("part_code") or f"PRT-OEM-{idx + 1}")
+            desc = str(item.get("description") or item.get("component_name") or "Body/Trim Assembly")
+            is_ev_or_hl = any(tok in desc.lower() or tok in code.lower() for tok in ("battery", "hv", "adas", "radar", "matrix"))
+            if parts_stock_status == "backordered" or (parts_stock_status == "partial_backorder" and is_ev_or_hl):
+                status = "backordered"
+                eta_days = max(parts_lead_time_days, 5)
+                any_backorder = True
+            elif is_ev_or_hl and parts_lead_time_days > 2:
+                status = "ordered_oem"
+                eta_days = parts_lead_time_days
+                any_partial = True
+            else:
+                status = "in_stock"
+                eta_days = min(parts_lead_time_days, 1) if parts_stock_status == "in_stock" else parts_lead_time_days
+            results.append(
+                {
+                    "part_code": code,
+                    "description": desc,
+                    "availability": status,
+                    "eta_days": eta_days,
+                    "source": "OEM Warehouse" if status != "in_stock" else f"{garage_name} Stock",
+                }
+            )
+
+        overall = (
+            "backordered"
+            if any_backorder and all(r["availability"] == "backordered" for r in results)
+            else ("partial_backorder" if (any_backorder or any_partial) else "all_available")
+        )
+        return {
+            "parts_status": overall,
+            "items": results,
+            "checked_at": now.isoformat(),
+            "mode": "MOCK_OEM_PARTS_CATALOGUE",
+        }
+
+    @staticmethod
+    def dispatch_pickup_delivery(
+        *,
+        mode: str,
+        location: str,
+        garage_name: str,
+        ev_flatbed: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "dispatch_ref": f"LOG-{uuid.uuid4().hex[:8].upper()}",
+            "mode": mode,
+            "location": location,
+            "garage_name": garage_name,
+            "ev_flatbed": ev_flatbed,
+            "status": "scheduled",
+            "adapter": "MOCK_ROADSIDE_LOGISTICS",
+        }

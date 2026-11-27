@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ProvenanceBadge, RiskTierBadge, SlaBadge, StatusPill } from "@/components/Badges";
 import { ClaimExecutionChain } from "@/components/ClaimExecutionChain";
 
-type TabId = "overview" | "orchestration" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
+type TabId = "overview" | "orchestration" | "ecosystem" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
 
 interface RiskDriver {
   code: string;
@@ -318,11 +318,57 @@ interface Claim360 {
   }>;
   surveys: Array<{
     id: string;
+    surveyor_id?: string;
     status: string;
+    appointment_at?: string | null;
+    inspection_location?: string;
+    reschedule_count?: number;
+    reschedule_reason?: string | null;
+    followup_count?: number;
     report_due_at: string;
     signed_by_surveyor: boolean;
     report_summary?: Record<string, unknown>;
   }>;
+  ecosystem?: {
+    id: string;
+    surveyor: { id: string; name: string; city: string; licence_status: string; licence_or_contract_id: string; availability?: string; sla?: string; rating?: number; current_load?: string } | null;
+    surveyor_license_verified: boolean;
+    surveyor_selection_explanation: string;
+    surveyor_score_breakdown: Record<string, unknown>;
+    garage: { id: string; name: string; city: string; ev_capable: boolean; is_network: boolean; availability?: string; sla?: string; rating?: number; current_load?: string } | null;
+    customer_preferred_garage: { id: string; name: string } | null;
+    customer_preference_honoured: boolean;
+    override_applied: boolean;
+    override_authorized: boolean;
+    override_authorized_by?: string | null;
+    override_reason_code?: string | null;
+    override_justification?: string;
+    garage_selection_explanation: string;
+    garage_score_breakdown: Record<string, unknown>;
+    inspection_status: string;
+    inspection_scheduled_at?: string | null;
+    inspection_reschedule_count: number;
+    inspection_reschedule_reason?: string | null;
+    towing_required: boolean;
+    towing_status: string;
+    towing_ev_flatbed: boolean;
+    pickup_delivery_status: string;
+    pickup_scheduled_at?: string | null;
+    delivery_scheduled_at?: string | null;
+    pickup_driver_note?: string;
+    parts_status: string;
+    parts_availability: Array<{ part_code: string; description: string; availability: string; eta_days: number; source: string }>;
+    repair_status: string;
+    repair_milestones: Array<{ milestone: string; notes: string; actor: string; timestamp: string }>;
+    repair_completion_confirmed: boolean;
+    repair_confirmed_by?: string | null;
+    repair_confirmed_at?: string | null;
+    surveyor_followup_count: number;
+    surveyor_followup_status: string;
+    customer_notifications: Array<{ event: string; channel: string; message: string; sent_at: string }>;
+    contractual_compliance: Record<string, boolean>;
+    coordination_explanation: string;
+  } | null;
   fraud_alerts_restricted: boolean;
   fraud_alerts: Array<{
     id: string;
@@ -503,6 +549,13 @@ export default function Claim360Page() {
   const [reworkTo, setReworkTo] = useState("damage_assessment");
   const [reworkInstructions, setReworkInstructions] = useState("Verify repair vs replacement teardown evidence.");
   const [eventIdInput, setEventIdInput] = useState("evt-ui-advance-001");
+  const [rescheduleReason, setRescheduleReason] = useState("Customer requested afternoon inspection slot at garage");
+  const [rescheduleAt, setRescheduleAt] = useState("2026-12-01T14:30:00Z");
+  const [followupNotes, setFollowupNotes] = useState("IRDAI 15-day report SLA follow-up requested");
+  const [repairMilestone, setRepairMilestone] = useState("body_paint_in_progress");
+  const [repairNotes, setRepairNotes] = useState("Body work and OEM paint curing underway");
+  const [overrideGarageId, setOverrideGarageId] = useState("prov-gar-ev-02");
+  const [overrideReason, setOverrideReason] = useState("");
 
   const loadClaim = useCallback(async () => {
     if (!token || !claimId) return;
@@ -647,6 +700,7 @@ export default function Claim360Page() {
           [
             ["overview", "Overview & AI Workflow"],
             ["orchestration", `Orchestration & Actions (${data.tasks?.length || 0})`],
+            ["ecosystem", "Ecosystem & Repair"],
             ["decisions", `Decision Intelligence (${data.decisions?.length || 0})`],
             ["evidence", `Evidence & OCR (${data.evidence.length})`],
             ["damage_estimate", `Damage & Estimate (${data.estimates.length})`],
@@ -1252,6 +1306,316 @@ export default function Claim360Page() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: ECOSYSTEM & REPAIR COORDINATION */}
+      {tab === "ecosystem" && (
+        <div className="space-y-6">
+          {(() => {
+            const eco = data.ecosystem;
+            return (
+              <>
+                <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        Claims Ecosystem Orchestration &amp; Provider Selection Explainability
+                      </h2>
+                      <p className="text-xs text-slate-600">
+                        Surveyor availability &amp; IIISLA licence check, geography/skill/capacity/SLA assignment, customer preferred garage protection, parts, logistics, and repair completion.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => runAction("Coordinate Ecosystem", `/api/v1/claims/${claimId}/provider-coordination`, "POST", { towing_needed: Boolean(c.ev_battery_impacted || c.vehicle_immobile), pickup_required: true })}
+                      className="px-3.5 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+                    >
+                      Run Ecosystem Coordination
+                    </button>
+                  </div>
+
+                  {eco?.coordination_explanation && (
+                    <div className="p-3 rounded-lg border border-blue-200 bg-blue-50/70 text-xs text-blue-950">
+                      <strong>Why Selected:</strong> {eco.coordination_explanation}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="p-4 border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">Surveyor Assignment &amp; Licence Verification</span>
+                        <span className={`px-2 py-0.5 rounded font-semibold ${eco?.surveyor_license_verified ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}>
+                          {eco?.surveyor_license_verified ? "IIISLA VERIFIED" : "PENDING VERIFICATION"}
+                        </span>
+                      </div>
+                      {eco?.surveyor ? (
+                        <div className="space-y-1 text-slate-700">
+                          <div className="font-semibold text-slate-900">{eco.surveyor.name}</div>
+                          <div>City: {eco.surveyor.city} · Licence: <code>{eco.surveyor.licence_or_contract_id}</code></div>
+                          <div>Availability: <strong>{eco.surveyor.availability}</strong> · SLA: <strong>{eco.surveyor.sla}</strong> · Load: <strong>{eco.surveyor.current_load}</strong> · Rating: <strong>{eco.surveyor.rating}</strong></div>
+                          {eco.surveyor_selection_explanation && (
+                            <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-200">
+                              {eco.surveyor_selection_explanation}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-slate-500">No surveyor assigned yet (or bypassed on LOW risk fast-track).</div>
+                      )}
+                    </div>
+
+                    <div className="p-4 border border-slate-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">Garage Selection &amp; Customer Choice Guardrail</span>
+                        <span className={`px-2 py-0.5 rounded font-semibold ${eco?.customer_preference_honoured ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}>
+                          {eco?.customer_preference_honoured ? "CUSTOMER CHOICE HONOURED" : "CONTRACTUAL / AUTH OVERRIDE"}
+                        </span>
+                      </div>
+                      {eco?.garage ? (
+                        <div className="space-y-1 text-slate-700">
+                          <div className="font-semibold text-slate-900">{eco.garage.name}</div>
+                          <div>City: {eco.garage.city} · EV Capable: <strong>{eco.garage.ev_capable ? "Yes" : "No"}</strong> · Network: <strong>{eco.garage.is_network ? "Yes" : "No"}</strong></div>
+                          <div>Availability: <strong>{eco.garage.availability}</strong> · SLA: <strong>{eco.garage.sla}</strong> · Load: <strong>{eco.garage.current_load}</strong> · Rating: <strong>{eco.garage.rating}</strong></div>
+                          {eco.garage_selection_explanation && (
+                            <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-200">
+                              {eco.garage_selection_explanation}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-slate-500">No garage selected yet.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Authorized Override Control (Blocked for non-Managers / missing rationale) */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
+                    <div className="font-bold text-slate-900">
+                      Customer Choice &amp; Contractual Override Control (Manager / Admin Authorization Required)
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      <select
+                        value={overrideGarageId}
+                        onChange={(e) => setOverrideGarageId(e.target.value)}
+                        className="p-2 border border-slate-300 rounded bg-white"
+                      >
+                        <option value="prov-gar-01">Garage A — Apex Motors (Mumbai)</option>
+                        <option value="prov-gar-ev-02">VoltCare OEM EV Specialist Centre</option>
+                        <option value="prov-gar-02">Garage B — Metro Collision Works (Thane)</option>
+                        <option value="prov-gar-nonnet">Independent Custom Bodyshop (Non-Network)</option>
+                      </select>
+                      <input
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        placeholder="Authorized override reason (required)..."
+                        className="p-2 border border-slate-300 rounded bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runAction("Override Garage Choice", `/api/v1/claims/${claimId}/provider-coordination`, "POST", {
+                            selected_garage_id: overrideGarageId,
+                            override_customer_preference: true,
+                            override_reason: overrideReason,
+                          })
+                        }
+                        className="px-3 py-2 bg-amber-700 text-white rounded font-semibold hover:bg-amber-800"
+                      >
+                        Attempt Override (Auth Enforced)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Inspection Scheduling, Rescheduling & Surveyor Follow-ups */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-slate-900">Inspection Schedule, Reschedule &amp; Follow-up</h3>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold uppercase">{eco?.inspection_status || "pending"}</span>
+                    </div>
+                    <div className="text-slate-600">
+                      Scheduled: <strong>{eco?.inspection_scheduled_at ? eco.inspection_scheduled_at.slice(0, 16) : "Not scheduled"}</strong> · Reschedules: <strong>{eco?.inspection_reschedule_count || 0}</strong> · Follow-ups sent: <strong>{eco?.surveyor_followup_count || 0}</strong> ({eco?.surveyor_followup_status || "none"})
+                    </div>
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="font-semibold text-slate-800">Reschedule Inspection</div>
+                      <input
+                        value={rescheduleAt}
+                        onChange={(e) => setRescheduleAt(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded font-mono"
+                        placeholder="ISO timestamp (e.g. 2026-12-01T14:30:00Z)"
+                      />
+                      <input
+                        value={rescheduleReason}
+                        onChange={(e) => setRescheduleReason(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                        placeholder="Reschedule reason"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          runAction("Reschedule Inspection", `/api/v1/claims/${claimId}/ecosystem/inspection/reschedule`, "POST", {
+                            appointment_at: rescheduleAt,
+                            reason: rescheduleReason,
+                          })
+                        }
+                        className="px-3 py-1.5 bg-slate-900 text-white rounded font-semibold"
+                      >
+                        Reschedule Inspection &amp; Notify Customer
+                      </button>
+                    </div>
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="font-semibold text-slate-800">Surveyor Report Follow-up</div>
+                      <input
+                        value={followupNotes}
+                        onChange={(e) => setFollowupNotes(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            runAction("Surveyor Follow-up", `/api/v1/claims/${claimId}/ecosystem/surveyor-followup`, "POST", {
+                              notes: followupNotes,
+                              escalate_to_manager: false,
+                            })
+                          }
+                          className="px-3 py-1.5 bg-blue-700 text-white rounded font-semibold"
+                        >
+                          Send Surveyor Follow-up
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            runAction("Escalate Surveyor SLA", `/api/v1/claims/${claimId}/ecosystem/surveyor-followup`, "POST", {
+                              notes: followupNotes,
+                              escalate_to_manager: true,
+                            })
+                          }
+                          className="px-3 py-1.5 bg-rose-700 text-white rounded font-semibold"
+                        >
+                          Escalate Delay to Manager
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Towing, Pickup/Delivery, Parts & Repair Completion */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-bold text-slate-900">Parts, Logistics &amp; Repair Completion</h3>
+                      {eco?.repair_completion_confirmed && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold">
+                          REPAIR COMPLETED &amp; CONFIRMED
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded border border-slate-200">
+                      <div><span className="text-slate-500">Towing:</span> <strong>{eco?.towing_status || "not_required"}</strong></div>
+                      <div><span className="text-slate-500">Pickup/Delivery:</span> <strong>{eco?.pickup_delivery_status || "not_scheduled"}</strong></div>
+                      <div><span className="text-slate-500">Parts:</span> <strong>{eco?.parts_status || "pending_check"}</strong></div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => runAction("Parts Check", `/api/v1/claims/${claimId}/ecosystem/parts-check`, "POST", {})}
+                        className="px-2.5 py-1 border border-slate-300 rounded font-semibold hover:bg-slate-50"
+                      >
+                        Check Parts Stock
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("Schedule Pickup", `/api/v1/claims/${claimId}/ecosystem/logistics`, "POST", { pickup_delivery_status: "pickup_scheduled", pickup_driver_note: "Doorstep pickup booked" })}
+                        className="px-2.5 py-1 border border-slate-300 rounded font-semibold hover:bg-slate-50"
+                      >
+                        Schedule Pickup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("Dispatch Tow", `/api/v1/claims/${claimId}/ecosystem/logistics`, "POST", { towing_status: "dispatched" })}
+                        className="px-2.5 py-1 border border-slate-300 rounded font-semibold hover:bg-slate-50"
+                      >
+                        Dispatch Towing
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("Schedule Delivery", `/api/v1/claims/${claimId}/ecosystem/logistics`, "POST", { pickup_delivery_status: "delivery_scheduled" })}
+                        className="px-2.5 py-1 border border-slate-300 rounded font-semibold hover:bg-slate-50"
+                      >
+                        Schedule Delivery
+                      </button>
+                    </div>
+                    {(eco?.parts_availability || []).length > 0 && (
+                      <div className="space-y-1">
+                        {eco!.parts_availability.map((pt, idx) => (
+                          <div key={idx} className="flex justify-between p-1.5 bg-slate-50 rounded border border-slate-200">
+                            <span><code>{pt.part_code}</code> · {pt.description}</span>
+                            <span className="font-semibold">{pt.availability} ({pt.eta_days}d · {pt.source})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="font-semibold text-slate-800">Repair Status &amp; Completion Confirmation</div>
+                      <div className="flex gap-2">
+                        <select
+                          value={repairMilestone}
+                          onChange={(e) => setRepairMilestone(e.target.value)}
+                          className="p-2 border border-slate-300 rounded bg-white"
+                        >
+                          <option value="intake_confirmed">intake_confirmed</option>
+                          <option value="teardown_in_progress">teardown_in_progress</option>
+                          <option value="awaiting_parts">awaiting_parts</option>
+                          <option value="body_paint_in_progress">body_paint_in_progress</option>
+                          <option value="qc_pending">qc_pending</option>
+                          <option value="repair_completed">repair_completed</option>
+                          <option value="handover_confirmed">handover_confirmed</option>
+                        </select>
+                        <input
+                          value={repairNotes}
+                          onChange={(e) => setRepairNotes(e.target.value)}
+                          className="flex-1 p-2 border border-slate-300 rounded"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => runAction("Update Repair Status", `/api/v1/claims/${claimId}/repair-status`, "POST", { milestone: repairMilestone, notes: repairNotes, confirm_completion: false })}
+                          className="px-3 py-1.5 bg-slate-900 text-white rounded font-semibold"
+                        >
+                          Update Repair Milestone
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => runAction("Confirm Repair Completion", `/api/v1/claims/${claimId}/ecosystem/repair-completion`, "POST", { milestone: "repair_completed", notes: repairNotes, confirm_completion: true })}
+                          className="px-3 py-1.5 bg-emerald-700 text-white rounded font-semibold"
+                        >
+                          Confirm Repair Completion &amp; Notify Customer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Coordination Notifications */}
+                <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-2 text-xs">
+                  <h3 className="text-base font-bold text-slate-900">
+                    Ecosystem Customer Notifications ({eco?.customer_notifications?.length || 0})
+                  </h3>
+                  {(eco?.customer_notifications || []).map((n, idx) => (
+                    <div key={idx} className="p-2.5 bg-slate-50 border border-slate-200 rounded flex flex-wrap justify-between gap-2">
+                      <span><strong>[{n.event}]</strong> ({n.channel}): {n.message}</span>
+                      <span className="text-slate-500 font-mono">{n.sent_at.slice(0, 19)}</span>
+                    </div>
+                  ))}
+                  {(!eco?.customer_notifications || eco.customer_notifications.length === 0) && (
+                    <div className="text-slate-500">No ecosystem customer notifications logged yet.</div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 

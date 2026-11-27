@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: "/agents", label: "11 Agents & Matrix" },
   { href: "/portal", label: "Customer Portal" },
   { href: "/siu", label: "SIU Fraud Desk" },
-  { href: "/partners", label: "Surveyor & Garage" },
+  { href: "/partners", label: "Ecosystem & Partners" },
   { href: "/governance", label: "Rules & Policy KB" },
   { href: "/operations", label: "Operations & SLA" },
 ];

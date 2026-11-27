@@ -27,6 +27,7 @@ from services.claims.models import (
 from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.knowledge import HybridPolicyRetriever, load_rate_card
 from services.rules_engine.loader import sync_rules_to_db
+from services.workflow.ecosystem import build_ecosystem_dashboard, serialize_provider_scorecard
 from services.workflow.orchestrator import ClaimOrchestrator
 from services.workflow.sla_engine import compute_timer_status, sweep_sla_breaches
 from services.workflow.state_specs import describe_workflow_model
@@ -44,25 +45,15 @@ def list_providers(
     if provider_type:
         q = q.filter(Provider.provider_type == provider_type)
     items = q.order_by(Provider.quality_score.desc()).all()
-    return {
-        "items": [
-            {
-                "id": p.id,
-                "provider_type": p.provider_type,
-                "name": p.name,
-                "licence_or_contract_id": p.licence_or_contract_id,
-                "licence_status": p.licence_status,
-                "city": p.city,
-                "ev_capable": p.ev_capable,
-                "is_network": p.is_network,
-                "active_load": p.active_load,
-                "max_capacity": p.max_capacity,
-                "quality_score": str(p.quality_score),
-                "is_available": p.is_available,
-            }
-            for p in items
-        ]
-    }
+    return {"items": [serialize_provider_scorecard(p) for p in items]}
+
+
+@router.get("/ecosystem/dashboard")
+def get_ecosystem_dashboard(
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return build_ecosystem_dashboard(db, user.tenant_id)
 
 
 @router.get("/rules")
