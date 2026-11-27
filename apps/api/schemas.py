@@ -149,6 +149,7 @@ class AiOutageToggleRequest(BaseModel):
 class RepairMilestoneRequest(BaseModel):
     milestone: str
     notes: str = ""
+    confirm_completion: bool = False
 
 
 class OrchestrateRequest(BaseModel):
@@ -210,8 +211,46 @@ class TaskUpdateRequest(BaseModel):
 
 class ProviderCoordinateRequest(BaseModel):
     preferred_garage_id: Optional[str] = None
+    selected_garage_id: Optional[str] = None
     preferred_surveyor_id: Optional[str] = None
     towing_needed: bool = False
+    pickup_required: bool = False
+    delivery_required: bool = False
+    appointment_at: Optional[datetime] = None
+    override_customer_preference: bool = False
+    override_contract_rule: bool = False
+    override_reason: str = ""
+    notify_customer: bool = True
+
+
+class InspectionRescheduleRequest(BaseModel):
+    appointment_at: datetime
+    reason: str
+    location: str = ""
+
+
+class SurveyorFollowupRequest(BaseModel):
+    notes: str = "IRDAI 15-day surveyor report SLA follow-up"
+    escalate_to_manager: bool = False
+
+
+class PartsAvailabilityRequest(BaseModel):
+    parts_status: Optional[str] = None
+    parts_items: Optional[list[dict]] = None
+    notify_customer: bool = True
+
+
+class EcosystemLogisticsRequest(BaseModel):
+    towing_status: Optional[str] = None
+    pickup_delivery_status: Optional[str] = None
+    pickup_driver_note: str = ""
+    notify_customer: bool = True
+
+
+class RepairCompletionConfirmRequest(BaseModel):
+    milestone: str = "repair_completed"
+    notes: str = "Post-repair QC passed and customer handover ready"
+    confirm_completion: bool = True
 
 
 class RiskContextUpdateRequest(BaseModel):

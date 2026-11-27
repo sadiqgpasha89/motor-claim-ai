@@ -27,6 +27,7 @@
         <a href="#orchestrator">Orchestration Engine</a>
         <a href="#risk-processing">Risk-Based Paths</a>
         <a href="#damage-ai">Visual Damage AI</a>
+        <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
         <a href="#visitors">Q&amp;A &amp; Failures</a>
@@ -397,6 +398,73 @@ flowchart LR
 
         <div id="damage-workflow-stepper" class="dmg-stepper-grid"></div>
         <div id="damage-lab-body"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 2D: SURVEYOR, GARAGE & ECOSYSTEM COORDINATION WORKFLOW + DASHBOARD -->
+    <section id="ecosystem">
+      <h2>2D. Surveyor, Garage &amp; Claims Ecosystem Coordination Dashboard</h2>
+      <p class="section-sub">
+        The upgraded <code>ProviderCoordinationAgent</code> (<code>agents/specialists.py</code> +
+        <code>services/workflow/ecosystem.py</code>) orchestrates across the entire claims ecosystem — managing
+        <strong>surveyor availability, IIISLA license verification, geography/skill/capacity/SLA assignment, garage
+          selection, customer preferred garage, parts availability, towing, vehicle pickup &amp; delivery, inspection
+          scheduling &amp; rescheduling, customer notifications, surveyor report follow-ups, and repair completion
+          confirmation</strong> — while explaining why each provider was selected and <strong>never overriding
+          customer choice or contractual rules without proper authorization</strong>.
+      </p>
+
+      <div class="eco-shell">
+        <div class="eco-toolbar">
+          <div>
+            <h3 style="margin:0;">Live Claims Ecosystem Provider Dashboard</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Real-time provider availability, SLA adherence, quality rating, current load band, IIISLA licence status, and parts stock.
+            </p>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-outline btn-sm" onclick="renderEcosystemDashboard('all')">All Providers</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="renderEcosystemDashboard('garage')">Garages</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="renderEcosystemDashboard('surveyor')">Surveyors</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="renderEcosystemDashboard('towing')">Towing</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Availability</th>
+                <th>SLA</th>
+                <th>Rating</th>
+                <th>Current load</th>
+                <th>Geography &amp; Skills</th>
+                <th>Licence &amp; Contractual Tier</th>
+              </tr>
+            </thead>
+            <tbody id="eco-dashboard-body"></tbody>
+          </table>
+        </div>
+
+        <div class="eco-sim-box">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <h3 style="margin:0;">Interactive Selection Explainability &amp; Authorization Guardrail Lab</h3>
+              <p class="section-sub" style="margin:4px 0 0;">
+                Test how <code>ProviderCoordinationAgent</code> scores providers and enforces customer-choice &amp; contractual authorization rules.
+              </p>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-outline btn-sm" onclick="runEcoSim('preferred_honoured')">Customer Choice Honoured</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="runEcoSim('unauthorized_override')">Unauthorized Override (Blocked)</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="runEcoSim('ev_safety_contract')">EV HV Contractual Redirect</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="runEcoSim('expired_licence')">Expired Licence Blocked</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="runEcoSim('resched_followup_repair')">Reschedule + Follow-up + Repair Done</button>
+            </div>
+          </div>
+          <div id="eco-sim-output" class="orch-lab-output" style="margin-top:12px;"></div>
+        </div>
       </div>
     </section>
 
@@ -997,6 +1065,11 @@ classDiagram
               <span><code>CLM-ORCH-ENGINE-2026</code> — Claim Orchestration Engine (Parallel Waves, Backoff, DLQ &amp; Saga)</span>
               <button type="button" class="btn btn-outline btn-sm"
                 onclick="loadScenarioIntoWorkflow('orch-engine')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-ECO-2026</code> — Claims Ecosystem Coordination (Surveyor Licence, Geography/Skill/SLA, Preference Guardrail, Parts &amp; Repair Completion)</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('ecosystem-coord')">Inspect Flow</button>
             </li>
             <li class="scenario-jump-item">
               <span><code>CLM-RISK-2026</code> — Dynamic Risk Processing (LOW Fast-Track &rarr; HIGH Multi-Vehicle / SIU, Non-Rejecting Fraud Score)</span>

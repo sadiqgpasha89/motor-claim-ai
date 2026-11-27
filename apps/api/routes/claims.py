@@ -16,6 +16,7 @@ from apps.api.schemas import (
     CommunicationCreateRequest,
     CompensationRequest,
     DamageReviewRequest,
+    EcosystemLogisticsRequest,
     EstimateLineReviewRequest,
     EstimateSubmitRequest,
     FactCorrectionRequest,
@@ -23,17 +24,21 @@ from apps.api.schemas import (
     FraudDispositionRequest,
     GrievanceCreateRequest,
     GrievanceResolveRequest,
+    InspectionRescheduleRequest,
     OrchestrateRequest,
     OrchestrationEventRequest,
     OrchestrationRecoverRequest,
+    PartsAvailabilityRequest,
     PaymentInitiateRequest,
     ProviderCoordinateRequest,
+    RepairCompletionConfirmRequest,
     RepairMilestoneRequest,
     ReworkSubmitRequest,
     RiskContextUpdateRequest,
     SettlementRecommendRequest,
     SingleAgentOrchestrateRequest,
     SurveyorAssignRequest,
+    SurveyorFollowupRequest,
     SurveyReportSubmitRequest,
     TaskUpdateRequest,
     WorkflowPauseRequest,
@@ -96,6 +101,17 @@ from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.loader import get_active_rule
 from services.settlement.authority import validate_approval_authority
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
+from services.workflow.ecosystem import (
+    coordinate_claim_ecosystem,
+    get_or_create_ecosystem_coordination,
+    reschedule_claim_inspection,
+    send_surveyor_report_followup,
+    serialize_ecosystem_coordination,
+    update_claim_logistics,
+    update_claim_parts_availability,
+    update_repair_milestone_and_confirm,
+    verify_surveyor_license,
+)
 from services.workflow.orchestrator import ClaimOrchestrator, record_agent_publication
 from services.workflow.risk_engine import (
     assert_fraud_score_never_rejects,
@@ -759,6 +775,12 @@ def get_claim_360(
                 "surveyor_id": s.surveyor_id,
                 "status": s.status,
                 "assigned_at": s.assigned_at.isoformat(),
+                "appointment_at": s.appointment_at.isoformat() if s.appointment_at else None,
+                "inspection_location": s.inspection_location,
+                "reschedule_count": s.reschedule_count,
+                "reschedule_reason": s.reschedule_reason,
+                "followup_count": s.followup_count,
+                "last_followup_at": s.last_followup_at.isoformat() if s.last_followup_at else None,
                 "report_due_at": s.report_due_at.isoformat(),
                 "report_received_at": s.report_received_at.isoformat() if s.report_received_at else None,
                 "delay_reason": s.delay_reason,
@@ -767,6 +789,7 @@ def get_claim_360(
             }
             for s in surveys
         ],
+        "ecosystem": serialize_ecosystem_coordination(db, get_or_create_ecosystem_coordination(db, claim)),
         "fraud_alerts_restricted": fraud_alerts_payload is None,
         "fraud_alerts": fraud_alerts_payload or [],
         "settlements": [
@@ -1692,8 +1715,13 @@ def assign_surveyor_and_garage(
 
     if not surveyor:
         raise DomainError(ErrorCode.DEPENDENCY_UNAVAILABLE, "No available licensed surveyor in roster", status_code=503)
-    if surveyor.licence_status != "verified":
-        raise DomainError(ErrorCode.VALIDATION_ERROR, "Cannot assign an unverified/unlicensed surveyor", status_code=400)
+    lic_check = verify_surveyor_license(surveyor)
+    if not lic_check["verified"]:
+        raise DomainError(
+            ErrorCode.VALIDATION_ERROR,
+            f"Cannot assign an unverified/expired surveyor ({lic_check['reason']})",
+            status_code=400,
+        )
 
     irdai = get_active_rule(db, "IN-IRDAI-MC-2024")["controls"]
     due_at = datetime.now(timezone.utc) + timedelta(days=int(irdai["survey_report_due_days"]))
@@ -1760,6 +1788,16 @@ def assign_surveyor_and_garage(
         )
     )
     record_agent_publication(db, claim=claim, agent_name="provider_coordination", response=prov_res)
+    coord = get_or_create_ecosystem_coordination(db, claim)
+    coord.surveyor_id = surveyor.id
+    coord.surveyor_license_verified = True
+    coord.surveyor_license_checked_at = datetime.now(timezone.utc)
+    coord.surveyor_selection_explanation = f"Assigned verified IIISLA surveyor {surveyor.name} (Licence {surveyor.licence_or_contract_id}) in {surveyor.city}."
+    if claim.assigned_garage_id:
+        coord.garage_id = claim.assigned_garage_id
+        coord.customer_preferred_garage_id = coord.customer_preferred_garage_id or claim.assigned_garage_id
+    coord.inspection_status = "scheduled"
+    coord.inspection_scheduled_at = sa.appointment_at or (datetime.now(timezone.utc) + timedelta(hours=12))
     db.commit()
     return {"assignment_id": sa.id, "surveyor_name": surveyor.name, "report_due_at": due_at.isoformat()}
 
@@ -2417,16 +2455,27 @@ def reconcile_payment(
 def update_repair_milestone(
     claim_id: str,
     body: RepairMilestoneRequest,
-    user: UserContext = Depends(require_roles(Role.GARAGE, Role.CLAIMS_HANDLER, Role.SURVEYOR, Role.ADMIN)),
+    user: UserContext = Depends(require_roles(Role.GARAGE, Role.CLAIMS_HANDLER, Role.SURVEYOR, Role.CLAIMS_MANAGER, Role.ADMIN)),
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
     if claim.status in {ClaimStatus.APPROVED.value, ClaimStatus.PAYMENT_INITIATED.value}:
         claim.status = validate_transition(claim.status, ClaimStatus.REPAIR_IN_PROGRESS.value).value
     claim.workflow_state = {**claim.workflow_state, "repair_milestone": body.milestone, "repair_notes": body.notes}
-    claim.next_expected_action = "Run QA compliance check & close claim" if body.milestone == "handover_complete" else f"Repair milestone: {body.milestone}"
+    is_done = body.confirm_completion or body.milestone in {"repair_completed", "handover_complete", "handover_confirmed"}
+    claim.next_expected_action = (
+        "Run QA compliance check & close claim" if is_done else f"Repair milestone: {body.milestone}"
+    )
+    coord = update_repair_milestone_and_confirm(
+        db,
+        claim,
+        user=user,
+        milestone=body.milestone,
+        notes=body.notes,
+        confirm_completion=is_done,
+    )
     emit_outbox_event(
-        db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="RepairStarted", payload={"milestone": body.milestone}
+        db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="RepairStarted", payload={"milestone": body.milestone, "confirmed": coord.repair_completion_confirmed}
     )
     record_audit_event(
         db,
@@ -2437,10 +2486,15 @@ def update_repair_milestone(
         action="REPAIR_MILESTONE_UPDATED",
         object_type="claim",
         object_id=claim.id,
-        details={"milestone": body.milestone, "notes": body.notes},
+        details={"milestone": body.milestone, "notes": body.notes, "completion_confirmed": coord.repair_completion_confirmed},
     )
     db.commit()
-    return {"claim_status": claim.status, "milestone": body.milestone}
+    return {
+        "claim_status": claim.status,
+        "milestone": body.milestone,
+        "repair_completion_confirmed": coord.repair_completion_confirmed,
+        "ecosystem": serialize_ecosystem_coordination(db, coord),
+    }
 
 
 @router.post("/claims/{claim_id}/close")
@@ -3130,15 +3184,49 @@ def coordinate_claim_providers(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    coord = coordinate_claim_ecosystem(
+        db,
+        claim,
+        user=user,
+        preferred_garage_id=body.preferred_garage_id,
+        selected_garage_id=body.selected_garage_id,
+        preferred_surveyor_id=body.preferred_surveyor_id,
+        towing_needed=body.towing_needed or claim.towing_needed,
+        pickup_required=body.pickup_required,
+        delivery_required=body.delivery_required,
+        appointment_at=body.appointment_at,
+        override_customer_preference=body.override_customer_preference,
+        override_contract_rule=body.override_contract_rule,
+        override_reason=body.override_reason,
+        notify_customer=body.notify_customer,
+    )
     vehicle = db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
     facts = {
         "requires_mandatory_survey": claim.requires_mandatory_survey,
         "ev_battery_impacted": claim.ev_battery_impacted,
         "is_ev": vehicle.is_ev if vehicle else False,
-        "towing_needed": body.towing_needed or claim.towing_needed,
+        "incident_location": claim.incident_location,
+        "towing_needed": coord.towing_required,
         "vehicle_immobile": claim.vehicle_immobile,
-        "preferred_garage_id": body.preferred_garage_id or claim.assigned_garage_id,
-        "preferred_surveyor_id": body.preferred_surveyor_id or claim.assigned_surveyor_id,
+        "pickup_required": body.pickup_required,
+        "delivery_required": body.delivery_required,
+        "preferred_garage_id": coord.customer_preferred_garage_id or body.preferred_garage_id or claim.assigned_garage_id,
+        "selected_garage_id": body.selected_garage_id,
+        "preferred_surveyor_id": coord.surveyor_id or body.preferred_surveyor_id,
+        "surveyor_license_verified": coord.surveyor_license_verified,
+        "ev_safety_override_applied": bool(coord.override_applied and coord.override_reason_code == "RC_EV_SAFETY_CONTRACT_RULE"),
+        "selection_explanation": coord.coordination_explanation,
+        "score_breakdown": {
+            "surveyor_score": coord.surveyor_score_breakdown,
+            "garage_score": coord.garage_score_breakdown,
+        },
+        "override_customer_preference": body.override_customer_preference,
+        "override_contract_rule": body.override_contract_rule,
+        "override_reason": body.override_reason,
+        "actor_role": user.role.value,
+        "part_items": coord.parts_availability,
+        "parts_stock_status": coord.parts_status,
+        "notify_customer": False,
     }
     orch = ClaimOrchestrator(db, user)
     agent_res = orch.run_agent(
@@ -3149,7 +3237,131 @@ def coordinate_claim_providers(
         apply_state_progression=True,
     )
     db.commit()
-    return {"claim_status": claim.status, "agent_response": agent_res.model_dump()}
+    return {
+        "claim_status": claim.status,
+        "ecosystem": serialize_ecosystem_coordination(db, coord),
+        "agent_response": agent_res.model_dump(),
+    }
+
+
+@router.get("/claims/{claim_id}/ecosystem")
+def get_claim_ecosystem(
+    claim_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    coord = get_or_create_ecosystem_coordination(db, claim)
+    db.commit()
+    return serialize_ecosystem_coordination(db, coord)
+
+
+@router.post("/claims/{claim_id}/ecosystem/inspection/reschedule")
+def reschedule_ecosystem_inspection(
+    claim_id: str,
+    body: InspectionRescheduleRequest,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.SURVEYOR, Role.GARAGE, Role.POLICYHOLDER)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    coord = reschedule_claim_inspection(
+        db,
+        claim,
+        user=user,
+        new_appointment_at=body.appointment_at,
+        reason=body.reason,
+        location=body.location,
+    )
+    db.commit()
+    return serialize_ecosystem_coordination(db, coord)
+
+
+@router.post("/claims/{claim_id}/ecosystem/surveyor-followup")
+def trigger_surveyor_followup(
+    claim_id: str,
+    body: SurveyorFollowupRequest = SurveyorFollowupRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    coord = send_surveyor_report_followup(
+        db,
+        claim,
+        user=user,
+        notes=body.notes,
+        escalate_to_manager=body.escalate_to_manager,
+    )
+    db.commit()
+    return serialize_ecosystem_coordination(db, coord)
+
+
+@router.post("/claims/{claim_id}/ecosystem/parts-check")
+def check_or_update_ecosystem_parts(
+    claim_id: str,
+    body: PartsAvailabilityRequest = PartsAvailabilityRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.GARAGE, Role.SURVEYOR)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    coord = update_claim_parts_availability(
+        db,
+        claim,
+        user=user,
+        parts_status=body.parts_status,
+        parts_items=body.parts_items,
+        notify_customer=body.notify_customer,
+    )
+    db.commit()
+    return serialize_ecosystem_coordination(db, coord)
+
+
+@router.post("/claims/{claim_id}/ecosystem/logistics")
+def update_ecosystem_logistics(
+    claim_id: str,
+    body: EcosystemLogisticsRequest,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.GARAGE, Role.POLICYHOLDER)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    coord = update_claim_logistics(
+        db,
+        claim,
+        user=user,
+        towing_status=body.towing_status,
+        pickup_delivery_status=body.pickup_delivery_status,
+        pickup_driver_note=body.pickup_driver_note,
+        notify_customer=body.notify_customer,
+    )
+    db.commit()
+    return serialize_ecosystem_coordination(db, coord)
+
+
+@router.post("/claims/{claim_id}/ecosystem/repair-completion")
+def confirm_ecosystem_repair_completion(
+    claim_id: str,
+    body: RepairCompletionConfirmRequest = RepairCompletionConfirmRequest(),
+    user: UserContext = Depends(require_roles(Role.GARAGE, Role.CLAIMS_HANDLER, Role.SURVEYOR, Role.CLAIMS_MANAGER, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    if claim.status in {ClaimStatus.APPROVED.value, ClaimStatus.PAYMENT_INITIATED.value}:
+        claim.status = validate_transition(claim.status, ClaimStatus.REPAIR_IN_PROGRESS.value).value
+    claim.workflow_state = {**claim.workflow_state, "repair_milestone": body.milestone, "repair_notes": body.notes}
+    claim.next_expected_action = "Run QA compliance check & close claim" if body.confirm_completion else f"Repair milestone: {body.milestone}"
+    coord = update_repair_milestone_and_confirm(
+        db,
+        claim,
+        user=user,
+        milestone=body.milestone,
+        notes=body.notes,
+        confirm_completion=body.confirm_completion,
+    )
+    db.commit()
+    return {
+        "claim_status": claim.status,
+        "repair_completion_confirmed": coord.repair_completion_confirmed,
+        "ecosystem": serialize_ecosystem_coordination(db, coord),
+    }
 
 
 @router.post("/claims/{claim_id}/payments/agent-release", status_code=201)

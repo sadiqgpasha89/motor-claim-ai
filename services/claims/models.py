@@ -111,12 +111,23 @@ class Provider(Base):
     name: Mapped[str] = mapped_column(String(200))
     licence_or_contract_id: Mapped[str] = mapped_column(String(64))
     licence_status: Mapped[str] = mapped_column(String(32), default="verified")
+    licence_expiry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     city: Mapped[str] = mapped_column(String(64))
+    service_zones: Mapped[list] = mapped_column(JSON, default=list)
+    skills: Mapped[list] = mapped_column(JSON, default=list)
     ev_capable: Mapped[bool] = mapped_column(Boolean, default=False)
     is_network: Mapped[bool] = mapped_column(Boolean, default=True)
+    contract_tier: Mapped[str] = mapped_column(String(32), default="preferred_network")
     active_load: Mapped[int] = mapped_column(Integer, default=0)
     max_capacity: Mapped[int] = mapped_column(Integer, default=15)
+    sla_target_hours: Mapped[int] = mapped_column(Integer, default=24)
+    sla_status: Mapped[str] = mapped_column(String(24), default="within_sla")
+    avg_turnaround_hours: Mapped[int] = mapped_column(Integer, default=18)
     quality_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("4.50"))
+    parts_stock_status: Mapped[str] = mapped_column(String(24), default="in_stock")
+    parts_lead_time_days: Mapped[int] = mapped_column(Integer, default=2)
+    pickup_drop_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    towing_capable: Mapped[bool] = mapped_column(Boolean, default=False)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -312,11 +323,78 @@ class SurveyAssignment(Base):
     notified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     appointment_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    inspection_location: Mapped[str] = mapped_column(String(240), default="")
+    reschedule_count: Mapped[int] = mapped_column(Integer, default=0)
+    reschedule_reason: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    followup_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     report_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     report_received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     delay_reason: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
     report_summary: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     signed_by_surveyor: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class EcosystemCoordination(Base):
+    """Persistent end-to-end claims ecosystem coordination state (surveyor, garage, parts, logistics, repair)."""
+
+    __tablename__ = "ecosystem_coordinations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), unique=True, index=True)
+
+    surveyor_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    surveyor_license_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    surveyor_license_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    surveyor_selection_explanation: Mapped[str] = mapped_column(Text, default="")
+    surveyor_score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    garage_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    customer_preferred_garage_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    customer_preference_honoured: Mapped[bool] = mapped_column(Boolean, default=True)
+    override_applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    override_authorized: Mapped[bool] = mapped_column(Boolean, default=False)
+    override_authorized_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    override_reason_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    override_justification: Mapped[str] = mapped_column(Text, default="")
+    garage_selection_explanation: Mapped[str] = mapped_column(Text, default="")
+    garage_score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    inspection_status: Mapped[str] = mapped_column(String(32), default="pending")
+    inspection_scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    inspection_reschedule_count: Mapped[int] = mapped_column(Integer, default=0)
+    inspection_reschedule_reason: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+
+    towing_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    towing_status: Mapped[str] = mapped_column(String(32), default="not_required")
+    towing_provider_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    towing_ev_flatbed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    pickup_delivery_status: Mapped[str] = mapped_column(String(32), default="not_scheduled")
+    pickup_scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    pickup_driver_note: Mapped[str] = mapped_column(String(240), default="")
+
+    parts_status: Mapped[str] = mapped_column(String(32), default="pending_check")
+    parts_availability: Mapped[list] = mapped_column(JSON, default=list)
+
+    repair_status: Mapped[str] = mapped_column(String(32), default="not_started")
+    repair_milestones: Mapped[list] = mapped_column(JSON, default=list)
+    repair_completion_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    repair_confirmed_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    repair_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    surveyor_followup_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_surveyor_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    surveyor_followup_status: Mapped[str] = mapped_column(String(32), default="none")
+
+    customer_notifications: Mapped[list] = mapped_column(JSON, default=list)
+    contractual_compliance: Mapped[dict] = mapped_column(JSON, default=dict)
+    coordination_explanation: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class FraudAlert(Base):

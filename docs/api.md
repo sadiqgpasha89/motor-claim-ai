@@ -25,9 +25,9 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
 - `POST /api/v1/claims/{claim_id}/orchestration/pause` · `POST .../orchestration/resume` · `POST .../orchestration/recover` · `POST .../orchestration/compensate`
 - `POST /api/v1/claims/{claim_id}/rework`
 - `GET /api/v1/claims/{claim_id}/tasks` · `PATCH .../tasks/{task_id}` · `GET .../decisions`
-- `POST /api/v1/claims/{claim_id}/provider-coordination` · `POST .../payments/agent-release`
+- `POST /api/v1/claims/{claim_id}/provider-coordination` · `GET /api/v1/claims/{claim_id}/ecosystem` · `POST .../ecosystem/inspection/reschedule` · `POST .../ecosystem/surveyor-followup` · `POST .../ecosystem/parts-check` · `POST .../ecosystem/logistics` · `POST .../ecosystem/repair-completion` · `POST .../payments/agent-release`
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
-- `GET /api/v1/knowledge/search` · `GET /api/v1/providers`
+- `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`
 
 ## Standard Error Codes (`packages/contracts/errors.py`)

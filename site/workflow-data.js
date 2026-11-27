@@ -59,6 +59,118 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
   ],
 
   scenarios: {
+    "ecosystem-coord": {
+      id: "ecosystem-coord",
+      claimNumber: "CLM-ECO-2026",
+      tag: "Ecosystem Coordination & Repair",
+      title: "Surveyor Licence, Geography/Skill/SLA Assignment, Preference Guardrail, Parts, Logistics & Repair Completion",
+      vehicle: "Maruti Suzuki Baleno / Tata Nexon EV (Ecosystem Scenario)",
+      policy: "POL-IN-DEMO-2026-1001 (Active · Cashless Network · RSA)",
+      claimedAmount: "₹64,200.00",
+      outcomeAmount: "Verified Ecosystem + Repair Confirmed",
+      automationSplit: "14 Ecosystem Capabilities · Explainable Scoring · Zero Unauthorized Overrides",
+      summary:
+        "Showcases the upgraded ProviderCoordinationAgent & services/workflow/ecosystem.py: verifies IIISLA surveyor licence, scores providers by geography, skill, capacity, SLA & rating, protects customer garage choice and contractual rules from unauthorized overrides, checks OEM parts stock, dispatches towing & pickup/delivery, reschedules inspections, follows up delayed surveyor reports, and confirms repair completion.",
+      steps: [
+        {
+          opKey: "Investigation",
+          stepCode: "01",
+          nodeTitle: "IIISLA Licence Gate + Multi-Factor Scoring",
+          codeRef: "verify_surveyor_license() & select_best_surveyor()",
+          actorType: "agent",
+          wakeTrigger: "POST /claims/{id}/provider-coordination (Mumbai Andheri, EV/OEM skill check)",
+          executionStatus: "COMPLETED · Licensed Surveyor Selected",
+          statusKind: "green",
+          evidence: [
+            "Blocked EXPIRED-DEMO-0009 (IIISLA licence expired 30d ago)",
+            "Selected R. K. Sharma & Associates (score 93.6/100: geo=30, skill=25, capacity=15 Low 3/12, SLA=15 Within SLA, rating=9.6)"
+          ],
+          dataRetrieved: ["Provider scorecard roster", "IIISLA Mock Registry", "Claim incident location & skills"],
+          toolsInvoked: ["verified_roster_read", "verify_surveyor_license", "provider_scorecard", "schedule_inspection"],
+          allowedDecisions: "Scores verified providers on Geography (30), Skill (25), Capacity (20), SLA (15), Rating (10) and explains why selected.",
+          agentOutput: "Verified IIISLA surveyor scheduled with 15-day IRDAI SLA timer and full score breakdown.",
+          confidence: 0.94,
+          confidenceBand: "HIGH",
+          businessRules: ["IN-IRDAI-MC-2024:24h_15d_SLA", "IIISLA-LICENCE-VERIFY-GATE"],
+          failureBehavior: "Unlicensed or expired surveyor is never assigned even if explicitly requested.",
+          humanReviewRequired: false,
+          nextAction: "Evaluate Customer Garage Preference & Contractual Guardrails"
+        },
+        {
+          opKey: "Investigation",
+          stepCode: "02",
+          nodeTitle: "Customer Choice & Contractual Authorization Guard",
+          codeRef: "select_best_garage() & AUTHORIZED_OVERRIDE_ROLES",
+          actorType: "fallback",
+          wakeTrigger: "Handler attempts to override eligible Garage A -> Garage B without Manager authorization",
+          executionStatus: "403 BLOCKED · Customer Choice Protected",
+          statusKind: "rose",
+          evidence: [
+            "Customer preferred Garage A (Available, Within SLA, 4.7, Low load) is fully eligible",
+            "Handler override blocked with 403 NOT_AUTHORISED; Manager + documented reason required"
+          ],
+          dataRetrieved: ["Customer preferred_garage_id", "Contractual network & EV safety rules"],
+          toolsInvoked: ["notify_garage", "create_claim_task"],
+          allowedDecisions: "Never overrides customer garage choice or contractual rules without Claims Manager / Admin authorization.",
+          agentOutput: "Retained Garage A; unauthorized override attempt logged in AuditEvent and blocked cleanly.",
+          confidence: 0.96,
+          confidenceBand: "POLICY GUARDRAIL",
+          businessRules: ["CUSTOMER-PREFERENCE-AUTH-GUARD-V1", "POL-WORDING-EV-2025:EV-SAFE-01"],
+          failureBehavior: "EV HV battery impact invokes contractual safety redirect to EV-certified VoltCare Hub with explicit citation.",
+          humanReviewRequired: true,
+          nextAction: "Check Parts Stock, Schedule Pickup & Inspection"
+        },
+        {
+          opKey: "Investigation",
+          stepCode: "03",
+          nodeTitle: "Parts Stock, Logistics, Reschedule & Follow-Up",
+          codeRef: "POST /ecosystem/parts-check, /logistics, /inspection/reschedule, /surveyor-followup",
+          actorType: "agent",
+          wakeTrigger: "Customer requests afternoon slot; parts checked & WhatsApp notifications dispatched",
+          executionStatus: "COORDINATED · Customer Notified",
+          statusKind: "blue",
+          evidence: [
+            "Parts check: Front Bumper in stock (1d), OEM Radiator Support backordered (5d) -> customer notified",
+            "Inspection rescheduled (reschedule_count=1) & surveyor report SLA follow-up #1 dispatched",
+            "Pickup & towing coordinated with SafeTow EV Flatbed"
+          ],
+          dataRetrieved: ["OEM Parts Catalogue", "Roadside Logistics Adapter", "SurveyAssignment SLA timer"],
+          toolsInvoked: ["check_parts_availability", "reschedule_inspection", "schedule_pickup_delivery", "send_surveyor_followup", "send_customer_update"],
+          allowedDecisions: "Coordinates real-time logistics, rescheduling, follow-ups, and multilingual customer updates.",
+          agentOutput: "All ecosystem touchpoints synchronized with outbox events and customer WhatsApp notifications.",
+          confidence: 0.93,
+          confidenceBand: "HIGH",
+          businessRules: ["IN-IRDAI-MC-2024:15d_SURVEY_SLA", "PROACTIVE-CUSTOMER-COMM"],
+          failureBehavior: "Overdue report escalates critical ClaimTask to Claims Manager.",
+          humanReviewRequired: false,
+          nextAction: "Track Repair Milestones & Confirm Repair Completion"
+        },
+        {
+          opKey: "Closure",
+          stepCode: "04",
+          nodeTitle: "Repair Completion Confirmation & Delivery",
+          codeRef: "POST /claims/{id}/ecosystem/repair-completion",
+          actorType: "human",
+          wakeTrigger: "Garage confirms QC passed (repair_completed) & vehicle delivery scheduled",
+          executionStatus: "CONFIRMED · Ready for QA Closure",
+          statusKind: "green",
+          evidence: [
+            "Repair milestones tracked: intake_confirmed -> teardown -> body_paint -> qc_pending -> repair_completed",
+            "repair_completion_confirmed=true, delivery scheduled, customer WhatsApp handover notice sent"
+          ],
+          dataRetrieved: ["EcosystemCoordination record", "Garage QC sign-off"],
+          toolsInvoked: ["confirm_repair_completion", "send_customer_update"],
+          allowedDecisions: "Records explicit repair completion confirmation and triggers customer delivery notification.",
+          agentOutput: "Repair completion confirmed; claim ready for QA compliance & closure.",
+          confidence: 1.0,
+          confidenceBand: "CONFIRMED",
+          businessRules: ["REPAIR-COMPLETION-SIGNOFF", "AUDIT-CHAIN-SHA256"],
+          failureBehavior: "Blocks closure until repair & payment controls pass.",
+          humanReviewRequired: false,
+          nextAction: "Run QA Compliance & Close Claim"
+        }
+      ]
+    },
     "risk-escalation": {
       id: "risk-escalation",
       claimNumber: "CLM-RISK-2026",
@@ -1778,16 +1890,16 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
     },
     {
       agentName: "provider_coordination",
-      displayName: "Provider Coordination",
+      displayName: "Provider & Ecosystem Coordination",
       stage: "5. Investigation & Dispatch",
-      enhancement: "Garage, surveyor, towing, availability, capacity, SLA, customer preference",
-      responsibility: "Coordinates licensed IIISLA surveyors, network/EV-certified garages, and towing dispatch using availability, capacity, SLA, and customer preference.",
-      inputContract: "requires_mandatory_survey, ev_capable_required, preferred_garage_id, towing_needed",
-      outputContract: "recommended_surveyor, recommended_garage, towing_coordinated, customer_preference_honoured, sla_deadlines",
-      authorisedActions: ["schedule_inspection", "notify_garage", "dispatch_towing", "create_claim_task", "update_claim_status"],
+      enhancement: "Full claims ecosystem orchestrator: surveyor availability & licence verification, geo/skill/capacity/SLA assignment, customer preference & contractual guardrails, parts, towing, pickup/delivery, rescheduling, follow-ups & repair completion",
+      responsibility: "Orchestrates surveyors, garages, towing, parts stock, pickup/delivery, inspection scheduling/rescheduling, surveyor follow-ups, customer updates, and repair completion confirmation while explaining every choice and blocking unauthorized overrides.",
+      inputContract: "requires_mandatory_survey, ev_capable_required, incident_location, preferred_garage_id, selected_garage_id, override flags + reason, towing/pickup/delivery flags",
+      outputContract: "recommended_surveyor, recommended_garage, surveyor_license_verified, selection_explanation, score_breakdown, customer_preference_honoured, override_blocked, parts_availability, inspection_schedule, repair_status",
+      authorisedActions: ["schedule_inspection", "reschedule_inspection", "notify_garage", "check_parts_availability", "dispatch_towing", "schedule_pickup_delivery", "send_surveyor_followup", "confirm_repair_completion", "send_customer_update", "create_claim_task"],
       dependsOn: ["claim_triage"],
       reworkTargets: ["claim_triage"],
-      humanGate: "Zero capacity escalates SLA task; EV safety overrides non-EV preferred garage."
+      humanGate: "Unverified licence, zero capacity, or unauthorized preference/contract override escalates to Claims Manager."
     },
     {
       agentName: "damage_assessment",
@@ -1866,6 +1978,100 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       dependsOn: ["settlement_recommendation"],
       reworkTargets: ["document_intelligence", "estimate_validation", "fraud_intelligence", "provider_coordination", "settlement_recommendation"],
       humanGate: "Read-only gate; failed controls block closure and assign remediation tasks."
+    }
+  ],
+
+  ecosystemProviders: [
+    {
+      name: "Garage A — Apex Motors Cashless Hub",
+      type: "garage",
+      availability: "Available",
+      sla: "Within SLA",
+      rating: 4.7,
+      currentLoad: "Low",
+      loadRatio: "5/20",
+      city: "Mumbai (Andheri)",
+      skills: ["OEM Maruti", "OEM Hyundai", "ADAS", "Bodyshop"],
+      licence: "VERIFIED (GAR-NET-MUM-101)",
+      parts: "In Stock (1d)"
+    },
+    {
+      name: "Garage B — Metro Collision Works",
+      type: "garage",
+      availability: "Busy",
+      sla: "Delayed",
+      rating: 4.2,
+      currentLoad: "High",
+      loadRatio: "13/15",
+      city: "Mumbai (Thane)",
+      skills: ["Bodyshop", "OEM Hyundai"],
+      licence: "VERIFIED (GAR-NET-THN-303)",
+      parts: "Partial Backorder (5d)"
+    },
+    {
+      name: "Surveyor C — Kavita Kulkarni (IIISLA)",
+      type: "surveyor",
+      availability: "Available",
+      sla: "Within SLA",
+      rating: 4.8,
+      currentLoad: "Medium",
+      loadRatio: "6/10",
+      city: "Pune / Mumbai",
+      skills: ["OEM Maruti", "OEM Tata", "Bodyshop"],
+      licence: "VERIFIED (IRDAI-SLA-DEMO-9102)",
+      parts: "N/A"
+    },
+    {
+      name: "VoltCare OEM EV Specialist Centre",
+      type: "garage",
+      availability: "Available",
+      sla: "Within SLA",
+      rating: 4.9,
+      currentLoad: "Low",
+      loadRatio: "2/10",
+      city: "Mumbai (Worli / Andheri)",
+      skills: ["EV HV Certified", "OEM Tata", "ADAS"],
+      licence: "VERIFIED (GAR-EV-MUM-202)",
+      parts: "Partial Backorder (3d)"
+    },
+    {
+      name: "R. K. Sharma & Associates (IIISLA)",
+      type: "surveyor",
+      availability: "Available",
+      sla: "Within SLA",
+      rating: 4.8,
+      currentLoad: "Low",
+      loadRatio: "3/12",
+      city: "Mumbai (Western Exp)",
+      skills: ["EV HV", "ADAS", "Complex Peril"],
+      licence: "VERIFIED (IRDAI-SLA-DEMO-4421)",
+      parts: "N/A"
+    },
+    {
+      name: "Legacy Unverified Assessor",
+      type: "surveyor",
+      availability: "Unavailable",
+      sla: "Delayed",
+      rating: 3.4,
+      currentLoad: "Low",
+      loadRatio: "0/8",
+      city: "Mumbai",
+      skills: ["Bodyshop"],
+      licence: "EXPIRED — BLOCKED",
+      parts: "N/A"
+    },
+    {
+      name: "SafeTow EV Flatbed & Recovery",
+      type: "towing",
+      availability: "Available",
+      sla: "Within SLA",
+      rating: 4.9,
+      currentLoad: "Low",
+      loadRatio: "2/12",
+      city: "Mumbai Metro",
+      skills: ["EV HV Flatbed", "Roadside Recovery"],
+      licence: "VERIFIED (TOW-RSA-MUM-501)",
+      parts: "Pickup/Drop Ready"
     }
   ],
 
