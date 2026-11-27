@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     integration_mode: str = "mock"  # mock | live
 
+    mfa_step_up_enabled: bool = False
+
     @property
     def rules_dir(self) -> Path:
         return PROJECT_ROOT / "rules"

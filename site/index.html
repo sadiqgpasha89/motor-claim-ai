@@ -31,6 +31,7 @@
         <a href="#tp-liability">TP Liability</a>
         <a href="#agent-ops">Claim 360 &amp; Agent Ops</a>
         <a href="#claim-intelligence">Claim Intelligence</a>
+        <a href="#platform-security">Platform &amp; Security</a>
         <a href="#sla-operations">Predictive SLA</a>
         <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
@@ -591,6 +592,25 @@ flowchart LR
       <p class="section-sub" style="margin-top:10px;">
         Backend: <code>services/damage_ai/</code>, <code>services/claims/supplementary.py</code>, <code>services/fraud_intelligence/graph.py</code>,
         <code>services/workflow/complexity.py</code>, <code>apps/api/routes/intelligence.py</code>.
+      </p>
+    </section>
+
+    <section id="platform-security">
+      <h2>2J. Platform, Resilience &amp; Enterprise Security</h2>
+      <p class="section-sub">
+        Security is enforced in the <strong>tool, service, API and data layers</strong>, not in prompts. Every external action passes one
+        <strong>tool gateway</strong> that checks: user authorised, agent allowed the tool, claim in scope, action allowed in the claim state,
+        approval present, idempotent and safe. External calls use retry with backoff and a circuit breaker. Domain events flow through a
+        <strong>durable outbox and event bus</strong> with per-consumer delivery, retry, a dead letter queue and replay. The audit log is a
+        <strong>SHA-256 hash chain</strong>. The LLM gateway redacts personal data and validates output. The tables are a capture of live API calls.
+        All data is DEMO / SYNTHETIC. The adapters are sandbox implementations of the real ports.
+      </p>
+      <div class="tabs" role="tablist" aria-label="Platform views" id="plat-tabs"></div>
+      <div id="plat-body" class="card" style="margin-top:12px;"></div>
+      <p class="section-sub" style="margin-top:10px;">
+        Backend: <code>services/integrations/</code>, <code>services/events/</code>, <code>services/workflow/recovery.py</code>,
+        <code>packages/security/</code>, <code>services/agent_runtime/llm_gateway.py</code>, <code>apps/api/routes/platform.py</code>.
+        See <code>docs/event-driven-architecture.md</code> and <code>docs/security-controls.md</code>.
       </p>
     </section>
 
@@ -1671,6 +1691,8 @@ classDiagram
   <script src="agent-ops.js"></script>
   <script src="intelligence-data.js"></script>
   <script src="intelligence.js"></script>
+  <script src="platform-data.js"></script>
+  <script src="platform.js"></script>
   <script src="settlement-engine.js"></script>
   <script src="settlement-workbench.js"></script>
 </body>

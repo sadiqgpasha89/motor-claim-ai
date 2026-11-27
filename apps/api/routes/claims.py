@@ -57,6 +57,7 @@ from packages.security.auth import (
     TP_LEGAL_ALLOWED_ROLES,
     Role,
     UserContext,
+    assert_step_up,
     enforce_claim_abac,
     enforce_siu_access,
     get_current_user,
@@ -2308,6 +2309,7 @@ def decide_approval(
     user: UserContext = Depends(require_roles(Role.CLAIMS_HANDLER, Role.CLAIMS_MANAGER, Role.LEGAL_TP, Role.FINANCE_APPROVER, Role.ADMIN)),
     db: Session = Depends(get_db),
 ):
+    assert_step_up(user, "approval_decision")
     claim = _get_claim_for_user(db, claim_id, user)
     assert_not_tp_for_od_path(claim, operation="OD settlement approval")
     assert_ev_clearance_for_od_path(db, claim, operation="OD settlement approval")
@@ -2416,6 +2418,7 @@ def initiate_payment(
     user: UserContext = Depends(require_roles(Role.FINANCE_APPROVER, Role.ADMIN)),
     db: Session = Depends(get_db),
 ):
+    assert_step_up(user, "payment_initiation")
     claim = _get_claim_for_user(db, claim_id, user)
     assert_not_tp_for_od_path(claim, operation="OD payment initiation")
     assert_ev_clearance_for_od_path(db, claim, operation="OD payment initiation")

@@ -7,14 +7,17 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from apps.api.routes import claims, ev, governance, intelligence, observability, sla, tp
+from apps.api.routes import claims, ev, governance, intelligence, observability, platform, sla, tp
 from apps.api.schemas import LoginRequest
 from packages.config import get_settings
 from packages.contracts.errors import DomainError, ErrorCode, register_exception_handlers
 from packages.observability.logging import correlation_id_var
 from packages.security.auth import Role, UserContext, create_access_token, get_current_user
+from packages.security.ratelimit import enforce as enforce_rate_limit
+from packages.security.secrets import assert_production_secrets
 from services.claims.db import SessionLocal, get_db, init_db
 from services.claims.models import User
+from services.rules_engine.security import security_controls
 
 
 @asynccontextmanager
@@ -32,6 +35,7 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    assert_production_secrets(settings)
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
@@ -68,6 +72,8 @@ def create_app() -> FastAPI:
     def login(body: LoginRequest, db: Session = Depends(get_db)):
         u = db.query(User).filter(User.email == body.email).first()
         if not u:
+            # Only failed logins count, so a normal user is never throttled.
+            enforce_rate_limit("failed_login", body.email.lower(), int(security_controls()["rate_limits_per_minute"]["failed_login"]))
             raise DomainError(ErrorCode.NOT_FOUND, f"Demo user '{body.email}' not found", status_code=404)
         ctx = UserContext(
             user_id=u.id,
@@ -100,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(sla.router)
     app.include_router(observability.router)
     app.include_router(intelligence.router)
+    app.include_router(platform.router)
     return app
 
 
