@@ -176,7 +176,7 @@ def _ev_documents_verified(ctx: ClaimSLAContext) -> EventResult:
         ts = ctx.audit_last.get(action)
         if ts:
             return ts, "audit"
-    latest = max((aware(e.created_at) for e in ctx.evidence if e.created_at), default=None)
+    latest = max((ts for e in ctx.evidence if e.created_at and (ts := aware(e.created_at)) is not None), default=None)
     return latest, "inferred"
 
 
