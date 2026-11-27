@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -74,3 +75,46 @@ def validate_approval_authority(
         )
 
     return f"{doa['rule_id']}:{doa['version']}"
+
+
+def resolve_required_authority(
+    doa: dict[str, Any],
+    *,
+    amount_inr: Decimal,
+    claim_type: str,
+    active_conditions: list[str],
+) -> dict[str, Any]:
+    """Resolves which Delegation-of-Authority tier must approve a settlement (read-only, no user needed).
+
+    Mirrors the checks in ``validate_approval_authority``: amount limit, allowed claim types and
+    disallowed conditions. Tiers are tried from the lowest limit upwards; every tier that is skipped is
+    reported with a reason code so the approval decision can be explained.
+    """
+    tiers = sorted(doa["authority_tiers"], key=lambda t: Decimal(str(t["max_settlement_inr"])))
+    skipped: list[dict[str, str]] = []
+    resolved: dict[str, Any] | None = None
+    for tier in tiers:
+        max_amt = Decimal(str(tier["max_settlement_inr"]))
+        blocked = sorted(set(tier.get("disallowed_conditions", [])) & set(active_conditions))
+        if amount_inr > max_amt:
+            skipped.append({"role": tier["role"], "reason_code": "amount_exceeds_limit"})
+        elif claim_type not in tier["allowed_claim_types"]:
+            skipped.append({"role": tier["role"], "reason_code": "claim_type_not_allowed"})
+        elif blocked:
+            skipped.append({"role": tier["role"], "reason_code": "condition_blocked"})
+        else:
+            resolved = tier
+            break
+    if resolved is None:
+        resolved = tiers[-1]
+    release = next(
+        (t["role"] for t in doa["authority_tiers"] if t.get("required_for_payment_release")),
+        resolved["role"],
+    )
+    return {
+        "checker_role": resolved["role"],
+        "max_settlement_inr": str(Decimal(str(resolved["max_settlement_inr"])).quantize(Decimal("0.01"))),
+        "payment_release_role": release,
+        "skipped_tiers": skipped,
+        "rule_version": f"{doa['rule_id']}:{doa['version']}",
+    }

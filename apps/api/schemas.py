@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -97,6 +97,19 @@ class SurveyReportSubmitRequest(BaseModel):
 class SettlementRecommendRequest(BaseModel):
     requested_pathway: str = "cashless"
     salvage_value_inr: Decimal = Decimal("0.00")
+
+
+class SettlementWorkbenchRequest(BaseModel):
+    """What-if overrides for the synthetic demo claim; omitted fields keep the demo defaults."""
+
+    vehicle_age_months: int | None = Field(default=None, ge=0, le=600)
+    idv_inr: Decimal | None = Field(default=None, ge=0)
+    market_value_inr: Decimal | None = Field(default=None, ge=0)
+    compulsory_deductible_inr: Decimal | None = Field(default=None, ge=0)
+    voluntary_deductible_inr: Decimal | None = Field(default=None, ge=0)
+    salvage_value_inr: Decimal | None = Field(default=None, ge=0)
+    zero_depreciation: bool | None = None
+    consumables: bool | None = None
 
 
 class ApprovalDecisionRequest(BaseModel):
