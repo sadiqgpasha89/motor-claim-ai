@@ -7,16 +7,24 @@ import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Command Centre" },
+  { href: "/executive-dashboard", label: "Executive Dashboard" },
+  { href: "/", label: "Claims Workbench" },
+  { href: "/agent-command-center", label: "Agent Command Center" },
+  { href: "/evidence-intelligence", label: "Evidence Intelligence" },
+  { href: "/damage-assessment", label: "Damage Assessment" },
+  { href: "/siu", label: "Fraud & SIU" },
+  { href: "/settlement-workbench", label: "Settlement Workbench" },
+  { href: "/human-review", label: "Human Review" },
+  { href: "/performance", label: "Performance & Evaluation" },
+  { href: "/demos", label: "Guided Demos" },
   { href: "/fnol", label: "FNOL Intake" },
-  { href: "/agents", label: "11 Agents & Matrix" },
   { href: "/portal", label: "Customer Portal" },
-  { href: "/siu", label: "SIU Fraud Desk" },
+  { href: "/operations", label: "Operations & SLA" },
+  { href: "/platform-health", label: "Platform health" },
+  { href: "/agents", label: "11 Agents & Matrix" },
   { href: "/partners", label: "Ecosystem & Partners" },
   { href: "/governance", label: "Rules & Policy KB" },
-  { href: "/operations", label: "Operations & SLA" },
-  { href: "/agent-command-center", label: "Agent Command Center" },
-  { href: "/platform-health", label: "Platform health" },
+  { href: "/vision", label: "Vision & Assessment" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

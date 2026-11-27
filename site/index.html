@@ -32,6 +32,7 @@
         <a href="#agent-ops">Claim 360 &amp; Agent Ops</a>
         <a href="#claim-intelligence">Claim Intelligence</a>
         <a href="#platform-security">Platform &amp; Security</a>
+        <a href="#product-portal">Product, KPIs &amp; Demos</a>
         <a href="#sla-operations">Predictive SLA</a>
         <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
@@ -611,6 +612,22 @@ flowchart LR
         Backend: <code>services/integrations/</code>, <code>services/events/</code>, <code>services/workflow/recovery.py</code>,
         <code>packages/security/</code>, <code>services/agent_runtime/llm_gateway.py</code>, <code>apps/api/routes/platform.py</code>.
         See <code>docs/event-driven-architecture.md</code> and <code>docs/security-controls.md</code>.
+      </p>
+    </section>
+
+    <section id="product-portal">
+      <h2>2K. Product Portal, Business KPIs &amp; Guided Demos</h2>
+      <p class="section-sub">
+        The portal has <strong>nine sections</strong> (Executive Dashboard, Claims Workbench, Agent Command Center, Evidence Intelligence, Damage Assessment,
+        Fraud &amp; SIU, Settlement Workbench, Human Review, Performance &amp; Evaluation) and a <strong>Claim 360</strong> screen that answers eight questions.
+        A <strong>KPI framework</strong> measures what the database can support and says so when it cannot. Targets are illustrative ambition levels, not results.
+        All data is DEMO / SYNTHETIC. The tables are a capture of live API calls.
+      </p>
+      <div class="tabs" role="tablist" aria-label="Product views" id="prod-tabs"></div>
+      <div id="prod-body" class="card" style="margin-top:12px;"></div>
+      <p class="section-sub" style="margin-top:10px;">
+        Backend: <code>services/analytics/</code>, <code>apps/api/routes/portal.py</code>, <code>rules/common/product_framework.json</code>.
+        See <code>docs/product-portal.md</code>.
       </p>
     </section>
 
@@ -1693,6 +1710,8 @@ classDiagram
   <script src="intelligence.js"></script>
   <script src="platform-data.js"></script>
   <script src="platform.js"></script>
+  <script src="product-data.js"></script>
+  <script src="product.js"></script>
   <script src="settlement-engine.js"></script>
   <script src="settlement-workbench.js"></script>
 </body>
