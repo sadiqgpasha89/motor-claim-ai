@@ -101,6 +101,7 @@ from services.damage_ai.assessor import assess_damage_from_evidence, validate_es
 from services.document_ai.processor import extract_document_facts
 from services.fraud_intelligence.detector import build_entity_relationship_graph, run_fraud_and_anomaly_checks
 from services.integrations.adapters import IntegrationAdapterRegistry
+from services.observability.traces import resolve_human_intervention
 from services.rules_engine.loader import get_active_rule
 from services.settlement.authority import validate_approval_authority
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
@@ -2370,6 +2371,9 @@ def decide_approval(
         gate_task.status = "waiting_human"
         event_type = "ApprovalRejected"
 
+    resolve_human_intervention(
+        db, claim_id=claim.id, actor_id=user.user_id, actor_role=user.role.value, decision=f"approval_{body.decision}"
+    )
     emit_outbox_event(
         db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type=event_type, payload={"approval_id": approval.id}
     )

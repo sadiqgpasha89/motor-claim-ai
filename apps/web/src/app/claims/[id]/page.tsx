@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertTriangle, Camera, CheckCircle2, Eye, ShieldAlert, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -647,6 +648,9 @@ export default function Claim360Page() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900">{c.claim_number}</h1>
               <StatusPill status={c.status} />
+              <Link href={`/claims/${c.id}/claim-360`} className="px-2 py-0.5 text-xs font-bold bg-indigo-600 text-white rounded">
+                Claim 360
+              </Link>
               <RiskTierBadge tier={c.risk_tier} path={c.operational_path} score={c.risk_score} />
               {data.sla_timers[0] && <SlaBadge status={data.sla_timers[0].status} />}
               {c.ev_battery_impacted && (

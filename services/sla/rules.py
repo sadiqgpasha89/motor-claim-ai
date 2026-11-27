@@ -295,13 +295,13 @@ def evaluate_condition(cond: dict[str, Any] | None, facts: dict[str, Any]) -> bo
     if actual is None:
         return False
     if op == ">":
-        return actual > expected
+        return bool(actual > expected)
     if op == ">=":
-        return actual >= expected
+        return bool(actual >= expected)
     if op == "<":
-        return actual < expected
+        return bool(actual < expected)
     if op == "<=":
-        return actual <= expected
+        return bool(actual <= expected)
     raise ValueError(f"Unsupported SLA condition operator '{op}'")
 
 

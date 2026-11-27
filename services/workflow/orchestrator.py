@@ -57,6 +57,7 @@ from services.claims.state_machine import (
 )
 from services.damage_ai.assessor import assess_damage_from_evidence, validate_estimate_lines
 from services.fraud_intelligence.detector import build_entity_relationship_graph, run_fraud_and_anomaly_checks
+from services.observability.traces import build_trace_fields, resolve_human_intervention
 from services.rules_engine.loader import get_active_rule, load_rule_files
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
 from services.workflow.risk_engine import evaluate_and_persist_risk, gather_claim_risk_facts
@@ -126,6 +127,8 @@ def record_agent_publication(
     response: AgentInvocationResponse,
     dependencies_satisfied: bool = True,
     error_message: str | None = None,
+    input_facts: dict[str, Any] | None = None,
+    retry_count: int = 0,
 ) -> AgentExecutionRecord:
     """Persists an agent's structured publication, actions, rework, and decision intelligence."""
     wf = dict(claim.workflow_state or {})
@@ -171,6 +174,15 @@ def record_agent_publication(
         decision=_json_safe(response.decision.model_dump()) if response.decision else None,
         error_message=error_message,
         duration_ms=response.duration_ms,
+        **build_trace_fields(
+            claim_id=claim.id,
+            agent_name=agent_name,
+            agent_version=getattr(AGENT_REGISTRY.get(agent_name), "agent_version", "2.0.0"),
+            response=response,
+            input_facts=input_facts,
+            retry_count=retry_count,
+            error_message=error_message,
+        ),
     )
     db.add(rec)
 
@@ -854,6 +866,9 @@ class ClaimOrchestrator:
             object_id=claim.id,
             details={"was_paused": was_paused, "resumed_timers": resumed_timers, "notes": resolution_notes},
         )
+        resolve_human_intervention(
+            self.db, claim_id=claim.id, actor_id=self.user.user_id, actor_role=self.user.role.value, decision="workflow_resumed"
+        )
         self.db.flush()
 
         resumed_summary = None
@@ -1330,6 +1345,7 @@ class ClaimOrchestrator:
         attempt_count: int,
         retry_history: list[dict[str, Any]],
         error_message: str | None = None,
+        input_facts: dict[str, Any] | None = None,
     ) -> None:
         if agent_name == "damage_assessment" and resp.status in {AgentStatus.COMPLETED, AgentStatus.NEEDS_HUMAN}:
             claim.damage_report = _json_safe(resp.result)
@@ -1416,6 +1432,8 @@ class ClaimOrchestrator:
             response=resp,
             dependencies_satisfied=True,
             error_message=error_message,
+            input_facts=input_facts,
+            retry_count=len(retry_history),
         )
 
         # Update scheduled OrchestrationTask record
@@ -1773,6 +1791,7 @@ class ClaimOrchestrator:
             error_message="Timed out after exponential-backoff retries -> moved to DLQ"
             if final_resp.status == AgentStatus.TIMED_OUT
             else None,
+            input_facts=base_facts,
         )
 
         if apply_state_progression:
@@ -1895,6 +1914,7 @@ class ClaimOrchestrator:
                 error_message="Timed out in parallel wave -> moved to DLQ"
                 if replayed_resp.status == AgentStatus.TIMED_OUT
                 else None,
+                input_facts=facts,
             )
             final_responses[ag] = replayed_resp
 

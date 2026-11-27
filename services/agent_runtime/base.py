@@ -24,6 +24,7 @@ class AgentTimeoutError(Exception):
 
 class BoundedAgent(ABC):
     agent_name: str = "base_agent"
+    agent_version: str = "2.0.0"
     prompt_version: str = "2.0.0"
     allowed_tools: set[str] = set()
     tool_versions: dict[str, str] = {"core_tools": "2.0.0"}
