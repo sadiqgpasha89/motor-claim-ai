@@ -16,6 +16,12 @@ ORCHESTRATION_ORDER: list[str] = [
     "qa_compliance",
 ]
 
+# Cross-cutting operations agents. They run on a schedule / on demand over the claims portfolio, not as a
+# per-claim stage in the post-FNOL DAG, so they are deliberately not part of ORCHESTRATION_ORDER.
+OPERATIONS_AGENTS: list[str] = [
+    "sla_intelligence",
+]
+
 AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
     "fnol_concierge": AgentContractSpec(
         agent_name="fnol_concierge",
@@ -646,5 +652,65 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         human_gate_condition="Any failed QA control blocks closure (409 STATE_CONFLICT) and emits remediation tasks/rework.",
         timeout_seconds=12,
         max_retries=2,
+    ),
+    "sla_intelligence": AgentContractSpec(
+        agent_name="sla_intelligence",
+        display_name="Predictive SLA Intelligence",
+        stage="Cross-cutting: SLA operations",
+        operational_responsibility=(
+            "Predicts which claims will breach their SLA, which garages and surveyors drive delay, which documents stall "
+            "processing and which queues are bottlenecked, then recommends reassignment, escalation, reminder, scheduling "
+            "or prioritisation and executes only the actions its guardrails authorise."
+        ),
+        required_capabilities=[
+            "Rule-driven SLA clocks (versioned rules, pause conditions, escalation sequences)",
+            "Explainable breach probability with ranked drivers",
+            "Surveyor overload, garage delay, document delay and queue bottleneck analysis",
+            "Authorised-action gate: autonomous tasks/reminders, human approval for reassignment",
+        ],
+        input_contract={
+            "sla_inputs": "object {instances: list[SLAInstance], signals: ClaimSignals, now: ISO timestamp}",
+            "queue_context": "object {queue, pressure, open_clocks, late_clocks} (optional)",
+            "mode": "recommend | execute (default recommend)",
+        },
+        output_contract={
+            "predictions": "list[object] breach_probability, risk_band, expected_remaining_hours, drivers",
+            "recommended_actions": "list[object] action, urgency, rationale, autonomy, authorisation",
+            "suppressed": "list[object] actions withheld by cooldown or customer-choice guardrails",
+            "executed_count": "integer",
+            "gated_count": "integer (approval tasks raised for a human)",
+        },
+        allowed_tools=[
+            "sla_rules_read",
+            "sla_clock_read",
+            "predict_sla_breach",
+            "provider_load_read",
+            "create_claim_task",
+            "send_surveyor_followup",
+            "request_documents",
+        ],
+        authorised_actions=[
+            "create_claim_task",
+            "send_surveyor_followup",
+            "request_documents",
+        ],
+        prohibited_actions=[
+            "reassign_surveyor_directly",
+            "reassign_garage_directly",
+            "override_customer_garage_choice",
+            "edit_sla_rules",
+            "mutate_claim_state_directly",
+            "approve_settlement",
+            "initiate_payment",
+            "repudiate_claim",
+        ],
+        depends_on=[],
+        can_request_rework_from=[],
+        human_gate_condition=(
+            "Reassignment and queue rebalancing always raise a claims-manager approval task; third-party claims allow "
+            "task-level actions only; execute mode requires a claims manager or admin."
+        ),
+        timeout_seconds=15,
+        max_retries=1,
     ),
 }

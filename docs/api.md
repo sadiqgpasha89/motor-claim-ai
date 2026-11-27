@@ -33,6 +33,10 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
   - Legal: `POST .../tp/legal-documents` · `.../tp/tribunal` · `.../tp/advocates` · `.../tp/medical-review` · `.../tp/legal-review` · `.../tp/reserve`
   - Control: `POST .../tp/advance` · `.../tp/settlement-proposals` · `.../tp/settlement-proposals/{proposal_id}/decision` · `.../tp/payment-authorisation` (+ `/reconcile`) · `.../tp/close`
   - OD-only endpoints (`settlement-recommendations`, `approvals`, `payments`, `payments/agent-release`, `close`) return `409 HUMAN_REVIEW_REQUIRED` for TP claims.
+- **Predictive SLA operations** (`docs/sla-management.md`; read endpoints for internal roles, execute mode for `claims_manager` / `admin`):
+  - `GET /api/v1/sla/rules` · `POST /api/v1/sla/rules/validate` (dry run, never publishes)
+  - `GET /api/v1/sla/dashboard` · `GET /api/v1/sla/predictions?min_risk_band=&limit=` · `GET /api/v1/sla/insights` · `GET /api/v1/claims/{claim_id}/sla`
+  - `POST /api/v1/sla/agent/run` `{mode: recommend|execute, claim_ids?, min_risk_band?, limit?}`
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
 - `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`

@@ -1370,6 +1370,24 @@ footer {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
+/* Predictive SLA operations */
+.sla-kv {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.sla-kv th {
+  text-align: left;
+  vertical-align: top;
+  width: 190px;
+  padding: 5px 10px 5px 0;
+  color: #475569;
+  font-weight: 600;
+}
+.sla-kv td {
+  padding: 5px 0;
+  color: #0f172a;
+}
 /* Customer Experience Intelligence & Motor Claim Tracker */
 .cx-shell {
   background: var(--surface);

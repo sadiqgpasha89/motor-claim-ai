@@ -47,9 +47,9 @@ flowchart TB
         AUDIT["Append-Only SHA-256 Audit & Transactional Outbox\n(services/claims/audit.py)"]
     end
 
-    subgraph AI["AI Services & 11 Bounded Agents"]
+    subgraph AI["AI Services & 12 Bounded Agents"]
         GW["Model Gateway (Stub / Gemini / Anthropic + Outage Fallback)\n(services/agent_runtime/gateway.py)"]
-        AGENTS["11 Tool-Restricted Agents\n(agents/specialists.py)"]
+        AGENTS["12 Tool-Restricted Agents\n(agents/specialists.py)"]
         DOCAI["Document AI & Image Quality\n(services/document_ai/processor.py)"]
         DMGAI["Damage Vision & Rate-Card Validator\n(services/damage_ai/assessor.py)"]
         FRDAI["Explainable Fraud & Entity Graph\n(services/fraud_intelligence/detector.py)"]
@@ -103,7 +103,7 @@ flowchart TB
 | **Domain & State Machine** | `services/claims/` | 31 relational entities (incl. `OrchestrationTask`, `OrchestrationEventLog`, `DeadLetterRecord`, `CompensationLog`), explicit state transition graph (`ALLOWED_TRANSITIONS` + 15 canonical states), append-only SHA-256 audit events, transactional outbox | Never deletes audit history or allows unvalidated state jumps |
 | **Rules & Knowledge** | `services/rules_engine/` | Loads effective-dated JSON rules, syncs `RuleVersion` rows, hybrid TF-IDF + cosine retrieval over synthetic policy wordings with clause/page citations | Never hard-codes regulatory thresholds inside LLM prompts |
 | **Settlement & Authority** | `services/settlement/` | `Decimal` line-by-line depreciation, Zero Dep & Consumables waivers, excess, CTL evaluation, DoA maker-checker enforcement | Never allows same-user maker/checker or bulk approvals |
-| **Bounded Agents** | `agents/` + `services/agent_runtime/` | 11 specialised agents with least-privilege tool allowlists (`mutate_claim_state_directly` explicitly prohibited), confidence bands, limitations, and outage fallback | Never mutates claim states or DB tables directly, repudiates claims, or releases payments |
+| **Bounded Agents** | `agents/` + `services/agent_runtime/` | 12 specialised agents (11 claim-lifecycle + the predictive SLA operations agent) with least-privilege tool allowlists (`mutate_claim_state_directly` explicitly prohibited), confidence bands, limitations, and outage fallback | Never mutates claim states or DB tables directly, repudiates claims, or releases payments |
 
 ---
 

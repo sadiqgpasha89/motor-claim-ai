@@ -1,0 +1,402 @@
+{
+  "rule_id": "COMMON-SLA-RULES-V2",
+  "version": "2.0.0",
+  "jurisdiction": "IN",
+  "title": "Configurable SLA Rules Catalogue (versioned, effective-dated, claim-type aware)",
+  "source_reference": "IRDAI Master Circular 2024 + Insurer Operational SLOs (all non-regulatory targets are configurable; no SLA value is hardcoded in prompts or UI)",
+  "owner": "Claims Operations Director",
+  "effective_from": "2025-01-01T00:00:00Z",
+  "status": "published",
+  "claim_type_families": {
+    "own_damage": ["own_damage", "cashless", "reimbursement", "total_loss", "theft"],
+    "third_party": ["third_party"]
+  },
+  "risk_model": {
+    "model_id": "sla-risk-baseline-v1",
+    "description": "Explainable survival-style baseline: expected remaining work vs. remaining SLA budget, with a lognormal-style uncertainty band. Swappable for a trained model behind the same contract.",
+    "uncertainty_pct_of_expected": 0.30,
+    "uncertainty_floor_hours": 0.5,
+    "band_thresholds": {"watch": 0.35, "at_risk": 0.60, "critical": 0.85},
+    "load_factors": [
+      {"min_ratio": 0.90, "multiplier": 1.35},
+      {"min_ratio": 0.80, "multiplier": 1.20},
+      {"min_ratio": 0.60, "multiplier": 1.05}
+    ],
+    "risk_tier_multipliers": {"LOW": 1.0, "MEDIUM": 1.05, "HIGH": 1.25},
+    "ev_multiplier": 1.15,
+    "reschedule_step": 0.12,
+    "reschedule_cap": 1.5,
+    "followup_step": 0.08,
+    "followup_cap": 1.4,
+    "queue_pressure_weight": 0.4,
+    "typical_customer_response_hours": 36,
+    "overload_ratio": 0.80,
+    "bottleneck_score_threshold": 0.45
+  },
+  "agent_guardrails": {
+    "min_probability_to_act": 0.60,
+    "max_autonomous_actions_per_claim_per_run": 3,
+    "cooldown_hours": 12,
+    "tp_claims_autonomy": "tasks_only",
+    "execution_roles": ["claims_manager", "admin"],
+    "recommendation_roles": ["claims_handler", "claims_manager", "fnol_executive", "auditor", "admin"],
+    "never_autonomous": ["initiate_payment", "approve_settlement", "repudiate_claim", "change_claim_state", "override_customer_garage_choice"]
+  },
+  "action_catalogue": {
+    "remind_owner": {
+      "label": "Reminder to responsible owner",
+      "autonomy": "autonomous",
+      "tool": "create_claim_task",
+      "description": "Creates a reminder task for the responsible team before the SLA is consumed."
+    },
+    "remind_surveyor": {
+      "label": "Surveyor report follow-up",
+      "autonomy": "autonomous",
+      "tool": "send_surveyor_followup",
+      "description": "Sends a logged follow-up to the assigned surveyor for the pending report."
+    },
+    "chase_documents": {
+      "label": "Customer document reminder",
+      "autonomy": "autonomous",
+      "tool": "request_documents",
+      "description": "Re-sends the document request on the customer's preferred channel (consent rules apply)."
+    },
+    "escalate_team_lead": {
+      "label": "Escalate to team lead",
+      "autonomy": "autonomous",
+      "tool": "create_claim_task",
+      "description": "Creates a high-priority escalation task for the team lead."
+    },
+    "escalate_manager": {
+      "label": "Escalate to claims manager",
+      "autonomy": "autonomous",
+      "tool": "create_claim_task",
+      "description": "Creates a critical escalation task for the claims manager."
+    },
+    "prioritize_claim": {
+      "label": "Prioritise in queue",
+      "autonomy": "autonomous",
+      "tool": "create_claim_task",
+      "description": "Raises a prioritisation task so the claim is worked first; does not change claim state."
+    },
+    "schedule_slot": {
+      "label": "Schedule appointment / slot",
+      "autonomy": "autonomous",
+      "tool": "create_claim_task",
+      "description": "Creates a scheduling task for the coordinator to book an inspection or garage slot."
+    },
+    "reassign_surveyor": {
+      "label": "Reassign surveyor",
+      "autonomy": "human_approval",
+      "tool": "create_claim_task",
+      "approver_role": "claims_manager",
+      "description": "Recommendation only. Needs licence, zone and skill re-verification; a manager approves the move."
+    },
+    "reassign_garage": {
+      "label": "Reassign garage",
+      "autonomy": "human_approval",
+      "tool": "create_claim_task",
+      "approver_role": "claims_manager",
+      "description": "Recommendation only. Customer garage choice is protected and can only be overridden through the authorised override flow."
+    },
+    "rebalance_queue": {
+      "label": "Rebalance queue capacity",
+      "autonomy": "human_approval",
+      "tool": "create_claim_task",
+      "approver_role": "claims_manager",
+      "description": "Recommendation only. Moving handler capacity between queues is a management decision."
+    }
+  },
+  "rules": [
+    {
+      "sla_id": "SLA-CLAIM-REGISTRATION",
+      "metric": "claim_registration",
+      "title": "Claim registration",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage", "third_party"],
+      "trigger_event": "ClaimIntimated",
+      "start_condition": {"all": []},
+      "stop_event": "ClaimRegistered",
+      "pause_conditions": [],
+      "deadline": {
+        "unit": "minutes",
+        "value": 5,
+        "target_label": "Near real-time",
+        "regulatory_hours": 24,
+        "regulatory_reference": "IRDAI Master Circular 2024: acknowledgement within 24h"
+      },
+      "typical_duration_hours": 0.03,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "fnol_desk"},
+        {"step": 2, "at_pct": 100, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "fnol_desk",
+      "owner_role": "fnol_executive",
+      "queue": "fnol_intake",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "critical", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-DOCUMENT-VERIFICATION",
+      "metric": "document_verification",
+      "title": "Document verification",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": "2026-06-30T23:59:59Z",
+      "applicable_claim_types": ["own_damage", "third_party"],
+      "trigger_event": "ClaimRegistered",
+      "start_condition": {"any": [{"fact": "evidence_count", "op": ">", "value": 0}, {"fact": "missing_document_count", "op": ">", "value": 0}]},
+      "stop_event": "DocumentsVerified",
+      "pause_conditions": [
+        {"code": "AWAITING_CUSTOMER_DOCUMENTS", "source": "task", "task_types": ["document_request"], "task_statuses": ["open", "in_progress"], "description": "Clock stops while the policyholder owes documents."},
+        {"code": "CLARIFICATION_REQUESTED", "source": "claim_status", "statuses": ["CLARIFICATION_REQUESTED"], "description": "Clock stops while a clarification is pending with the customer."}
+      ],
+      "deadline": {"unit": "hours", "value": 36, "target_label": "Configurable (v1.0.0: 36h)"},
+      "typical_duration_hours": 12,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "claims_handling"},
+        {"step": 2, "at_pct": 85, "action": "escalate_team_lead", "to_team": "claims_handling"}
+      ],
+      "responsible_team": "claims_handling",
+      "owner_role": "claims_handler",
+      "queue": "document_exception",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "high", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-DOCUMENT-VERIFICATION",
+      "metric": "document_verification",
+      "title": "Document verification",
+      "rule_version": "1.1.0",
+      "effective_from": "2026-07-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "ClaimRegistered",
+      "start_condition": {"any": [{"fact": "evidence_count", "op": ">", "value": 0}, {"fact": "missing_document_count", "op": ">", "value": 0}]},
+      "stop_event": "DocumentsVerified",
+      "pause_conditions": [
+        {"code": "AWAITING_CUSTOMER_DOCUMENTS", "source": "task", "task_types": ["document_request"], "task_statuses": ["open", "in_progress"], "description": "Clock stops while the policyholder owes documents."},
+        {"code": "CLARIFICATION_REQUESTED", "source": "claim_status", "statuses": ["CLARIFICATION_REQUESTED"], "description": "Clock stops while a clarification is pending with the customer."}
+      ],
+      "deadline": {"unit": "hours", "value": 24, "target_label": "Configurable (v1.1.0: 24h)"},
+      "typical_duration_hours": 10,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 50, "action": "remind_owner", "to_team": "claims_handling"},
+        {"step": 2, "at_pct": 80, "action": "escalate_team_lead", "to_team": "claims_handling"}
+      ],
+      "responsible_team": "claims_handling",
+      "owner_role": "claims_handler",
+      "queue": "document_exception",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "high", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-DOCUMENT-VERIFICATION-TP",
+      "metric": "document_verification",
+      "title": "Document verification (third-party)",
+      "rule_version": "1.1.0",
+      "effective_from": "2026-07-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["third_party"],
+      "trigger_event": "ClaimRegistered",
+      "start_condition": {"any": [{"fact": "evidence_count", "op": ">", "value": 0}, {"fact": "missing_document_count", "op": ">", "value": 0}]},
+      "stop_event": "DocumentsVerified",
+      "pause_conditions": [
+        {"code": "AWAITING_CUSTOMER_DOCUMENTS", "source": "task", "task_types": ["document_request"], "task_statuses": ["open", "in_progress"], "description": "Clock stops while the claimant owes documents."}
+      ],
+      "deadline": {"unit": "hours", "value": 72, "target_label": "Configurable (TP: 72h, legal/medical papers)"},
+      "typical_duration_hours": 30,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "tp_legal_desk"},
+        {"step": 2, "at_pct": 90, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "tp_legal_desk",
+      "owner_role": "legal_tp",
+      "queue": "tp_intake",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "high", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-SURVEYOR-ASSIGNMENT",
+      "metric": "surveyor_assignment",
+      "title": "Surveyor assignment",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "ClaimTriaged",
+      "start_condition": {"all": [{"fact": "survey_required", "op": "==", "value": true}]},
+      "stop_event": "SurveyorAssigned",
+      "pause_conditions": [],
+      "deadline": {
+        "unit": "hours",
+        "value": 6,
+        "target_label": "Configurable (6h internal)",
+        "regulatory_hours": 24,
+        "regulatory_reference": "IRDAI Master Circular 2024 via COMMON-SLA-CATALOGUE-V1"
+      },
+      "typical_duration_hours": 2.5,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 50, "action": "remind_owner", "to_team": "claims_handling"},
+        {"step": 2, "at_pct": 75, "action": "escalate_team_lead", "to_team": "claims_handling"},
+        {"step": 3, "at_pct": 100, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "claims_handling",
+      "owner_role": "claims_handler",
+      "queue": "standard_survey_queue",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "critical", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-SURVEY-COMPLETION",
+      "metric": "survey_completion",
+      "title": "Survey completion (report submission)",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "SurveyorAssigned",
+      "start_condition": {"all": []},
+      "stop_event": "SurveyReportReceived",
+      "pause_conditions": [
+        {"code": "CLARIFICATION_REQUESTED", "source": "claim_status", "statuses": ["CLARIFICATION_REQUESTED"], "description": "Clock stops while the customer owes a clarification the surveyor needs."}
+      ],
+      "deadline": {
+        "unit": "hours",
+        "value": 168,
+        "target_label": "Regulatory 15 days / internal 7 days",
+        "regulatory_hours": 360,
+        "regulatory_reference": "IRDAI Master Circular 2024: surveyor report within 15 days"
+      },
+      "typical_duration_hours": 72,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 50, "action": "remind_surveyor", "to_team": "surveyor_network"},
+        {"step": 2, "at_pct": 75, "action": "escalate_team_lead", "to_team": "claims_handling"},
+        {"step": 3, "at_pct": 90, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "surveyor_network",
+      "owner_role": "surveyor",
+      "queue": "standard_survey_queue",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "critical", "assigned_role": "claims_manager", "daily_penalty_inr": "500.00"}
+    },
+    {
+      "sla_id": "SLA-ESTIMATE-APPROVAL",
+      "metric": "estimate_approval",
+      "title": "Estimate approval",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "EstimateSubmitted",
+      "start_condition": {"all": []},
+      "stop_event": "EstimateApproved",
+      "pause_conditions": [
+        {"code": "AWAITING_CUSTOMER_DOCUMENTS", "source": "task", "task_types": ["document_request"], "task_statuses": ["open", "in_progress"], "description": "Clock stops while evidence needed to approve the estimate is with the customer."}
+      ],
+      "deadline": {"unit": "hours", "value": 48, "target_label": "Configurable (48h internal)", "regulatory_hours": 168, "regulatory_reference": "IRDAI Master Circular 2024: settlement decision within 7 days of the survey report"},
+      "typical_duration_hours": 20,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "claims_handling"},
+        {"step": 2, "at_pct": 85, "action": "escalate_team_lead", "to_team": "claims_handling"}
+      ],
+      "responsible_team": "claims_handling",
+      "owner_role": "claims_handler",
+      "queue": "standard_survey_queue",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "high", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-REPAIR-COMPLETION",
+      "metric": "repair_completion",
+      "title": "Repair completion",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "EstimateApproved",
+      "start_condition": {"all": [{"fact": "garage_assigned", "op": "==", "value": true}]},
+      "stop_event": "RepairCompleted",
+      "pause_conditions": [
+        {"code": "CLARIFICATION_REQUESTED", "source": "claim_status", "statuses": ["CLARIFICATION_REQUESTED"], "description": "Clock stops while a customer clarification is pending."}
+      ],
+      "deadline": {"unit": "days", "value": 10, "target_label": "Configurable (10 days)"},
+      "typical_duration_hours": 120,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 50, "action": "schedule_slot", "to_team": "ecosystem_desk"},
+        {"step": 2, "at_pct": 75, "action": "escalate_team_lead", "to_team": "ecosystem_desk"},
+        {"step": 3, "at_pct": 95, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "ecosystem_desk",
+      "owner_role": "garage",
+      "queue": "garage_repair",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "high", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-PAYMENT-PROCESSING",
+      "metric": "payment_processing",
+      "title": "Payment processing",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage"],
+      "trigger_event": "SettlementApproved",
+      "start_condition": {"all": []},
+      "stop_event": "PaymentCompleted",
+      "pause_conditions": [],
+      "deadline": {"unit": "hours", "value": 72, "target_label": "Configurable (72h internal)"},
+      "typical_duration_hours": 30,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "finance_ops"},
+        {"step": 2, "at_pct": 90, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "finance_ops",
+      "owner_role": "finance_approver",
+      "queue": "payment_ops",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "critical", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-PAYMENT-PROCESSING-TP",
+      "metric": "payment_processing",
+      "title": "Payment processing (third-party, dual control)",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["third_party"],
+      "trigger_event": "SettlementApproved",
+      "start_condition": {"all": []},
+      "stop_event": "PaymentCompleted",
+      "pause_conditions": [],
+      "deadline": {"unit": "hours", "value": 120, "target_label": "Configurable (TP dual-control: 120h)"},
+      "typical_duration_hours": 60,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "finance_ops"},
+        {"step": 2, "at_pct": 90, "action": "escalate_manager", "to_team": "claims_management"}
+      ],
+      "responsible_team": "finance_ops",
+      "owner_role": "finance_approver",
+      "queue": "payment_ops",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "critical", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    },
+    {
+      "sla_id": "SLA-CLAIM-CLOSURE",
+      "metric": "claim_closure",
+      "title": "Claim closure",
+      "rule_version": "1.0.0",
+      "effective_from": "2025-01-01T00:00:00Z",
+      "effective_to": null,
+      "applicable_claim_types": ["own_damage", "third_party"],
+      "trigger_event": "PaymentCompleted",
+      "start_condition": {"all": []},
+      "stop_event": "ClaimClosed",
+      "pause_conditions": [
+        {"code": "OPEN_GRIEVANCE", "source": "task", "task_types": ["grievance_review"], "task_statuses": ["open", "in_progress"], "description": "Closure waits for an open grievance review."}
+      ],
+      "deadline": {"unit": "hours", "value": 72, "target_label": "Configurable (72h internal)"},
+      "typical_duration_hours": 24,
+      "escalation_sequence": [
+        {"step": 1, "at_pct": 60, "action": "remind_owner", "to_team": "claims_handling"},
+        {"step": 2, "at_pct": 90, "action": "escalate_team_lead", "to_team": "claims_handling"}
+      ],
+      "responsible_team": "claims_handling",
+      "owner_role": "claims_handler",
+      "queue": "closure_qa",
+      "breach_action": {"code": "OPEN_BREACH_TASK", "priority": "medium", "assigned_role": "claims_manager", "daily_penalty_inr": "0.00"}
+    }
+  ]
+}

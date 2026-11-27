@@ -348,6 +348,17 @@ classDiagram
     class SettlementRecommendationAgent
     class CustomerCommunicationAgent
     class QAComplianceAgent
+    class PredictiveSLAAgent {
+        +agent_name = sla_intelligence
+        +execute(request, action_executor)
+    }
+    class SLARulesService {
+        +resolve(metric, claim_type, at)
+        +validate()
+    }
+    class SLAInstance
+    class SLAPrediction
+    class RecommendedAction
 
     BoundedAgent <|-- FNOLConciergeAgent
     BoundedAgent <|-- DocumentIntelligenceAgent
@@ -360,6 +371,11 @@ classDiagram
     BoundedAgent <|-- SettlementRecommendationAgent
     BoundedAgent <|-- CustomerCommunicationAgent
     BoundedAgent <|-- QAComplianceAgent
+    BoundedAgent <|-- PredictiveSLAAgent
+    PredictiveSLAAgent ..> SLARulesService : reads versioned rules
+    PredictiveSLAAgent ..> SLAInstance : evaluates clocks
+    PredictiveSLAAgent ..> SLAPrediction : predicts breaches
+    PredictiveSLAAgent ..> RecommendedAction : plans, then authorise_action gates
 
     BoundedAgent ..> AgentInvocationRequest : consumes
     BoundedAgent ..> AgentInvocationResponse : returns

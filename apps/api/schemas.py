@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -424,3 +424,16 @@ class CustomerEscalationRequest(BaseModel):
     notes: str = ""
     preferred_language: Optional[str] = None
     preferred_channel: Optional[str] = None
+
+
+class SLAAgentRunRequest(BaseModel):
+    """Run the predictive SLA agent over the portfolio. ``recommend`` never changes data; ``execute`` runs only authorised actions."""
+
+    mode: Literal["recommend", "execute"] = "recommend"
+    claim_ids: Optional[list[str]] = None
+    min_risk_band: Literal["watch", "at_risk", "critical", "breached"] = "at_risk"
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class SLARulesValidateRequest(BaseModel):
+    catalogue: dict[str, Any]
