@@ -6,14 +6,16 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from apps.api.schemas import AiOutageToggleRequest, RuleSimulateRequest
+from apps.api.schemas import AiOutageToggleRequest, DLQActionRequest, RuleSimulateRequest
 from packages.contracts.errors import DomainError, ErrorCode
-from packages.security.auth import Role, UserContext, get_current_user, require_roles
+from packages.security.auth import INTERNAL_ROLES, Role, UserContext, get_current_user, require_roles
+from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS, ORCHESTRATION_ORDER
 from services.agent_runtime.gateway import ModelGateway
 from services.claims.audit import record_audit_event
 from services.claims.db import get_db
 from services.claims.models import (
     Claim,
+    DeadLetterRecord,
     FraudAlert,
     OutboxEvent,
     Provider,
@@ -25,7 +27,9 @@ from services.claims.models import (
 from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.knowledge import HybridPolicyRetriever, load_rate_card
 from services.rules_engine.loader import sync_rules_to_db
-from services.workflow.sla_engine import compute_timer_status
+from services.workflow.orchestrator import ClaimOrchestrator
+from services.workflow.sla_engine import compute_timer_status, sweep_sla_breaches
+from services.workflow.state_specs import describe_workflow_model
 
 router = APIRouter(prefix="/api/v1", tags=["governance-and-operations"])
 
@@ -283,6 +287,112 @@ def get_analytics(
         "is_synthetic_demo": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/agents/contracts")
+def list_agent_contracts(user: UserContext = Depends(get_current_user)):
+    return {
+        "total_agents": len(AGENT_CAPABILITY_CONTRACTS),
+        "orchestration_order": ORCHESTRATION_ORDER,
+        "contracts": [AGENT_CAPABILITY_CONTRACTS[name].model_dump() for name in ORCHESTRATION_ORDER],
+    }
+
+
+@router.get("/orchestration/workflow-model")
+def get_orchestration_workflow_model(user: UserContext = Depends(get_current_user)):
+    return describe_workflow_model()
+
+
+@router.get("/orchestration/dlq")
+def list_dlq_items(
+    claim_id: str | None = None,
+    status: str | None = None,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    q = db.query(DeadLetterRecord).filter(DeadLetterRecord.tenant_id == user.tenant_id)
+    if claim_id:
+        q = q.filter(DeadLetterRecord.claim_id == claim_id)
+    if status:
+        q = q.filter(DeadLetterRecord.status == status)
+    items = q.order_by(DeadLetterRecord.created_at.desc()).all()
+    return {
+        "total": len(items),
+        "items": [
+            {
+                "id": d.id,
+                "claim_id": d.claim_id,
+                "task_id": d.task_id,
+                "task_key": d.task_key,
+                "agent_or_service": d.agent_or_service,
+                "state_at_failure": d.state_at_failure,
+                "error_code": d.error_code,
+                "failure_reason": d.failure_reason,
+                "attempt_count": d.attempt_count,
+                "retry_history": d.retry_history,
+                "status": d.status,
+                "resolved_by": d.resolved_by,
+                "resolution_notes": d.resolution_notes,
+                "created_at": d.created_at.isoformat(),
+                "resolved_at": d.resolved_at.isoformat() if d.resolved_at else None,
+            }
+            for d in items
+        ],
+    }
+
+
+@router.post("/orchestration/dlq/{dlq_id}/replay")
+def replay_dlq_record(
+    dlq_id: str,
+    body: DLQActionRequest = DLQActionRequest(),
+    user: UserContext = Depends(require_roles(Role.CLAIMS_HANDLER, Role.CLAIMS_MANAGER, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    dlq = (
+        db.query(DeadLetterRecord)
+        .filter(DeadLetterRecord.id == dlq_id, DeadLetterRecord.tenant_id == user.tenant_id)
+        .first()
+    )
+    if not dlq:
+        raise DomainError(ErrorCode.NOT_FOUND, "Dead-letter record not found", status_code=404)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.replay_dlq_item(dlq, resolution_notes=body.resolution_notes)
+    db.commit()
+    return res
+
+
+@router.post("/orchestration/dlq/{dlq_id}/compensate")
+def compensate_dlq_record(
+    dlq_id: str,
+    body: DLQActionRequest = DLQActionRequest(),
+    user: UserContext = Depends(require_roles(Role.CLAIMS_MANAGER, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    dlq = (
+        db.query(DeadLetterRecord)
+        .filter(DeadLetterRecord.id == dlq_id, DeadLetterRecord.tenant_id == user.tenant_id)
+        .first()
+    )
+    if not dlq:
+        raise DomainError(ErrorCode.NOT_FOUND, "Dead-letter record not found", status_code=404)
+    claim = db.query(Claim).filter(Claim.id == dlq.claim_id).first()
+    if not claim:
+        raise DomainError(ErrorCode.NOT_FOUND, "Claim not found", status_code=404)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.run_compensation(claim, trigger_reason=f"DLQ {dlq.task_key}: {body.resolution_notes}")
+    db.commit()
+    return res
+
+
+@router.post("/orchestration/sla/sweep")
+def run_sla_sweep(
+    claim_id: str | None = None,
+    user: UserContext = Depends(require_roles(Role.CLAIMS_HANDLER, Role.CLAIMS_MANAGER, Role.AUDITOR, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    res = sweep_sla_breaches(db, tenant_id=user.tenant_id, claim_id=claim_id)
+    db.commit()
+    return res
 
 
 @router.get("/auth/users")

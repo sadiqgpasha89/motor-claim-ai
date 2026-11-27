@@ -142,13 +142,25 @@ export default function CommandCentrePage() {
           className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
         >
           <option value="">All Statuses</option>
+          <option value="SUBMITTED">SUBMITTED</option>
           <option value="REGISTERED">REGISTERED</option>
+          <option value="VALIDATION">VALIDATION</option>
+          <option value="TRIAGE">TRIAGE</option>
+          <option value="FAST_TRACK">FAST_TRACK</option>
+          <option value="SURVEY_REQUIRED">SURVEY_REQUIRED</option>
+          <option value="INVESTIGATION_REQUIRED">INVESTIGATION_REQUIRED</option>
+          <option value="HUMAN_REVIEW">HUMAN_REVIEW</option>
+          <option value="ASSESSMENT">ASSESSMENT</option>
+          <option value="ESTIMATE_VALIDATION">ESTIMATE_VALIDATION</option>
+          <option value="SETTLEMENT_PENDING_APPROVAL">SETTLEMENT_PENDING_APPROVAL</option>
+          <option value="APPROVED">APPROVED</option>
+          <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
+          <option value="PAYMENT_RECONCILIATION">PAYMENT_RECONCILIATION</option>
           <option value="EVIDENCE_PENDING">EVIDENCE_PENDING</option>
           <option value="TRIAGED">TRIAGED</option>
           <option value="SURVEY_ASSIGNED">SURVEY_ASSIGNED</option>
           <option value="ESTIMATE_REVIEW">ESTIMATE_REVIEW</option>
           <option value="APPROVAL_PENDING">APPROVAL_PENDING</option>
-          <option value="APPROVED">APPROVED</option>
           <option value="PAYMENT_INITIATED">PAYMENT_INITIATED</option>
           <option value="REPAIR_IN_PROGRESS">REPAIR_IN_PROGRESS</option>
           <option value="CLARIFICATION_REQUESTED">CLARIFICATION_REQUESTED</option>

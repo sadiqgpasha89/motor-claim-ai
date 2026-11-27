@@ -32,10 +32,22 @@ interface SLARow {
   daily_penalty_inr: string;
 }
 
+interface DLQRow {
+  id: string;
+  claim_id: string;
+  task_key: string;
+  agent_or_service: string;
+  state_at_failure: string;
+  failure_reason: string;
+  attempt_count: number;
+  status: string;
+}
+
 export default function OperationsPage() {
   const { token } = useAuth();
   const [adapters, setAdapters] = useState<AdapterRow[]>([]);
   const [outbox, setOutbox] = useState<OutboxRow[]>([]);
+  const [dlq, setDlq] = useState<DLQRow[]>([]);
   const [sla, setSla] = useState<{ summary: Record<string, number>; timers: SLARow[] } | null>(null);
   const [analytics, setAnalytics] = useState<Record<string, unknown> | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -54,6 +66,9 @@ export default function OperationsPage() {
     apiFetch<Record<string, unknown>>("/api/v1/operations/analytics", {}, token)
       .then(setAnalytics)
       .catch(() => {});
+    apiFetch<{ items: DLQRow[] }>("/api/v1/orchestration/dlq", {}, token)
+      .then((r) => setDlq(r.items))
+      .catch(() => {});
   }, [token]);
 
   useEffect(() => {
@@ -63,6 +78,27 @@ export default function OperationsPage() {
   const retryOutbox = async (id: string) => {
     if (!token) return;
     await apiFetch(`/api/v1/operations/outbox/${id}/retry`, { method: "POST" }, token);
+    loadAll();
+  };
+
+  const replayDlq = async (id: string) => {
+    if (!token) return;
+    await apiFetch(`/api/v1/orchestration/dlq/${id}/replay`, { method: "POST", body: JSON.stringify({ resolution_notes: "Replayed from Operations Console" }) }, token);
+    setMsg(`Replayed DLQ task ${id}.`);
+    loadAll();
+  };
+
+  const compensateDlq = async (id: string) => {
+    if (!token) return;
+    await apiFetch(`/api/v1/orchestration/dlq/${id}/compensate`, { method: "POST", body: JSON.stringify({ resolution_notes: "Compensated from Operations Console" }) }, token);
+    setMsg(`Executed compensation saga for DLQ task ${id}.`);
+    loadAll();
+  };
+
+  const sweepSla = async () => {
+    if (!token) return;
+    const res = await apiFetch<{ breached_count: number; warning_count: number }>("/api/v1/orchestration/sla/sweep", { method: "POST" }, token);
+    setMsg(`SLA sweep completed: ${res.breached_count} breached, ${res.warning_count} warning.`);
     loadAll();
   };
 
@@ -125,9 +161,18 @@ export default function OperationsPage() {
 
       {sla && (
         <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
-          <h2 className="text-base font-bold text-slate-900">
-            Active SLA Timers (Breached: {sla.summary.breached}, Warning: {sla.summary.warning})
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-bold text-slate-900">
+              Active SLA Timers (Breached: {sla.summary.breached}, Warning: {sla.summary.warning})
+            </h2>
+            <button
+              type="button"
+              onClick={sweepSla}
+              className="px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-lg"
+            >
+              Run SLA Breach Sweep
+            </button>
+          </div>
           <div className="space-y-2">
             {sla.timers.map((t) => (
               <div key={t.id} className="p-3 border border-slate-200 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -141,6 +186,43 @@ export default function OperationsPage() {
           </div>
         </div>
       )}
+
+      <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+        <h2 className="text-base font-bold text-slate-900">
+          Orchestration Dead-Letter Queue (DLQ) ({dlq.length})
+        </h2>
+        <div className="space-y-2">
+          {dlq.map((d) => (
+            <div key={d.id} className="p-3 border border-slate-200 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div>
+                <div className="font-bold text-slate-900">
+                  <code>{d.task_key}</code> ({d.agent_or_service}) · State: {d.state_at_failure} · Attempts: {d.attempt_count} · Status: <span className="uppercase">{d.status}</span>
+                </div>
+                <div className="text-slate-600 mt-0.5">{d.failure_reason}</div>
+              </div>
+              {d.status === "open" && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => replayDlq(d.id)}
+                    className="px-2.5 py-1 bg-slate-900 text-white rounded font-semibold"
+                  >
+                    Replay Task
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => compensateDlq(d.id)}
+                    className="px-2.5 py-1 bg-rose-700 text-white rounded font-semibold"
+                  >
+                    Compensate
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {dlq.length === 0 && <p className="text-xs text-slate-500">Zero items in orchestration DLQ.</p>}
+        </div>
+      </div>
 
       <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
         <h2 className="text-base font-bold text-slate-900">Transactional Outbox Events</h2>

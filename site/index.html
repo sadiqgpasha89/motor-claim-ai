@@ -1,304 +1,561 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MotorClaim AI Intelligence Solution — Architecture, Pipelines & Guide</title>
-  <meta name="description" content="Enterprise Agentic AI Motor-Insurance Claims Intelligence, Automation & Decision-Support Platform (India-first, IRDAI 2024 aligned)." />
-  <style>
-    :root {
-      --bg: #f8fafc;
-      --surface: #ffffff;
-      --ink: #0f172a;
-      --muted: #475569;
-      --border: #e2e8f0;
-      --accent: #0f172a;
-      --blue: #1d4ed8;
-      --blue-soft: #eff6ff;
-      --emerald: #047857;
-      --emerald-soft: #ecfdf5;
-      --amber: #b45309;
-      --amber-soft: #fffbeb;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      line-height: 1.6;
-    }
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .banner {
-      background: #451a03;
-      color: #fef3c7;
-      font-size: 12px;
-      padding: 8px 20px;
-      text-align: center;
-      font-weight: 500;
-    }
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      position: sticky;
-      top: 0;
-      z-index: 20;
-    }
-    .nav-wrap {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 14px 20px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .brand {
-      font-weight: 800;
-      font-size: 18px;
-      color: var(--ink);
-      letter-spacing: -0.02em;
-    }
-    .nav-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .nav-links a { color: var(--muted); }
-    .nav-links a:hover { color: var(--ink); }
-    .container {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 28px 20px 64px;
-    }
-    .hero {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: #f8fafc;
-      border-radius: 16px;
-      padding: 40px 32px;
-      margin-bottom: 28px;
-    }
-    .hero .pill {
-      display: inline-block;
-      font-size: 12px;
-      font-weight: 700;
-      background: rgba(59, 130, 246, 0.22);
-      color: #bfdbfe;
-      border: 1px solid rgba(147, 197, 253, 0.35);
-      padding: 4px 10px;
-      border-radius: 999px;
-      margin-bottom: 12px;
-    }
-    .hero h1 {
-      margin: 0 0 12px;
-      font-size: clamp(26px, 4vw, 38px);
-      line-height: 1.2;
-      letter-spacing: -0.02em;
-    }
-    .hero p {
-      margin: 0 0 22px;
-      color: #cbd5e1;
-      max-width: 820px;
-      font-size: 16px;
-    }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
-    .btn {
-      display: inline-block;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      border: 1px solid transparent;
-    }
-    .btn-primary { background: #ffffff; color: #0f172a; }
-    .btn-secondary { background: rgba(255,255,255,0.1); color: #ffffff; border-color: rgba(255,255,255,0.25); }
-    .btn:hover { text-decoration: none; opacity: 0.92; }
-    .grid-4 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-      gap: 18px;
-    }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-    }
-    .stat-num { font-size: 28px; font-weight: 800; color: var(--ink); }
-    .stat-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
-    section { margin-top: 38px; }
-    h2 {
-      font-size: 22px;
-      margin: 0 0 8px;
-      letter-spacing: -0.01em;
-    }
-    .section-sub { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-    .tab-btn {
-      padding: 8px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .tab-btn.active {
-      background: var(--ink);
-      color: #ffffff;
-      border-color: var(--ink);
-    }
-    .diagram-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      overflow-x: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      font-size: 13px;
-    }
-    th, td {
-      padding: 11px 14px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    th {
-      background: #f1f5f9;
-      font-weight: 700;
-      color: var(--ink);
-      font-size: 12px;
-      text-transform: uppercase;
-    }
-    code {
-      background: #f1f5f9;
-      padding: 2px 5px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-    pre {
-      background: #0f172a;
-      color: #e2e8f0;
-      padding: 16px;
-      border-radius: 10px;
-      overflow-x: auto;
-      font-size: 13px;
-    }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-    .badge-blue { background: var(--blue-soft); color: var(--blue); }
-    .badge-green { background: var(--emerald-soft); color: var(--emerald); }
-    .badge-amber { background: var(--amber-soft); color: var(--amber); }
-    .sim-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
-    .sim-row label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    input[type="number"], select {
-      padding: 6px 10px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      font-size: 13px;
-    }
-    footer {
-      margin-top: 56px;
-      padding-top: 20px;
-      border-top: 1px solid var(--border);
-      font-size: 13px;
-      color: var(--muted);
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .hidden { display: none; }
-  </style>
+  <title>MotorClaim AI Intelligence Solution — Autonomous Claims Workflow &amp; Architecture</title>
+  <meta name="description"
+    content="Interactive claim-centric business automation showcase for MotorClaim AI: 8 autonomous claims operations from FNOL to Closure, 11 tool-permissioned agents, IRDAI 2024 rules, failure fallbacks, and deterministic settlement." />
+  <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
   <div class="banner">
-    DEMO / SYNTHETIC ENVIRONMENT — India-First IRDAI 2024 Controls · Deterministic Decimal Math · Human-in-the-Loop Governance
+    DEMO / SYNTHETIC ENVIRONMENT — India-First IRDAI 2024 Controls · Deterministic Decimal Math · Human-in-the-Loop
+    Governance
   </div>
 
   <header>
     <div class="nav-wrap">
-      <a href="#top" class="brand">MotorClaim AI Intelligence</a>
+      <a href="#top" class="brand">
+        <span class="brand-mark">MC</span>
+        <span>MotorClaim AI Intelligence</span>
+      </a>
       <nav class="nav-links" aria-label="Site navigation">
+        <a href="#workflow">Live Claim Workflow</a>
+        <a href="#orchestrator">Orchestration Engine</a>
+        <a href="#capabilities">Actions &amp; Decisions</a>
+        <a href="#lifecycle">Execution Chain</a>
+        <a href="#visitors">Q&amp;A &amp; Failures</a>
         <a href="#architecture">System Design</a>
-        <a href="#agents">11 Bounded Agents</a>
+        <a href="#agents">11-Agent Matrix</a>
         <a href="#pipelines">Pipelines</a>
-        <a href="#classes">Class Diagrams</a>
-        <a href="#calculator">Settlement Simulator</a>
-        <a href="#scenarios">Demo &amp; Guide</a>
-        <a href="#docs">Docs &amp; Medium Article</a>
+        <a href="#calculator">Settlement Sim</a>
       </nav>
     </div>
   </header>
 
   <main id="top" class="container">
     <div class="hero">
-      <span class="pill">Enterprise Agentic AI Blueprint Implementation</span>
-      <h1>MotorClaim AI Intelligence Solution</h1>
+      <span class="pill">Claim Orchestration Engine + Governed Agentic AI</span>
+      <h1>Enterprise Claim Orchestration Engine &amp; Verifiable AI Execution</h1>
       <p>
-        An enterprise, human-accountable motor-insurance claims platform combining a deterministic Python
-        <code>Decimal</code> &amp; IRDAI rules core with 11 tool-permissioned specialised AI agents,
-        hybrid policy-clause RAG, explainable SIU fraud governance, maker-checker approvals, and idempotent payment reconciliation.
+        Agents never independently decide what the overall claim workflow should do. A first-class
+        <strong>Claim Orchestration Engine</strong> (<code>services/workflow/orchestrator.py</code>) owns every
+        deterministic state transition, DAG task schedule, parallel execution wave, exponential-backoff retry, timeout,
+        human approval gate, Dead-Letter Queue (DLQ), compensation saga, SLA timer, duplicate-event guard, and
+        pause/resume checkpoint — coordinating <strong>11 tool-permissioned agents</strong> and deterministic Python
+        <code>Decimal</code> IRDAI 2024 rules.
       </p>
+
+      <div class="hero-lifecycle-strip" aria-label="Recommended Claim State Machine">
+        <span class="hero-op-pill">SUBMITTED</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">REGISTERED</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">VALIDATION</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">TRIAGE (4 Tracks)</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">ASSESSMENT</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">ESTIMATE_VALIDATION</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">SETTLEMENT_PENDING_APPROVAL</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">APPROVED</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">PAYMENT_PENDING</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">PAYMENT_RECONCILIATION</span>
+        <span class="hero-op-arrow">&rarr;</span>
+        <span class="hero-op-pill">CLOSED</span>
+      </div>
+
       <div class="btn-row">
-        <a class="btn btn-primary" href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank" rel="noopener">View GitHub Repository</a>
-        <a class="btn btn-secondary" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank" rel="noopener">Read Medium Article</a>
-        <a class="btn btn-secondary" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/how-it-works-guide.md" target="_blank" rel="noopener">Operator &amp; Demo Guide</a>
+        <a class="btn btn-primary" href="#orchestrator">Explore Claim Orchestration Engine</a>
+        <a class="btn btn-secondary" href="#workflow">Live Claim Workflow Explorer</a>
+        <a class="btn btn-secondary" href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank"
+          rel="noopener">View GitHub Repository</a>
+        <a class="btn btn-secondary"
+          href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank"
+          rel="noopener">Read Medium Article</a>
       </div>
     </div>
 
     <div class="grid-4">
       <div class="card">
-        <div class="stat-label">Specialised Agents</div>
-        <div class="stat-num">11</div>
-        <p class="section-sub" style="margin:6px 0 0;">Least-privilege tool allowlists + PII stripping + outage fallback</p>
+        <div class="stat-label">Orchestration Engine</div>
+        <div class="stat-num">15 States</div>
+        <p class="section-sub" style="margin:6px 0 0;">Orchestrator-owned transitions with 8-part state contracts, parallel waves &amp; pause/resume</p>
       </div>
       <div class="card">
-        <div class="stat-label">Role Workspaces</div>
-        <div class="stat-num">12 Personas</div>
-        <p class="section-sub" style="margin:6px 0 0;">Server-side RBAC + tenant &amp; partner ABAC isolation</p>
+        <div class="stat-label">Resilience &amp; Recovery</div>
+        <div class="stat-num">Backoff + DLQ</div>
+        <p class="section-sub" style="margin:6px 0 0;">Exponential backoff, Dead-Letter Queues, Saga compensation &amp; duplicate-event dedup</p>
+      </div>
+      <div class="card">
+        <div class="stat-label">Specialised Agents</div>
+        <div class="stat-num">11 Bounded</div>
+        <p class="section-sub" style="margin:6px 0 0;">Strict <code>allowed_tools</code> allowlists; agents cannot mutate overall workflow state</p>
       </div>
       <div class="card">
         <div class="stat-label">India IRDAI Controls</div>
         <div class="stat-num">&#8377;50,000</div>
-        <p class="section-sub" style="margin:6px 0 0;">Mandatory survey threshold, 24h/15d/7d/14d SLA timers</p>
-      </div>
-      <div class="card">
-        <div class="stat-label">Seeded Scenarios</div>
-        <div class="stat-num">12 Claims</div>
-        <p class="section-sub" style="margin:6px 0 0;">Primary E2E flow + 11 regulatory, EV, TP, SIU &amp; timeout edge cases</p>
+        <p class="section-sub" style="margin:6px 0 0;">Mandatory survey rule, 24h/15d/7d/14d SLAs, Maker-Checker DoA &amp; zero doc-block</p>
       </div>
     </div>
 
-    <section id="architecture">
-      <h2>System Design &amp; Two-Plane Architecture</h2>
+    <!-- SECTION 1: INTERACTIVE CLAIM-CENTRIC BUSINESS AUTOMATION -->
+    <section id="workflow">
+      <h2>1. Live Claim-Centric Business Automation Explorer</h2>
       <p class="section-sub">
-        Probabilistic AI accelerates extraction, retrieval, and anomaly triage, while deterministic services own state transitions, money calculations, and approvals.
+        Pick any synthetic claim or failure scenario below, then click <strong>Play Walkthrough</strong> or select any
+        operation/agent step to inspect its
+        <strong>execution status, evidence, agent output, confidence level, business rules applied, tools invoked,
+          failure behavior, and next action</strong>.
+      </p>
+
+      <div class="workflow-shell">
+        <div id="scenario-bar" class="scenario-bar" role="tablist" aria-label="Claim Workflow Scenarios"></div>
+
+        <div class="scenario-summary-bar">
+          <div id="scenario-summary" style="flex:1 1 520px;"></div>
+          <div class="player-controls">
+            <span id="step-counter" class="badge badge-slate">Step 1 / 13</span>
+            <button type="button" id="btn-prev-step" class="btn btn-outline btn-sm">&larr; Prev</button>
+            <button type="button" id="btn-play-walkthrough" class="btn btn-accent btn-sm">Play Walkthrough</button>
+            <button type="button" id="btn-next-step" class="btn btn-outline btn-sm">Next &rarr;</button>
+            <button type="button" id="btn-reset-step" class="btn btn-outline btn-sm">Reset</button>
+          </div>
+        </div>
+
+        <div class="chain-strip-label">
+          <span>8 Autonomous Claims Operations (Click any operation to jump)</span>
+          <span>Green = Autonomous OK · Amber = Human Gate · Red = Quarantine / Failure Guard</span>
+        </div>
+        <div id="ops-ribbon" class="ops-ribbon"></div>
+
+        <div class="chain-strip-label">
+          <span>Step-by-Step Execution Chain &amp; Dependencies (Click any node to inspect)</span>
+        </div>
+        <div id="chain-nodes" class="chain-nodes"></div>
+
+        <div id="stage-inspector"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 1B: FIRST-CLASS CLAIM ORCHESTRATION ENGINE -->
+    <section id="orchestrator">
+      <h2>2. Claim Orchestration Engine &amp; Deterministic Workflow Model</h2>
+      <p class="section-sub">
+        Agents do not decide what the overall workflow should do. The dedicated
+        <code>ClaimOrchestrator</code> (<code>services/workflow/orchestrator.py</code> +
+        <code>services/workflow/state_specs.py</code>) owns claim state transitions, task scheduling, dependency
+        resolution, parallel execution waves, exponential-backoff retries, DLQ, compensation sagas, SLA tracking,
+        duplicate-event protection, and pause/resume checkpoint recovery.
+      </p>
+
+      <h3>2.1 Twelve Enterprise Orchestrator Responsibilities</h3>
+      <div id="orch-responsibilities-grid" class="orch-resp-grid"></div>
+
+      <h3>2.2 Recommended Claim State Machine &amp; 8-Property State Contracts</h3>
+      <p class="section-sub" style="margin-bottom:12px;">
+        Deterministic states, AI-driven actions, controlled transitions. Click any state below to inspect its formal
+        <strong>Entry Conditions, Required Data, Allowed Actions, Exit Conditions, Responsible Agent/Service, SLA, Retry
+          Strategy, and Human Escalation Criteria</strong>.
+      </p>
+
+      <div class="diagram-box" style="margin-bottom:16px;">
+        <pre class="mermaid">
+flowchart TD
+    S0["SUBMITTED"] --> S1["REGISTERED"]
+    S1 --> S2["VALIDATION<br/><small>Parallel: Policy + Docs + Dup + Comm</small>"]
+    S2 --> S3["TRIAGE"]
+    S3 --> B1["FAST_TRACK"]
+    S3 --> B2["SURVEY_REQUIRED"]
+    S3 --> B3["INVESTIGATION_REQUIRED"]
+    S3 --> B4["HUMAN_REVIEW"]
+    B1 & B2 & B3 --> S4["ASSESSMENT<br/><small>Conditional Damage || Parallel Fraud</small>"]
+    B4 -.->|"Resolved / Resumed"| S2
+    S4 --> S5["ESTIMATE_VALIDATION"]
+    S5 --> S6["SETTLEMENT_PENDING_APPROVAL<br/><small>Maker-Checker DoA Gate</small>"]
+    S6 -->|"Approved"| S7["APPROVED"]
+    S7 --> S8["PAYMENT_PENDING<br/><small>Approval Gated</small>"]
+    S8 --> S9["PAYMENT_RECONCILIATION"]
+    S9 --> S10["CLOSED"]
+
+    classDef orch fill:#eff6ff,stroke:#3b82f6,color:#1e3a8a,stroke-width:1.5px;
+    classDef branch fill:#fffbeb,stroke:#f59e0b,color:#78350f,stroke-width:1.5px;
+    classDef gate fill:#ecfdf5,stroke:#10b981,color:#065f46,stroke-width:1.5px;
+    class S0,S1,S2,S3,S4,S5 orch;
+    class B1,B2,B3,B4,S6 branch;
+    class S7,S8,S9,S10 gate;
+        </pre>
+      </div>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div class="kv-label" style="margin-bottom:8px;">Select Any State to Inspect All 8 Formal State Contract Properties</div>
+        <div id="orch-state-strip" class="state-strip"></div>
+        <div id="orch-state-inspector"></div>
+      </div>
+
+      <h3>2.3 Task Scheduling, Dependencies &amp; Safe Parallel Execution Matrix</h3>
+      <p class="section-sub" style="margin-bottom:12px;">
+        After FNOL registration, the orchestrator fans out independent tasks concurrently via
+        <code>ThreadPoolExecutor</code> while gating sequential, conditional, and approval-gated steps deterministically.
+      </p>
+      <div class="table-wrap" style="margin-bottom:20px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Dependency</th>
+              <th>Execution Mode</th>
+              <th>Wave / Group</th>
+              <th>Responsible Agent / Service</th>
+            </tr>
+          </thead>
+          <tbody id="orch-task-schedule-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <h3 style="margin:0;">2.4 Interactive Orchestrator Resilience &amp; Saga Lab</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Simulate the exact runtime execution traces produced by <code>ClaimOrchestrator</code>.
+            </p>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-outline btn-sm" onclick="runOrchLab('parallel_wave')">Post-FNOL Parallel Wave</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="runOrchLab('duplicate_event')">Duplicate-Event Protection</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="runOrchLab('backoff_dlq')">Exp Backoff &rarr; DLQ &rarr; Replay</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="runOrchLab('pause_resume')">Pause &amp; Resume SLA</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="runOrchLab('compensation_saga')">Compensation Saga</button>
+          </div>
+        </div>
+        <div id="orch-lab-output" class="orch-lab-output"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: THREE CORE AGENTIC CAPABILITIES (A, B, C) -->
+    <section id="capabilities">
+      <h2>3. Bounded Action-Taking, Rework Loops &amp; Decision Intelligence</h2>
+      <p class="section-sub">
+        Upgrading our 11 bounded agents in-place without duplicating agents — adding strict dependency gating,
+        rework loops, safe tool-driven execution, and complete decision explainability.
+      </p>
+
+      <div class="grid-3" style="margin-bottom:20px;">
+        <div class="card">
+          <span class="badge badge-blue">A. Agent-to-Agent Orchestration</span>
+          <h3 style="margin-top:8px;">Dependency-Gated DAG &amp; Recovery</h3>
+          <ul class="lane-list">
+            <li><strong>Structured Publications:</strong> Every agent publishes typed <code>published_result</code> payloads onto the workflow ledger.</li>
+            <li><strong>Strict Dependency Gating:</strong> Downstream stages return <code>409 BLOCKED_DEPENDENCY</code> until upstream prerequisites succeed.</li>
+            <li><strong>Rework Protocol:</strong> Coverage, Estimate Validation, and QA Compliance emit typed <code>ReworkRequest</code>s back to earlier stages and invalidate stale downstream outputs.</li>
+            <li><strong>Retries, Timeouts &amp; Recovery:</strong> Auto-retries transient timeouts, creates critical escalation tasks, and resumes from checkpoint via <code>/orchestration/recover</code>.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="badge badge-green">B. Action-Taking Agents</span>
+          <h3 style="margin-top:8px;">Safe Execution via Controlled Tools</h3>
+          <ul class="lane-list">
+            <li><code>create_claim_task</code> &amp; <code>request_documents</code>: Persists prioritized tasks and sends missing-doc/recapture checklists.</li>
+            <li><code>schedule_inspection</code>, <code>notify_garage</code> &amp; <code>dispatch_towing</code>: Books lowest-load verified surveyors, honours garage preferences (with EV safety override), and dispatches flatbed towing.</li>
+            <li><code>update_claim_status</code>: Transitions states strictly through <code>validate_transition()</code>.</li>
+            <li><code>generate_approval_request</code> &amp; <code>initiate_approved_payment</code>: Generates Maker-Checker DoA tasks and releases payouts only after Finance + Checker sign-off.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="badge badge-purple">C. Decision Intelligence</span>
+          <h3 style="margin-top:8px;">Transparent Why-Path Ledger</h3>
+          <ul class="lane-list">
+            <li><strong>Evidence &amp; Citations:</strong> Links exact extracted facts, SHA-256 hashes, rate-card benchmarks, and policy clauses.</li>
+            <li><strong>Reason Codes &amp; Confidence:</strong> Machine-readable codes (<code>RC_REPAIR_VS_REPLACE_REWORK</code>, <code>RC_EV_GARAGE_SAFETY_OVERRIDE</code>) + calibrated scores.</li>
+            <li><strong>Routing Outcome &amp; Alternatives:</strong> Shows chosen route alongside rejected/considered alternatives.</li>
+            <li><strong>Interactive Demo:</strong> Click <button type="button" class="btn btn-outline btn-sm" onclick="loadScenarioIntoWorkflow('rework-0007')">Inspect Rework &amp; Actions Flow</button> above!</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart LR
+    P1["1. fnol_concierge"] --> P2["2. document_intelligence"]
+    P2 --> P3["3. coverage_intelligence"]
+    P3 --> P4["4. claim_triage"]
+    P4 --> P5["5. provider_coordination"]
+    P4 --> P6["6. damage_assessment"]
+    P6 --> P7["7. estimate_validation"]
+    P7 --> P8["8. fraud_intelligence"]
+    P3 & P5 & P7 & P8 --> P9["9. settlement_recommendation"]
+    P4 --> P10["10. customer_communication"]
+    P9 --> P11["11. qa_compliance"]
+
+    P3 -.->|"ReworkRequest: Identity Conflict"| P2
+    P7 -.->|"ReworkRequest: Repair vs Replace"| P6
+    P11 -.->|"ReworkRequest: Failed QA Control"| P7
+    P6 -.->|"Timeout Retry -> Escalate -> Recover"| REC["Orchestrator Recovery"]
+        </pre>
+      </div>
+    </section>
+
+    <!-- SECTION 3: TARGET MOTOR CLAIM LIFECYCLE & DEPENDENCY GRAPH -->
+    <section id="lifecycle">
+      <h2>3. Target Motor Claim Lifecycle &amp; Execution Chain</h2>
+      <p class="section-sub">
+        End-to-end orchestration from customer accident intimation through specialist agent handoffs, conditional human
+        DoA approval, idempotent payment execution, reconciliation, and compliance closure.
+      </p>
+
+      <div class="diagram-box" style="margin-bottom:18px;">
+        <pre class="mermaid">
+flowchart TD
+    FNOL["Customer reports accident / FNOL"] --> A1["Claim Intake Agent<br/><small>fnol_concierge</small>"]
+    A1 --> A2["Document Intelligence Agent<br/><small>document_intelligence</small>"]
+    A2 --> A3["Policy &amp; Coverage Agent<br/><small>coverage_intelligence</small>"]
+    A3 --> A4["Claim Triage Agent<br/><small>claim_triage</small>"]
+    A4 --> A5["Damage Assessment Agent<br/><small>damage_assessment</small>"]
+    A5 --> A6["Repair Estimate Validation<br/><small>estimate_validation</small>"]
+    A6 --> A7["Fraud Intelligence Agent<br/><small>fraud_intelligence</small>"]
+    A7 --> A8["Surveyor / Garage Coordination<br/><small>provider_coordination</small>"]
+    A8 --> A9["Settlement Recommendation<br/><small>settlement_recommendation</small>"]
+    A9 --> DEC{"Approval required?"}
+    DEC -->|"Yes (Mandatory under IN-DOA-MATRIX-2026)"| HUM["Human Claims Officer<br/><small>Maker-Checker DoA Gate</small>"]
+    HUM -->|"Approved"| PAY["Payment Agent<br/><small>Idempotent Finance Adapter</small>"]
+    DEC -.->|"No (If Pre-Approved Auto Tier Enabled)"| PAY
+    PAY --> REC["Reconciliation Agent<br/><small>Safe Timeout &amp; UTR Sync</small>"]
+    REC --> QA["Quality &amp; Closure Agent<br/><small>qa_compliance + comm</small>"]
+
+    classDef pill fill:#e5f3ff,stroke:#93c5fd,color:#004f99,stroke-width:1px;
+    classDef dec fill:#f5faff,stroke:#94a3b8,stroke-dasharray:4 2,color:#004f99;
+    classDef human fill:#fffbeb,stroke:#f59e0b,color:#78350f,stroke-width:1.5px;
+    classDef settle fill:#ecfdf5,stroke:#34d399,color:#065f46,stroke-width:1px;
+
+    class FNOL,A1,A2,A3,A4,A5,A6,A7,A8,A9 pill;
+    class DEC dec;
+    class HUM human;
+    class PAY,REC,QA settle;
+        </pre>
+        <p class="section-sub" style="margin:12px 0 0; font-size:12.5px;">
+          <strong>Implementation Note:</strong> In <code>agents/specialists.py</code>,
+          <code>settlement_recommendation</code> always returns <code>status=needs_human</code> so
+          <code>Approval required?</code> enforces <strong>Yes &rarr; Human Claims Officer</strong> under
+          <code>IN-DOA-MATRIX-2026</code>. Payment &amp; Reconciliation run via deterministic Finance-gated adapters
+          (<code>apps/api/routes/claims.py</code> + <code>services/integrations/adapters.py</code>) rather than
+          probabilistic LLMs.
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Operation</th>
+              <th>Lifecycle Node &amp; Code</th>
+              <th>Upstream Dependency</th>
+              <th>Autonomous Outcome</th>
+              <th>Human Gate / Escalation Condition</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-blue">1. FNOL</span></td>
+              <td><strong>Claim Intake Agent</strong><br /><code>fnol_concierge</code></td>
+              <td>Customer FNOL submission + <code>Idempotency-Key</code></td>
+              <td>Creates <code>REGISTERED</code> claim, checklists missing docs, starts 24h SLA timer</td>
+              <td>Never blocks intake; missing fields return <code>insufficient_evidence</code> follow-up</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">2. Validation</span></td>
+              <td><strong>Document Intelligence</strong><br /><code>document_intelligence</code></td>
+              <td><code>EvidenceUploaded</code> + <code>sanitizer.py</code> clean binary</td>
+              <td>Extracts RC/DL/Policy fields, bounding boxes &amp; image quality</td>
+              <td>RC/policy mismatch or prompt injection sets <code>NEEDS_HUMAN</code>
+                (<code>CLARIFICATION_REQUESTED</code>)</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">2. Validation</span></td>
+              <td><strong>Policy &amp; Coverage</strong><br /><code>coverage_intelligence</code></td>
+              <td>Matched Policy + <code>HybridPolicyRetriever</code></td>
+              <td>Produces clause-cited coverage factsheet (<code>POL-WORDING-PC/EV</code>)</td>
+              <td>Inactive policy, period gap, or TP injury routes to Handler / Legal review</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">3. Triage</span></td>
+              <td><strong>Claim Triage Agent</strong><br /><code>claim_triage</code></td>
+              <td>Coverage factsheet + loss/peril/EV/TP signals</td>
+              <td>Assigns queue &amp; sets <code>requires_mandatory_survey</code> (&ge;&#8377;50,000)</td>
+              <td>TP bodily injury &rarr; <code>legal_tp_specialist</code>; EV HV &rarr; <code>ev_specialist</code></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">4. Assessment</span></td>
+              <td><strong>Damage Assessment</strong><br /><code>damage_assessment</code></td>
+              <td>6-angle vehicle images + incident text</td>
+              <td>Splits <code>visible_observed</code> vs <code>inferred_possible</code> damage</td>
+              <td>Dark/blurry photos or &gt;3 missing angles request guided recapture</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-blue">4. Assessment</span></td>
+              <td><strong>Repair Estimate Validation</strong><br /><code>estimate_validation</code></td>
+              <td>Garage quote + <code>RC-IN-2026-DEMO-V1</code> rate card</td>
+              <td>Zeros duplicate lines &amp; caps &gt;12% variances in recommended total</td>
+              <td>Any anomaly flags <code>NEEDS_HUMAN</code> for Adjuster/Surveyor line approval</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-amber">5. Investigation</span></td>
+              <td><strong>Fraud Intelligence</strong><br /><code>fraud_intelligence</code></td>
+              <td>Estimate anomalies, SHA-256 reuse, policy age</td>
+              <td>Generates alert-only leads with benign explanations; clean claims pass</td>
+              <td>Any indicator routes to restricted <code>SIU Desk</code> (blocks L1 approval until cleared)</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-amber">5. Investigation</span></td>
+              <td><strong>Surveyor / Garage Coord</strong><br /><code>provider_coordination</code></td>
+              <td>Mandatory survey / EV capability requirement</td>
+              <td>Ranks lowest-load verified IIISLA surveyor &amp; EV-certified garage</td>
+              <td>Licensed surveyor submits signed report within 15-day IRDAI SLA</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-amber">6. Settlement</span></td>
+              <td><strong>Settlement &amp; Human Officer</strong><br /><code>settlement_recommendation</code></td>
+              <td>Signed survey + approved estimate lines</td>
+              <td>Runs Python <code>Decimal</code> depreciation, waivers &amp; CTL (&ge;75% IDV)</td>
+              <td><strong>Always</strong> requires independent Maker-Checker DoA sign-off (self-approval =
+                <code>403</code>)
+              </td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">7. Payment</span></td>
+              <td><strong>Payment &amp; Reconciliation</strong><br /><code>IntegrationAdapterRegistry</code></td>
+              <td><code>settlement.approval_status == "approved"</code></td>
+              <td>Bank penny-drop + idempotent payout + safe timeout reconciliation</td>
+              <td>Finance Approver initiates; timeouts lock in <code>timeout_reconcile_pending</code></td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-green">8. Closure</span></td>
+              <td><strong>Quality &amp; Closure Agent</strong><br /><code>qa_compliance</code> + <code>comm</code></td>
+              <td>Confirmed payment UTR + repair handover</td>
+              <td>Verifies zero open grievances &amp; payment parity; sends closure notice</td>
+              <td>Blocks closure with <code>409 STATE_CONFLICT</code> if any control fails</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 4: VISITOR 8 QUESTIONS, AUTONOMY VS HUMAN REVIEW & FAILURE PLAYBOOK -->
+    <section id="visitors">
+      <h2>4. What Insurers, Hiring Managers &amp; Architects Need to Know</h2>
+      <p class="section-sub">
+        Direct operational answers to the eight questions every technical evaluator or insurance executive asks when
+        inspecting an agentic claims platform.
+      </p>
+
+      <div id="questions-grid" class="grid-2" style="margin-bottom:22px;"></div>
+
+      <div class="grid-2" style="margin-bottom:22px;">
+        <div class="lane-card lane-auto">
+          <span class="badge badge-green">Autonomous Execution Lane (Zero Manual Effort)</span>
+          <h3 style="margin-top:8px;">How a Claim Moves Forward Without a Human Doing Every Step</h3>
+          <ul class="lane-list">
+            <li><strong>Idempotent FNOL Registration:</strong> Duplicate retries replay safely; missing documents
+              generate checklists without stalling intake.</li>
+            <li><strong>Automated Evidence Quarantine:</strong> Magic-byte MIME verification, EICAR malware checks,
+              SHA-256 hashing, and prompt-injection stripping run automatically on upload.</li>
+            <li><strong>Policy Clause RAG &amp; Triage:</strong> Hybrid TF-IDF + keyword search retrieves exact UIN
+              clauses while deterministic IRDAI ₹50k rules assign queues and SLA timers.</li>
+            <li><strong>Vision + Rate-Card Checking:</strong> 6-angle image completeness, visible damage tagging, and
+              OEM rate-card variance checks run automatically on garage quotes.</li>
+            <li><strong>Decimal Settlement Prep &amp; QA:</strong> Line-item depreciation, Zero-Dep waivers, and
+              pre-closure payment/grievance checks compute deterministically.</li>
+          </ul>
+        </div>
+
+        <div class="lane-card lane-human">
+          <span class="badge badge-amber">Human-in-the-Loop Authority Lane (High-Judgment Only)</span>
+          <h3 style="margin-top:8px;">What the Human Claims Officer Actually Needs to Review</h3>
+          <ul class="lane-list">
+            <li><strong>Document &amp; Security Exceptions:</strong> Verifying mismatched RC plates
+              (<code>CLM-0003</code>), quarantined prompt injections, or requesting daylight photo recaptures
+              (<code>CLM-0004</code>).</li>
+            <li><strong>Estimate Discrepancies &amp; Supplements:</strong> Accepting, amending, or rejecting flagged
+              duplicate lines, &gt;12% rate variances (<code>CLM-0001</code>), or hidden teardown damage
+              (<code>CLM-0007</code>).</li>
+            <li><strong>SIU Fraud Disposition:</strong> Inspecting explainable indicators + benign explanations and
+              marking <code>substantiated</code> vs <code>not_substantiated</code> (<code>CLM-0008</code>).</li>
+            <li><strong>Independent Maker-Checker DoA:</strong> Approving payouts within role limits (L1 &#8377;75k, L2
+              &#8377;5L, Legal TP &#8377;15L) — same-user approval blocked with <code>403</code>.</li>
+            <li><strong>Finance Release &amp; Timeout Recon:</strong> Releasing idempotent payouts and reconciling
+              timed-out gateway instructions (<code>CLM-0009</code>).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>What Happens When an Agent or Dependency Fails? (Resilience &amp; Safety Matrix)</h3>
+        <div class="table-wrap" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Failure / Adversarial Mode</th>
+                <th>Platform Detection Mechanism</th>
+                <th>System Behavior &amp; Claim Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>LLM / Vision Model Outage</strong></td>
+                <td><code>ModelGateway</code> raises <code>ModelOutageError</code> (circuit open)</td>
+                <td><code>BoundedAgent.execute()</code> catches error and returns <code>status="needs_human"</code>,
+                  <code>confidence=0.0</code>, <code>fallback_mode="manual_workflow"</code>. FNOL, Decimal math &amp;
+                  DoA approvals keep running normally.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Agent Calls Unauthorized Tool</strong></td>
+                <td><code>BoundedAgent.call_tool()</code> allowlist check</td>
+                <td>Raises <code>ToolPermissionError</code> immediately; agents cannot read raw DB tables outside scope
+                  or trigger payments.</td>
+              </tr>
+              <tr>
+                <td><strong>Prompt Injection in Uploaded PDF</strong></td>
+                <td><code>sanitize_untrusted_text()</code> regex filter</td>
+                <td>Replaces attack directive with <code>[FILTERED_UNTRUSTED_DIRECTIVE]</code>, sets
+                  <code>prompt_injection_flagged=true</code>, forces <code>DocumentIntelligence</code> to
+                  <code>NEEDS_HUMAN</code>.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Payment Gateway Timeout</strong></td>
+                <td><code>IntegrationAdapterRegistry.execute_payment()</code></td>
+                <td>Persists <code>timeout_reconcile_pending</code> (<code>PG-PEND-*</code>). Re-submitting same
+                  <code>Idempotency-Key</code> replays existing record cleanly; Finance resolves via
+                  <code>POST /reconcile</code>.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Self-Approval or Bulk Approval</strong></td>
+                <td><code>validate_approval_authority()</code> &amp; <code>/approvals/bulk</code></td>
+                <td>Returns <code>403 NOT_AUTHORISED</code> immediately; enforces independent Checker and individual
+                  claim review.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: SYSTEM DESIGN -->
+    <section id="architecture">
+      <h2>6. System Design &amp; Orchestrator-First Architecture</h2>
+      <p class="section-sub">
+        The dedicated Claim Orchestration Engine owns claim progression, scheduling, retries, DLQ, compensation, and
+        state transitions; probabilistic AI accelerates bounded sub-tasks without controlling workflow authority.
       </p>
       <div class="diagram-box">
         <pre class="mermaid">
@@ -311,13 +568,17 @@ flowchart TB
         GW["Correlation-ID Middleware &amp; Error Catalogue"]
         SEC["JWT Auth · Tenant/Partner ABAC · PII Masking · Prompt-Injection &amp; EICAR Filter"]
     end
+    subgraph Orch["First-Class Claim Orchestration Engine (services/workflow/)"]
+        ENGINE["ClaimOrchestrator: State Transitions · Parallel Waves · Exp Backoff · Pause/Resume"]
+        SPECS["StateContracts (15 States x 8 Props) · Task DAG · Event Dedup · DLQ · Compensation Saga"]
+    end
     subgraph Core["Deterministic Domain Core"]
         SM["Claim State Machine &amp; SLA Timers"]
         RULES["Versioned IRDAI Rules &amp; Hybrid Policy RAG"]
         CALC["Decimal Settlement Calculator &amp; Maker-Checker DoA"]
         AUDIT["Append-Only SHA-256 Audit &amp; Transactional Outbox"]
     end
-    subgraph AI["Bounded AI Plane"]
+    subgraph AI["Bounded AI Plane (No Direct State Control)"]
         MGW["Model Gateway (Stub / Gemini / Anthropic + Outage Fallback)"]
         AGENTS["11 Tool-Permissioned BoundedAgents"]
     end
@@ -328,66 +589,68 @@ flowchart TB
     end
     WEB --> GW
     APIEXT --> GW
-    GW --> SEC --> SM
-    SM --> RULES
-    SM --> CALC
-    SM --> AUDIT
-    SM --> AGENTS
+    GW --> SEC --> ENGINE
+    ENGINE --> SPECS
+    ENGINE --> SM
+    ENGINE --> RULES
+    ENGINE --> CALC
+    ENGINE --> AUDIT
+    ENGINE -->|"Schedules &amp; Gates"| AGENTS
     AGENTS --> MGW
-    SM --> DB
+    ENGINE --> DB
     SM --> VAULT
-    SM --> ADAPT
+    ENGINE --> ADAPT
         </pre>
       </div>
     </section>
 
+    <!-- SECTION 6: 11 BOUNDED AGENTS CAPABILITY MATRIX -->
     <section id="agents">
-      <h2>11 Bounded Specialised Agents</h2>
+      <h2>6. Upgraded 11-Agent Capability Matrix &amp; Contracts</h2>
       <p class="section-sub">
-        Implemented in <code>agents/specialists.py</code> inheriting from <code>BoundedAgent</code>. Calling any tool outside <code>allowed_tools</code> raises <code>ToolPermissionError</code>.
+        Implemented in-place in <code>agents/specialists.py</code> and <code>services/agent_runtime/contracts.py</code>
+        (no duplicate agents). Click any agent row below to inspect its formal Input/Output Contract and human gate.
       </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Agent</th>
-            <th>Allowed Tools</th>
-            <th>Hard Safety &amp; Governance Boundary</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td><code>fnol_concierge</code></td><td><code>create_intimation</code>, <code>policy_lookup</code>, <code>faq_retrieval</code>, <code>request_upload</code></td><td>Never blocks registration for missing docs; cannot decide coverage</td></tr>
-          <tr><td><code>document_intelligence</code></td><td><code>evidence_read</code>, <code>ocr_extract</code>, <code>schema_validate</code>, <code>duplicate_check</code></td><td>Quarantines prompt injection; marks OCR unverified until human review</td></tr>
-          <tr><td><code>coverage_intelligence</code></td><td><code>policy_read</code>, <code>policy_rag</code>, <code>deterministic_coverage_rules</code></td><td>Produces clause-cited factsheet; never repudiates autonomously</td></tr>
-          <tr><td><code>claim_triage</code></td><td><code>claim_facts_read</code>, <code>triage_rules_read</code>, <code>queue_recommend</code></td><td>Routes EV, TP injury, and &ge; &#8377;50k losses using operational signals only</td></tr>
-          <tr><td><code>damage_assessment</code></td><td><code>vision_model</code>, <code>image_quality_check</code>, <code>vehicle_taxonomy</code></td><td>Separates <code>visible_observed</code> vs <code>inferred_possible</code></td></tr>
-          <tr><td><code>estimate_validation</code></td><td><code>parts_catalogue</code>, <code>rate_card_read</code>, <code>estimate_parser</code>, <code>duplicate_line_rules</code></td><td>Flags duplicate lines &amp; &gt;12% variance without silently altering quotes</td></tr>
-          <tr><td><code>fraud_intelligence</code></td><td><code>fraud_feature_service</code>, <code>fraud_rules</code>, <code>entity_graph_query</code></td><td>Alert-only with benign explanations; never rejects or holds payout alone</td></tr>
-          <tr><td><code>provider_coordination</code></td><td><code>verified_roster_read</code>, <code>provider_scorecard</code>, <code>schedule_notify</code></td><td>Blocks unlicensed surveyors; respects customer garage selection</td></tr>
-          <tr><td><code>settlement_recommendation</code></td><td><code>deterministic_calculator</code>, <code>policy_facts_read</code>, <code>survey_report_read</code></td><td>Always returns <code>needs_human</code> for Maker-Checker DoA sign-off</td></tr>
-          <tr><td><code>customer_communication</code></td><td><code>approved_templates</code>, <code>communication_preference</code>, <code>claim_status_read</code></td><td>Adverse/legal communications require human approval before dispatch</td></tr>
-          <tr><td><code>qa_compliance</code></td><td><code>readonly_audit</code>, <code>workflow_read</code>, <code>rules_read</code>, <code>evidence_read</code></td><td>Read-only pre-closure check; cannot override failed controls</td></tr>
-        </tbody>
-      </table>
+      <div id="agent-contract-inspector" class="card" style="margin-bottom:14px;"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Agent &amp; Stage</th>
+              <th>Upgraded Capabilities</th>
+              <th>Operational Responsibility</th>
+              <th>Authorised Controlled Actions</th>
+              <th>DAG Dependencies &amp; Rework</th>
+            </tr>
+          </thead>
+          <tbody id="capabilities-matrix-body"></tbody>
+        </table>
+      </div>
     </section>
 
+    <!-- SECTION 7: PIPELINES -->
     <section id="pipelines">
-      <h2>Core Operational &amp; Security Pipelines</h2>
-      <p class="section-sub">Switch between the end-to-end claim lifecycle, adversarial upload quarantine, and maker-checker payment pipelines.</p>
+      <h2>7. Core Operational &amp; Security Pipelines</h2>
+      <p class="section-sub">Switch between the end-to-end claim pipeline, adversarial upload quarantine, and
+        maker-checker payment reconciliation pipelines.</p>
       <div class="tabs">
-        <button class="tab-btn active" onclick="showPipeline('e2e', this)">1. End-to-End Claim Pipeline</button>
-        <button class="tab-btn" onclick="showPipeline('doc', this)">2. Document AI &amp; Injection Quarantine</button>
-        <button class="tab-btn" onclick="showPipeline('pay', this)">3. Maker-Checker &amp; Payment Recon</button>
+        <button type="button" class="tab-btn active" onclick="showPipeline('e2e', this)">1. End-to-End Claim
+          Pipeline</button>
+        <button type="button" class="tab-btn" onclick="showPipeline('doc', this)">2. Document AI &amp; Injection
+          Quarantine</button>
+        <button type="button" class="tab-btn" onclick="showPipeline('pay', this)">3. Maker-Checker &amp; Payment
+          Recon</button>
       </div>
       <div id="pipe-e2e" class="diagram-box">
         <pre class="mermaid">
 flowchart LR
-    A["FNOL Intimation\n(Idempotent)"] --> B["Evidence Vault &amp; OCR\n(MIME + Malware + Injection)"]
-    B --> C["Hybrid Policy RAG\n(Clause Citations)"]
-    C --> D["IRDAI Triage\n(&#8377;50k Survey Rule)"]
-    D --> E["Damage AI &amp; Rate Card\n(Duplicates / Variance)"]
-    E --> F["Surveyor Report &amp; SIU\n(Alert-Only)"]
-    F --> G["Decimal Settlement\n&amp; Maker-Checker"]
-    G --> H["Idempotent Payment\n&amp; QA Closure"]
+    A["FNOL Intimation<br/>(Idempotent)"] --> B["Evidence Vault &amp; OCR<br/>(MIME + Malware + Injection)"]
+    B --> C["Hybrid Policy RAG<br/>(Clause Citations)"]
+    C --> D["IRDAI Triage<br/>(&#8377;50k Survey Rule)"]
+    D --> E["Damage AI &amp; Rate Card<br/>(Duplicates / Variance)"]
+    E --> F["Surveyor Report &amp; SIU<br/>(Alert-Only)"]
+    F --> G["Decimal Settlement<br/>&amp; Maker-Checker"]
+    G --> H["Idempotent Payment<br/>&amp; QA Closure"]
         </pre>
       </div>
       <div id="pipe-doc" class="diagram-box hidden">
@@ -419,9 +682,12 @@ sequenceDiagram
       </div>
     </section>
 
+    <!-- SECTION 8: CLASS DIAGRAMS -->
     <section id="classes">
-      <h2>UML Class Diagrams</h2>
-      <p class="section-sub">Core domain entities and bounded agent contract hierarchy (see full diagrams in <code>docs/class-diagrams.md</code>).</p>
+      <h2>8. UML Class Diagrams</h2>
+      <p class="section-sub">Core domain entities and bounded agent contract hierarchy (see full diagrams in
+        <code>docs/class-diagrams.md</code>).
+      </p>
       <div class="diagram-box">
         <pre class="mermaid">
 classDiagram
@@ -467,15 +733,20 @@ classDiagram
       </div>
     </section>
 
+    <!-- SECTION 9: DETERMINISTIC SETTLEMENT SIMULATOR -->
     <section id="calculator">
-      <h2>Interactive Deterministic Settlement Simulator</h2>
+      <h2>9. Interactive Deterministic Settlement Simulator</h2>
       <p class="section-sub">
-        Illustrates the exact IMT depreciation &amp; add-on rules implemented in Python <code>Decimal</code> inside <code>services/settlement/calculator.py</code> on the sample <code>CLM-DEMO-2026-0001</code> approved lines (&#8377;48,700 gross).
+        Mirrors the exact Python <code>Decimal</code> calculation trace inside
+        <code>services/settlement/calculator.py</code> on the sample <code>CLM-DEMO-2026-0001</code> approved lines
+        (&#8377;48,700.00 gross after deduplicating the garage quote).
       </p>
       <div class="card">
         <div class="sim-row">
-          <label><input type="checkbox" id="sim-zd" checked onchange="recalcDemo()" /> Zero Depreciation Add-on (<code>ADDON-ZD-01</code>)</label>
-          <label><input type="checkbox" id="sim-cons" checked onchange="recalcDemo()" /> Consumables Add-on (<code>ADDON-CONS-01</code>)</label>
+          <label><input type="checkbox" id="sim-zd" checked onchange="recalcDemo()" /> Zero Depreciation Add-on
+            (<code>ADDON-ZD-01</code>)</label>
+          <label><input type="checkbox" id="sim-cons" checked onchange="recalcDemo()" /> Consumables Add-on
+            (<code>ADDON-CONS-01</code>)</label>
           <label>Vehicle Age (months):
             <select id="sim-age" onchange="recalcDemo()">
               <option value="0">0–6 months (0% metal)</option>
@@ -488,111 +759,171 @@ classDiagram
           <label>Compulsory Excess (&#8377;):
             <input type="number" id="sim-excess" value="1000" min="0" step="500" onchange="recalcDemo()" />
           </label>
+          <label>CTL Salvage Value (&#8377;):
+            <input type="number" id="sim-salvage" value="85000" min="0" step="5000" onchange="recalcDemo()" />
+          </label>
         </div>
-        <div class="grid-4" style="margin-bottom:0;">
-          <div><div class="stat-label">Gross Assessed</div><div class="stat-num" id="out-gross">&#8377;48,700.00</div></div>
-          <div><div class="stat-label">Applied Depreciation</div><div class="stat-num" id="out-dep">&#8377;0.00</div></div>
-          <div><div class="stat-label">Zero-Dep Waiver</div><div class="stat-num" id="out-waiver">&#8377;7,030.00</div></div>
-          <div><div class="stat-label">Net Payable</div><div class="stat-num" style="color:var(--emerald);" id="out-net">&#8377;47,700.00</div></div>
+        <div class="grid-4" style="margin-bottom:16px;">
+          <div>
+            <div class="stat-label">Gross Assessed</div>
+            <div class="stat-num" id="out-gross">&#8377;48,700.00</div>
+          </div>
+          <div>
+            <div class="stat-label">Applied Depreciation</div>
+            <div class="stat-num" id="out-dep">&#8377;0.00</div>
+          </div>
+          <div>
+            <div class="stat-label">Zero-Dep Waiver</div>
+            <div class="stat-num" id="out-waiver">&#8377;7,030.00</div>
+          </div>
+          <div>
+            <div class="stat-label">Net Payable</div>
+            <div class="stat-num" style="color:var(--emerald);" id="out-net">&#8377;47,700.00</div>
+          </div>
+        </div>
+        <div class="table-wrap" style="margin-bottom:16px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Line / Part</th>
+                <th>Approved</th>
+                <th>Raw Dep</th>
+                <th>Applied Dep</th>
+                <th>Net Line</th>
+                <th>Rule Applied</th>
+              </tr>
+            </thead>
+            <tbody id="sim-trace-body"></tbody>
+          </table>
+        </div>
+        <h3 style="margin-top:0;">Multi-Scenario Settlement Comparison (Cashless · Reimbursement · No-Addons · CTL Salvage)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Pathway</th>
+                <th>Gross</th>
+                <th>Dep</th>
+                <th>Waiver</th>
+                <th>Excess</th>
+                <th>Salvage</th>
+                <th>Net Payable</th>
+              </tr>
+            </thead>
+            <tbody id="sim-scenarios-body"></tbody>
+          </table>
         </div>
       </div>
     </section>
 
+    <!-- SECTION 10: SCENARIOS & QUICK START -->
     <section id="scenarios">
-      <h2>Quick Start &amp; Seeded Edge Cases</h2>
+      <h2>10. Seeded Edge-Case Scenarios &amp; Quick Start</h2>
       <div class="grid-2">
         <div class="card">
-          <h3 style="margin-top:0;">Run Locally in 2 Commands</h3>
+          <h3 style="margin-top:0;">Run Full Stack Locally in 2 Commands</h3>
           <pre>uv venv .venv && uv pip install --python .venv/bin/python -e ".[dev]"
 .venv/bin/uvicorn apps.api.main:app --reload --port 8000</pre>
           <pre>cd apps/web && npm install && npm run dev</pre>
           <p class="section-sub" style="margin-bottom:0;">
-            Or run the full Postgres + pgvector + Redis stack with <code>docker compose up --build</code>.
+            Or run PostgreSQL + pgvector + Redis + API + Web via <code>docker compose up --build</code>. Use the
+            <strong>Active Persona</strong> dropdown in Claim 360 to test 12 server-side JWT roles.
           </p>
         </div>
         <div class="card">
-          <h3 style="margin-top:0;">12 Seeded Demo &amp; Edge-Case Claims</h3>
-          <ul style="margin:0; padding-left:18px; font-size:13px; color:var(--muted);">
-            <li><code>CLM-DEMO-2026-0001</code> — Full E2E cashless OD with duplicate estimate anomaly</li>
-            <li><code>CLM-DEMO-2026-0002</code> — Incomplete docs accepted without blocking</li>
-            <li><code>CLM-DEMO-2026-0003</code> — RC registration mismatch needing human fix</li>
-            <li><code>CLM-DEMO-2026-0004</code> — Dark/blurry photo guided recapture</li>
-            <li><code>CLM-DEMO-2026-0005</code> — &#8377;49,500 survey threshold boundary</li>
-            <li><code>CLM-DEMO-2026-0006</code> — Overdue 15-day surveyor SLA + &#8377;500/day alert</li>
-            <li><code>CLM-DEMO-2026-0007..0011</code> — Supplement, cleared SIU, payment recon, TP injury, EV battery</li>
-            <li><code>CLM-OTH-2026-0001</code> — Isolated secondary tenant (403 IDOR verified)</li>
+          <h3 style="margin-top:0;">12 Seeded Demo Claims (Inspect Live Flows Above)</h3>
+          <ul class="scenario-jump-list">
+            <li class="scenario-jump-item">
+              <span><code>CLM-ORCH-ENGINE-2026</code> — Claim Orchestration Engine (Parallel Waves, Backoff, DLQ &amp; Saga)</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('orch-engine')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-DEMO-2026-0001</code> — E2E Cashless OD + Duplicate &amp; Variance Anomaly</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('clm-0001')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-DEMO-2026-0005</code> — &#8377;49,500 Below-Threshold Fast-Track OD</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('clm-0005')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-DEMO-2026-0011</code> — Tata Nexon EV Battery HV Isolation &amp; L2 DoA</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('clm-0011')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-DEMO-2026-0003</code> — RC Mismatch &amp; Prompt Injection Quarantine</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('clm-0003')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>Outage + CLM-DEMO-2026-0009</code> — AI Outage Fallback &amp; Timeout Safe Recon</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('outage-0009')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-DEMO-2026-0007 (A+B+C)</code> — Dependency Gate, Rework Loop, Timeout Recovery &amp; Actions</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('rework-0007')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-0002, 0004, 0006, 0007, 0008, 0010, OTH-0001</code> — Incomplete docs, blurry recapture,
+                15d SLA breach, supplement, cleared SIU, TP injury, tenant IDOR isolation</span>
+            </li>
           </ul>
         </div>
       </div>
     </section>
 
+    <!-- SECTION 11: DOCS & ARTICLE -->
     <section id="docs">
-      <h2>Engineering Blueprint &amp; Medium Article</h2>
+      <h2>11. Engineering Blueprint &amp; Medium Article</h2>
       <div class="grid-2">
         <div class="card">
           <span class="badge badge-blue">Documentation Suite</span>
           <ul style="font-size:14px; padding-left:18px; margin-bottom:0;">
-            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/architecture.md" target="_blank" rel="noopener">System Design &amp; Architecture</a></li>
-            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/solution-engineering.md" target="_blank" rel="noopener">Solution Engineering Deep Dive</a></li>
-            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/class-diagrams.md" target="_blank" rel="noopener">UML Class Diagrams (Mermaid)</a></li>
-            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/pipelines.md" target="_blank" rel="noopener">Operational, AI &amp; CI/CD Pipelines</a></li>
-            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/how-it-works-guide.md" target="_blank" rel="noopener">Operator, Developer &amp; Demo Guide</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/claims-lifecycle.md"
+                target="_blank" rel="noopener">8-Stage Claims Lifecycle &amp; State Machine</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/architecture.md" target="_blank"
+                rel="noopener">System Design &amp; Architecture</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/solution-engineering.md"
+                target="_blank" rel="noopener">Solution Engineering Deep Dive</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/class-diagrams.md"
+                target="_blank" rel="noopener">UML Class Diagrams (Mermaid)</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/pipelines.md" target="_blank"
+                rel="noopener">Operational, AI &amp; CI/CD Pipelines</a></li>
+            <li><a href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/how-it-works-guide.md"
+                target="_blank" rel="noopener">Operator, Developer &amp; Demo Guide</a></li>
           </ul>
         </div>
         <div class="card">
           <span class="badge badge-green">Featured Article</span>
-          <h3 style="margin:10px 0 8px;">Why Naive AI Chatbots Fail in Insurance Claims — And How We Built a Governed Multi-Agent Platform</h3>
+          <h3 style="margin:10px 0 8px;">Why Naive AI Chatbots Fail in Insurance Claims — And How We Built a Governed
+            Multi-Agent Platform</h3>
           <p class="section-sub">
-            Covers why regulatory thresholds belong in versioned rules (not prompts), separating probabilistic assistance from deterministic authority, prompt-injection containment, and maker-checker payment safety.
+            Covers why regulatory thresholds belong in versioned rules (not prompts), separating probabilistic
+            assistance from deterministic authority, prompt-injection containment, and maker-checker payment safety.
           </p>
-          <a class="btn btn-primary" style="background:var(--ink); color:#fff;" href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank" rel="noopener">Read Full Medium Article</a>
+          <a class="btn btn-primary" style="background:var(--ink); color:#fff;"
+            href="https://github.com/sadiqgpasha89/motor-claim-ai/blob/main/docs/medium-article.md" target="_blank"
+            rel="noopener">Read Full Medium Article</a>
         </div>
       </div>
     </section>
 
     <footer>
-      <span>MotorClaim AI Intelligence Solution · Synthetic Demo Architecture</span>
-      <span><a href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank" rel="noopener">github.com/sadiqgpasha89/motor-claim-ai</a></span>
+      <span>MotorClaim AI Intelligence Solution · Claim-Centric Business Automation Showcase (Synthetic Demo)</span>
+      <span><a href="https://github.com/sadiqgpasha89/motor-claim-ai" target="_blank"
+          rel="noopener">github.com/sadiqgpasha89/motor-claim-ai</a></span>
     </footer>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-  <script>
-    mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
-
-    function showPipeline(key, btn) {
-      ["e2e", "doc", "pay"].forEach(function (k) {
-        document.getElementById("pipe-" + k).classList.toggle("hidden", k !== key);
-      });
-      document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
-      btn.classList.add("active");
-    }
-
-    function fmt(n) {
-      return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function recalcDemo() {
-      var zd = document.getElementById("sim-zd").checked;
-      var cons = document.getElementById("sim-cons").checked;
-      var metalRate = parseFloat(document.getElementById("sim-age").value);
-      var excess = Math.max(0, parseFloat(document.getElementById("sim-excess").value || "0"));
-
-      // Approved lines for CLM-DEMO-2026-0001:
-      // Bumper (plastic 50%): 12500, Headlamp (glass 0%): 18400, Fender (metal): 7800, Labour (0%): 7600, Consumables: 2400
-      var gross = 12500 + 18400 + 7800 + 7600 + 2400; // 48700
-      var rawPartDep = (12500 * 0.50) + (7800 * metalRate);
-      var consDep = cons ? 0 : 2400;
-      var waiver = zd ? rawPartDep : 0;
-      var appliedDep = (zd ? 0 : rawPartDep) + consDep;
-      var net = Math.max(0, gross - appliedDep - excess);
-
-      document.getElementById("out-gross").textContent = fmt(gross);
-      document.getElementById("out-dep").textContent = fmt(appliedDep);
-      document.getElementById("out-waiver").textContent = fmt(waiver);
-      document.getElementById("out-net").textContent = fmt(net);
-    }
-    recalcDemo();
-  </script>
+  <script src="workflow-data.js"></script>
+  <script src="app.js"></script>
 </body>
+
 </html>

@@ -202,3 +202,125 @@ class SettlementCalculator:
             },
             policy_citations=citations,
         )
+
+    def calculate_scenarios(
+        self,
+        *,
+        db: Session | None,
+        lines: list[SettlementLineInput],
+        vehicle_first_reg: datetime,
+        incident_at: datetime,
+        idv_inr: Decimal,
+        compulsory_deductible_inr: Decimal,
+        voluntary_deductible_inr: Decimal,
+        addons: dict[str, Any],
+        salvage_value_inr: Decimal = Decimal("0.00"),
+        requested_pathway: str = "cashless",
+    ) -> dict[str, Any]:
+        """Evaluates primary + comparative settlement scenarios (cashless, reimbursement, without add-ons, CTL/salvage)."""
+        primary = self.calculate(
+            db=db,
+            lines=lines,
+            vehicle_first_reg=vehicle_first_reg,
+            incident_at=incident_at,
+            idv_inr=idv_inr,
+            compulsory_deductible_inr=compulsory_deductible_inr,
+            voluntary_deductible_inr=voluntary_deductible_inr,
+            addons=addons,
+            salvage_value_inr=salvage_value_inr,
+            requested_pathway=requested_pathway,
+        )
+        reimb = self.calculate(
+            db=db,
+            lines=lines,
+            vehicle_first_reg=vehicle_first_reg,
+            incident_at=incident_at,
+            idv_inr=idv_inr,
+            compulsory_deductible_inr=compulsory_deductible_inr,
+            voluntary_deductible_inr=voluntary_deductible_inr,
+            addons=addons,
+            salvage_value_inr=salvage_value_inr,
+            requested_pathway="reimbursement",
+        )
+        no_addons = self.calculate(
+            db=db,
+            lines=lines,
+            vehicle_first_reg=vehicle_first_reg,
+            incident_at=incident_at,
+            idv_inr=idv_inr,
+            compulsory_deductible_inr=compulsory_deductible_inr,
+            voluntary_deductible_inr=voluntary_deductible_inr,
+            addons={"zero_depreciation": False, "consumables": False},
+            salvage_value_inr=salvage_value_inr,
+            requested_pathway=requested_pathway,
+        )
+        est_salvage = salvage_value_inr if salvage_value_inr > Decimal("0.00") else _q(idv_inr * Decimal("0.12"))
+        ctl = self.calculate(
+            db=db,
+            lines=lines,
+            vehicle_first_reg=vehicle_first_reg,
+            incident_at=incident_at,
+            idv_inr=idv_inr,
+            compulsory_deductible_inr=compulsory_deductible_inr,
+            voluntary_deductible_inr=voluntary_deductible_inr,
+            addons=addons,
+            salvage_value_inr=est_salvage,
+            requested_pathway="total_loss",
+        )
+
+        def _row(code: str, label: str, res: SettlementCalculationResult, recommended: bool, note: str) -> dict[str, Any]:
+            return {
+                "scenario_code": code,
+                "label": label,
+                "pathway": res.pathway,
+                "recommended": recommended,
+                "gross_assessed_inr": str(res.gross_assessed_inr),
+                "depreciation_deduction_inr": str(res.depreciation_deduction_inr),
+                "addon_waiver_inr": str(res.addon_waiver_inr),
+                "deductibles_total_inr": str(_q(res.compulsory_excess_inr + res.voluntary_excess_inr)),
+                "salvage_deduction_inr": str(res.salvage_deduction_inr),
+                "policy_idv_limit_inr": str(res.idv_inr),
+                "idv_cap_applied": res.gross_assessed_inr > res.idv_inr or res.is_total_loss,
+                "net_payable_inr": str(res.net_payable_inr),
+                "is_total_loss": res.is_total_loss,
+                "rationale": note,
+            }
+
+        scenarios = [
+            _row(
+                "primary_recommended",
+                f"Primary ({primary.pathway.replace('_', ' ').title()})",
+                primary,
+                True,
+                "Active policy terms, add-ons, depreciation, deductibles, and IDV cap applied.",
+            ),
+            _row(
+                "reimbursement_option",
+                "Customer Reimbursement Alternative",
+                reimb,
+                False,
+                "Direct customer reimbursement option if repaired at non-network workshop.",
+            ),
+            _row(
+                "without_addons_baseline",
+                "Standard Tariff Baseline (No Add-ons)",
+                no_addons,
+                False,
+                f"Shows exact customer benefit of active add-ons (waiver savings: INR {primary.addon_waiver_inr}).",
+            ),
+            _row(
+                "ctl_salvage_retention",
+                "Constructive Total Loss (IDV - Salvage)",
+                ctl,
+                primary.is_total_loss,
+                f"CTL threshold 75% IDV = INR {primary.ctl_threshold_inr}; IDV limit = INR {primary.idv_inr}.",
+            ),
+        ]
+
+        return {
+            "primary": primary,
+            "scenarios": scenarios,
+            "addon_benefit_inr": str(_q(primary.net_payable_inr - no_addons.net_payable_inr)),
+            "ctl_threshold_inr": str(primary.ctl_threshold_inr),
+            "policy_idv_limit_inr": str(primary.idv_inr),
+        }

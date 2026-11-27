@@ -7,7 +7,7 @@ import pytest
 
 from packages.contracts.errors import DomainError
 from services.claims.state_machine import ClaimStatus, validate_transition
-from services.damage_ai.assessor import validate_estimate_lines
+from services.damage_ai.assessor import assess_damage_from_evidence, validate_estimate_lines
 from services.rules_engine.knowledge import HybridPolicyRetriever
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
 
@@ -99,3 +99,42 @@ def test_hybrid_policy_retrieval_returns_exact_clause_citations():
     hits = retriever.search("zero depreciation waiver rubber plastic", top_k=2)
     assert len(hits) == 2
     assert any(h["clause_id"] == "ADDON-ZD-01" for h in hits)
+
+
+def test_damage_localization_repairability_and_estimate_conflict():
+    dmg = assess_damage_from_evidence(
+        claim_description="Front bumper cracked and right fender dented",
+        is_ev=False,
+        ev_battery_impacted=False,
+        image_records=[{"filename": "front_day.jpg", "image_angle": "front", "image_quality_status": "acceptable"}],
+    )
+    assert "front_fascia" in dmg["damage_zones"]
+    assert dmg["image_quality_confidence"] > 0.5
+    est = validate_estimate_lines(
+        [
+            {"part_code": "PRT-FND-RH-01", "description": "Fender Replace", "line_type": "part", "action": "replace", "quantity": 1, "unit_price_inr": Decimal("7800.00")},
+        ],
+        damage_observations=dmg["observations"],
+    )
+    assert any(a["type"] == "repair_vs_replace_conflict" for a in est["anomalies"])
+    assert "benchmark_summary" in est
+
+
+def test_multi_scenario_settlement_calculator():
+    now = datetime.now(timezone.utc)
+    res = SettlementCalculator().calculate_scenarios(
+        db=None,
+        lines=[
+            SettlementLineInput("PRT-FRT-BMP-01", "Front Bumper", "rubber_nylon_plastic_tyres_tubes_batteries_airbags", "part", Decimal("12500.00")),
+            SettlementLineInput("PRT-FND-RH-01", "Front Fender", "metal", "part", Decimal("7800.00")),
+        ],
+        vehicle_first_reg=now - timedelta(days=540),
+        incident_at=now,
+        idv_inr=Decimal("780000.00"),
+        compulsory_deductible_inr=Decimal("1000.00"),
+        voluntary_deductible_inr=Decimal("0.00"),
+        addons={"zero_depreciation": True, "consumables": True},
+    )
+    codes = {s["scenario_code"] for s in res["scenarios"]}
+    assert {"primary_recommended", "reimbursement_option", "without_addons_baseline", "ctl_salvage_retention"} <= codes
+    assert Decimal(res["addon_benefit_inr"]) > Decimal("0.00")

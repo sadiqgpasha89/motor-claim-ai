@@ -14,6 +14,7 @@ from apps.api.schemas import (
     ApprovalDecisionRequest,
     ClaimAssignRequest,
     CommunicationCreateRequest,
+    CompensationRequest,
     DamageReviewRequest,
     EstimateLineReviewRequest,
     EstimateSubmitRequest,
@@ -22,14 +23,23 @@ from apps.api.schemas import (
     FraudDispositionRequest,
     GrievanceCreateRequest,
     GrievanceResolveRequest,
+    OrchestrateRequest,
+    OrchestrationEventRequest,
+    OrchestrationRecoverRequest,
     PaymentInitiateRequest,
+    ProviderCoordinateRequest,
     RepairMilestoneRequest,
+    ReworkSubmitRequest,
     SettlementRecommendRequest,
+    SingleAgentOrchestrateRequest,
     SurveyorAssignRequest,
     SurveyReportSubmitRequest,
+    TaskUpdateRequest,
+    WorkflowPauseRequest,
+    WorkflowResumeRequest,
 )
 from packages.config import get_settings
-from packages.contracts.agents import AgentInvocationRequest
+from packages.contracts.agents import AgentInvocationRequest, AgentStatus, ReworkRequest
 from packages.contracts.errors import DomainError, ErrorCode
 from packages.observability.logging import get_correlation_id
 from packages.security.auth import (
@@ -44,22 +54,30 @@ from packages.security.auth import (
     require_roles,
 )
 from packages.security.sanitizer import mask_bank_account, sanitize_untrusted_text, validate_upload_bytes
+from services.agent_runtime.actions import ControlledActionExecutor
+from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS, ORCHESTRATION_ORDER
 from services.claims.audit import emit_outbox_event, record_audit_event
 from services.claims.db import get_db
 from services.claims.models import (
+    AgentExecutionRecord,
     Approval,
     AuditEvent,
     Claim,
     ClaimParty,
+    ClaimTask,
     Communication,
+    CompensationLog,
     Customer,
     DamageAssessment,
+    DeadLetterRecord,
+    DecisionRecord,
     Estimate,
     EstimateLine,
     Evidence,
     ExtractedFact,
     FraudAlert,
     Grievance,
+    OrchestrationEventLog,
     OutboxEvent,
     Payment,
     Policy,
@@ -69,7 +87,7 @@ from services.claims.models import (
     SurveyAssignment,
     Vehicle,
 )
-from services.claims.state_machine import ClaimStatus, validate_transition
+from services.claims.state_machine import ClaimStatus, to_canonical_state, validate_transition
 from services.damage_ai.assessor import assess_damage_from_evidence, validate_estimate_lines
 from services.document_ai.processor import extract_document_facts
 from services.fraud_intelligence.detector import build_entity_relationship_graph, run_fraud_and_anomaly_checks
@@ -77,7 +95,9 @@ from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.loader import get_active_rule
 from services.settlement.authority import validate_approval_authority
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
+from services.workflow.orchestrator import ClaimOrchestrator, record_agent_publication
 from services.workflow.sla_engine import complete_stage_sla_timer, compute_timer_status, create_stage_sla_timer
+from services.workflow.state_specs import WORKFLOW_STATE_SPECS
 
 router = APIRouter(prefix="/api/v1", tags=["claims"])
 
@@ -245,7 +265,7 @@ def create_fnol_intimation(
         claim_type=body.claim_type,
         peril_cause=body.peril_cause,
         intake_channel=body.intake_channel,
-        status=ClaimStatus.REGISTERED.value,
+        status=ClaimStatus.SUBMITTED.value,
         severity_band="critical" if body.injury_or_fatality else ("high" if req_survey else "medium"),
         queue_name="legal_tp_specialist" if (body.injury_or_fatality or body.claim_type == "third_party") else "evidence_intake",
         incident_at=inc_at,
@@ -268,24 +288,44 @@ def create_fnol_intimation(
         missing_documents=missing_docs,
         duplicate_candidate_claim_id=dup.id if dup else None,
         next_expected_action="Upload RC, DL, Policy Schedule, and 6 vehicle photos (claim accepted without blocking)",
-        workflow_state={"workflow_run_id": f"wf-{uuid.uuid4().hex[:10]}", "steps_completed": ["FNOL_REGISTERED"]},
+        workflow_state={
+            "workflow_run_id": f"wf-{uuid.uuid4().hex[:10]}",
+            "steps_completed": [],
+            "current_state": ClaimStatus.SUBMITTED.value,
+            "canonical_state": ClaimStatus.SUBMITTED.value,
+            "state_history": [],
+            "parallel_waves": [],
+        },
     )
     db.add(claim)
     db.flush()
 
-    agent_req = _build_agent_req(
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.initialize_claim_workflow(
         claim,
-        user,
-        "fnol_concierge",
-        {
+        fnol_facts={
             "policy_number": claim.policy_number_input,
             "vehicle_reg": claim.vehicle_reg_input,
             "incident_description": clean_desc,
             "incident_location": claim.incident_location,
+            "geo_coords": body.geo_coords,
+            "location_landmark": body.location_landmark,
+            "channel_transcript": body.channel_transcript,
             "intake_channel": claim.intake_channel,
+            "preferred_language": claim.preferred_language,
+            "peril_cause": claim.peril_cause,
+            "vehicle_immobile": claim.vehicle_immobile,
+            "airbags_deployed": claim.airbags_deployed,
+            "injury_or_fatality": claim.injury_or_fatality,
+            "police_involved": claim.police_involved,
+            "towing_needed": claim.towing_needed,
+            "ev_battery_impacted": claim.ev_battery_impacted,
+            "estimated_loss_inr": str(claim.estimated_loss_inr),
+            "missing_documents": missing_docs,
+            "auto_send_ack": body.auto_send_ack,
         },
+        duplicate_candidate=dup,
     )
-    agent_res = AGENT_REGISTRY["fnol_concierge"].execute(agent_req)
 
     ack_comm = Communication(
         tenant_id=user.tenant_id,
@@ -412,6 +452,19 @@ def get_claim_360(
     comms = db.query(Communication).filter(Communication.claim_id == claim.id).order_by(Communication.created_at.desc()).all()
     grievances = db.query(Grievance).filter(Grievance.claim_id == claim.id).all()
     audits = db.query(AuditEvent).filter(AuditEvent.claim_id == claim.id).order_by(AuditEvent.created_at.desc()).all()
+    tasks = db.query(ClaimTask).filter(ClaimTask.claim_id == claim.id).order_by(ClaimTask.created_at.desc()).all()
+    executions = (
+        db.query(AgentExecutionRecord)
+        .filter(AgentExecutionRecord.claim_id == claim.id)
+        .order_by(AgentExecutionRecord.created_at.desc())
+        .all()
+    )
+    decisions = (
+        db.query(DecisionRecord)
+        .filter(DecisionRecord.claim_id == claim.id)
+        .order_by(DecisionRecord.created_at.desc())
+        .all()
+    )
 
     fraud_alerts_payload: list[dict[str, Any]] | None = None
     if user.role in SIU_ALLOWED_ROLES:
@@ -444,9 +497,99 @@ def get_claim_360(
             "preferred_language": customer.preferred_language,
         }
 
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    filtered_tasks = [
+        {
+            "id": t.id,
+            "task_type": t.task_type,
+            "title": t.title,
+            "description": t.description,
+            "assigned_role": t.assigned_role,
+            "created_by_agent": t.created_by_agent,
+            "priority": t.priority,
+            "status": t.status,
+            "reason_code": t.reason_code,
+            "due_at": t.due_at.isoformat() if t.due_at else None,
+            "created_at": t.created_at.isoformat(),
+        }
+        for t in tasks
+        if siu_visible or t.task_type != "siu_investigation"
+    ]
+    filtered_decisions = [
+        {
+            "id": d.id,
+            "agent_name": d.agent_name,
+            "stage": d.stage,
+            "decision_id": d.decision_id,
+            "routing_outcome": d.routing_outcome,
+            "reason_codes": d.reason_codes,
+            "evidence": d.evidence,
+            "policy_rule_refs": d.policy_rule_refs,
+            "confidence": str(d.confidence),
+            "confidence_band": d.confidence_band,
+            "explanation": d.explanation,
+            "alternatives_considered": d.alternatives_considered,
+            "created_at": d.created_at.isoformat(),
+        }
+        for d in decisions
+        if siu_visible or d.agent_name != "fraud_intelligence"
+    ]
+    filtered_executions = [
+        {
+            "id": ex.id,
+            "agent_name": ex.agent_name,
+            "stage_order": ex.stage_order,
+            "attempt_number": ex.attempt_number,
+            "status": ex.status,
+            "dependencies_satisfied": ex.dependencies_satisfied,
+            "depends_on": ex.depends_on,
+            "published_result": {} if (ex.agent_name == "fraud_intelligence" and not siu_visible) else ex.published_result,
+            "actions_executed": ex.actions_executed,
+            "rework_requests": ex.rework_requests,
+            "decision": None if (ex.agent_name == "fraud_intelligence" and not siu_visible) else ex.decision,
+            "error_message": ex.error_message,
+            "duration_ms": ex.duration_ms,
+            "created_at": ex.created_at.isoformat(),
+        }
+        for ex in executions
+    ]
+    pub_results = dict((claim.workflow_state or {}).get("published_results", {}))
+    if not siu_visible and "fraud_intelligence" in pub_results:
+        pub_results["fraud_intelligence"] = {"status": pub_results["fraud_intelligence"].get("status", "restricted"), "restricted": True}
+    settlement_scenarios = (
+        (claim.workflow_state or {})
+        .get("published_results", {})
+        .get("settlement_recommendation", {})
+        .get("data", {})
+        .get("scenarios", [])
+    )
+    orch = ClaimOrchestrator(db, user)
+    scheduled_tasks = orch.sync_task_schedule(claim)
+    dlq_items = (
+        db.query(DeadLetterRecord)
+        .filter(DeadLetterRecord.claim_id == claim.id)
+        .order_by(DeadLetterRecord.created_at.desc())
+        .all()
+    )
+    compensations = (
+        db.query(CompensationLog)
+        .filter(CompensationLog.claim_id == claim.id)
+        .order_by(CompensationLog.created_at.desc())
+        .all()
+    )
+    orch_events = (
+        db.query(OrchestrationEventLog)
+        .filter(OrchestrationEventLog.claim_id == claim.id)
+        .order_by(OrchestrationEventLog.created_at.desc())
+        .all()
+    )
+    canonical_st = to_canonical_state(claim.status)
+    state_contract = WORKFLOW_STATE_SPECS.get(canonical_st)
+
     return {
         "claim": {
             **_serialize_claim_summary(claim, db),
+            "canonical_state": canonical_st,
             "incident_at": claim.incident_at.isoformat(),
             "incident_location": claim.incident_location,
             "incident_description": claim.incident_description,
@@ -662,6 +805,83 @@ def get_claim_360(
             }
             for au in audits
         ],
+        "tasks": filtered_tasks,
+        "decisions": filtered_decisions,
+        "agent_executions": filtered_executions,
+        "settlement_scenarios": settlement_scenarios,
+        "orchestration_summary": {
+            "orchestration_order": ORCHESTRATION_ORDER,
+            "current_state": claim.status,
+            "canonical_state": canonical_st,
+            "triage_track": (claim.workflow_state or {}).get("triage_track"),
+            "paused": bool((claim.workflow_state or {}).get("paused", False)),
+            "pause_reason": (claim.workflow_state or {}).get("pause_reason"),
+            "state_contract": state_contract.model_dump() if state_contract else None,
+            "state_history": (claim.workflow_state or {}).get("state_history", []),
+            "parallel_waves": (claim.workflow_state or {}).get("parallel_waves", []),
+            "stage_statuses": (claim.workflow_state or {}).get("stage_statuses", {}),
+            "published_results": pub_results,
+            "rework_queue": (claim.workflow_state or {}).get("rework_queue", []),
+            "escalations": (claim.workflow_state or {}).get("escalations", []),
+            "scheduled_tasks": [
+                {
+                    "id": ot.id,
+                    "task_key": ot.task_key,
+                    "title": ot.title,
+                    "agent_or_service": ot.agent_or_service,
+                    "execution_mode": ot.execution_mode,
+                    "parallel_group": ot.parallel_group,
+                    "depends_on": ot.depends_on,
+                    "condition_expression": ot.condition_expression,
+                    "target_state": ot.target_state,
+                    "status": ot.status,
+                    "attempt_count": ot.attempt_count,
+                    "max_retries": ot.max_retries,
+                    "backoff_delay_ms": ot.backoff_delay_ms,
+                    "retry_history": ot.retry_history,
+                    "error_message": ot.error_message,
+                }
+                for ot in scheduled_tasks
+            ],
+            "dlq_items": [
+                {
+                    "id": d.id,
+                    "task_key": d.task_key,
+                    "agent_or_service": d.agent_or_service,
+                    "state_at_failure": d.state_at_failure,
+                    "failure_reason": d.failure_reason,
+                    "attempt_count": d.attempt_count,
+                    "retry_history": d.retry_history,
+                    "status": d.status,
+                    "created_at": d.created_at.isoformat(),
+                }
+                for d in dlq_items
+            ],
+            "compensations": [
+                {
+                    "id": cp.id,
+                    "trigger_reason": cp.trigger_reason,
+                    "failed_state": cp.failed_state,
+                    "compensating_action": cp.compensating_action,
+                    "target_object_type": cp.target_object_type,
+                    "target_object_id": cp.target_object_id,
+                    "status": cp.status,
+                    "created_at": cp.created_at.isoformat(),
+                }
+                for cp in compensations
+            ],
+            "events": [
+                {
+                    "id": ev_row.id,
+                    "event_id": ev_row.event_id,
+                    "event_type": ev_row.event_type,
+                    "processing_status": ev_row.processing_status,
+                    "duplicate_hits": ev_row.duplicate_hits,
+                    "created_at": ev_row.created_at.isoformat(),
+                }
+                for ev_row in orch_events
+            ],
+        },
     }
 
 
@@ -793,6 +1013,7 @@ async def upload_evidence(
         )
         db.add(ef)
         created_facts.append(f)
+    db.flush()
 
     doc_label_map = {
         "policy_schedule": "Policy Schedule",
@@ -804,16 +1025,46 @@ async def upload_evidence(
     if matched_label and matched_label in (claim.missing_documents or []):
         claim.missing_documents = [d for d in claim.missing_documents if d != matched_label]
 
-    agent_res = AGENT_REGISTRY["document_intelligence"].execute(
-        _build_agent_req(
-            claim,
-            user,
-            "document_intelligence",
-            {
-                "extracted_facts": created_facts,
-                "prompt_injection_flagged": extraction["prompt_injection_flagged"],
-            },
-        )
+    all_evidences = db.query(Evidence).filter(Evidence.claim_id == claim.id).all()
+    all_facts = db.query(ExtractedFact).filter(ExtractedFact.claim_id == claim.id).all()
+    orch = ClaimOrchestrator(db, user)
+    orch.handle_event(
+        claim,
+        event_id=f"evidence:{ev.id}",
+        event_type="EvidenceUploaded",
+        source=user.role.value,
+        payload={"evidence_id": ev.id, "doc_type": ev.doc_type, "sha256": ev.sha256},
+        auto_advance=False,
+    )
+    agent_res = orch.run_agent(
+        claim,
+        "document_intelligence",
+        enforce_dependencies=False,
+        override_facts={
+            "policy_number": claim.policy_number_input,
+            "vehicle_reg": claim.vehicle_reg_input,
+            "evidences": [
+                {"id": e.id, "doc_type": e.doc_type, "filename": e.filename, "sha256": e.sha256}
+                for e in all_evidences
+            ],
+            "extracted_facts": [
+                {
+                    "id": f.id,
+                    "evidence_id": f.evidence_id,
+                    "field_name": f.field_name,
+                    "extracted_value": f.extracted_value,
+                    "verified_value": f.verified_value,
+                    "confidence": float(f.confidence),
+                    "page_number": f.page_number,
+                    "bbox": f.bbox,
+                    "validation_status": f.validation_status,
+                }
+                for f in all_facts
+            ],
+            "prompt_injection_flagged": extraction["prompt_injection_flagged"]
+            or any(e.prompt_injection_flagged for e in all_evidences),
+        },
+        apply_state_progression=True,
     )
 
     emit_outbox_event(
@@ -939,28 +1190,28 @@ def run_coverage_check(
         inc = claim.incident_at.replace(tzinfo=timezone.utc) if claim.incident_at.tzinfo is None else claim.incident_at
         period_valid = ps <= inc <= pe
 
-    agent_res = AGENT_REGISTRY["coverage_intelligence"].execute(
-        _build_agent_req(
-            claim,
-            user,
-            "coverage_intelligence",
-            {
-                "peril_cause": claim.peril_cause,
-                "claim_type": claim.claim_type,
-                "injury_or_fatality": claim.injury_or_fatality,
-                "is_ev": vehicle.is_ev if vehicle else claim.ev_battery_impacted,
-                "period_valid": period_valid,
-                "policy_status": policy.status if policy else "not_matched",
-                "addons": policy.addons if policy else {},
-                "has_document_mismatch": has_mismatch,
-                "missing_documents": claim.missing_documents,
-            },
-        )
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "coverage_intelligence",
+        enforce_dependencies=False,
+        override_facts={
+            "peril_cause": claim.peril_cause,
+            "claim_type": claim.claim_type,
+            "injury_or_fatality": claim.injury_or_fatality,
+            "is_ev": vehicle.is_ev if vehicle else claim.ev_battery_impacted,
+            "ev_battery_impacted": claim.ev_battery_impacted,
+            "period_valid": period_valid,
+            "policy_status": policy.status if policy else "not_matched",
+            "addons": policy.addons if policy else {},
+            "idv_inr": str(policy.idv_inr) if policy else "0.00",
+            "compulsory_deductible_inr": str(policy.compulsory_deductible_inr) if policy else "1000.00",
+            "voluntary_deductible_inr": str(policy.voluntary_deductible_inr) if policy else "0.00",
+            "has_document_mismatch": has_mismatch,
+            "missing_documents": claim.missing_documents,
+        },
+        apply_state_progression=True,
     )
-
-    claim.coverage_factsheet = agent_res.model_dump()
-    if claim.status in {ClaimStatus.REGISTERED.value, ClaimStatus.EVIDENCE_PENDING.value}:
-        claim.status = validate_transition(claim.status, ClaimStatus.COVERAGE_CHECKED.value).value
     claim.next_expected_action = (
         "Resolve policy/document mismatch before proceeding" if has_mismatch else "Run claim triage & severity assessment"
     )
@@ -990,29 +1241,25 @@ def run_claim_triage(
 ):
     claim = _get_claim_for_user(db, claim_id, user)
     vehicle = db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
-    agent_res = AGENT_REGISTRY["claim_triage"].execute(
-        _build_agent_req(
-            claim,
-            user,
-            "claim_triage",
-            {
-                "estimated_loss_inr": str(claim.estimated_loss_inr),
-                "injury_or_fatality": claim.injury_or_fatality,
-                "ev_battery_impacted": claim.ev_battery_impacted,
-                "is_ev": vehicle.is_ev if vehicle else False,
-                "claim_type": claim.claim_type,
-                "peril_cause": claim.peril_cause,
-            },
-        )
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "claim_triage",
+        enforce_dependencies=False,
+        override_facts={
+            "estimated_loss_inr": str(claim.estimated_loss_inr),
+            "injury_or_fatality": claim.injury_or_fatality,
+            "ev_battery_impacted": claim.ev_battery_impacted,
+            "is_ev": vehicle.is_ev if vehicle else False,
+            "vehicle_immobile": claim.vehicle_immobile,
+            "airbags_deployed": claim.airbags_deployed,
+            "police_involved": claim.police_involved,
+            "claim_type": claim.claim_type,
+            "peril_cause": claim.peril_cause,
+        },
+        apply_state_progression=True,
     )
     res_data = agent_res.result
-    if "severity_band" in res_data:
-        claim.severity_band = res_data["severity_band"]
-        claim.queue_name = res_data["recommended_queue"]
-        claim.requires_mandatory_survey = bool(res_data["requires_mandatory_survey"])
-    claim.triage_summary = agent_res.model_dump()
-    if claim.status in {ClaimStatus.REGISTERED.value, ClaimStatus.EVIDENCE_PENDING.value, ClaimStatus.COVERAGE_CHECKED.value}:
-        claim.status = validate_transition(claim.status, ClaimStatus.TRIAGED.value).value
     claim.next_expected_action = (
         "Assign registered surveyor (IRDAI threshold/peril)" if claim.requires_mandatory_survey else "Run AI damage assessment"
     )
@@ -1055,30 +1302,15 @@ def run_damage_assessment(
         ev_battery_impacted=claim.ev_battery_impacted,
         image_records=img_records,
     )
-    agent_res = AGENT_REGISTRY["damage_assessment"].execute(
-        _build_agent_req(claim, user, "damage_assessment", {"assessment_payload": payload})
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "damage_assessment",
+        enforce_dependencies=False,
+        override_facts={"assessment_payload": payload},
+        apply_state_progression=True,
     )
-
-    db.query(DamageAssessment).filter(
-        DamageAssessment.claim_id == claim.id, DamageAssessment.reviewer_outcome == "pending"
-    ).delete()
-
-    saved = []
-    for obs in payload["observations"]:
-        da = DamageAssessment(
-            tenant_id=claim.tenant_id,
-            claim_id=claim.id,
-            component_name=obs["component_name"],
-            part_code=obs["part_code"],
-            damage_class=obs["damage_class"],
-            observation_type=obs["observation_type"],
-            recommended_action=obs["recommended_action"],
-            confidence=Decimal(str(obs["confidence"])),
-            limitations=obs["limitations"],
-            model_version=payload["model_version"],
-        )
-        db.add(da)
-        saved.append(obs)
+    saved = list(payload["observations"])
 
     emit_outbox_event(
         db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="DamageAssessmentCompleted", payload={"count": len(saved)}
@@ -1135,17 +1367,18 @@ def submit_and_validate_estimate(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
-    visible_parts = {
-        d.part_code
-        for d in db.query(DamageAssessment).filter(DamageAssessment.claim_id == claim.id).all()
-        if d.part_code
-    }
+    dmg_rows = db.query(DamageAssessment).filter(DamageAssessment.claim_id == claim.id).all()
+    visible_parts = {d.part_code for d in dmg_rows if d.part_code}
+    dmg_obs = [
+        {"part_code": d.part_code, "recommended_action": d.recommended_action, "repair_vs_replace_rationale": d.limitations}
+        for d in dmg_rows
+    ]
     raw_lines = [ln.model_dump() for ln in body.lines]
-    val = validate_estimate_lines(raw_lines, visible_part_codes=visible_parts or None)
-    agent_res = AGENT_REGISTRY["estimate_validation"].execute(
-        _build_agent_req(claim, user, "estimate_validation", {"estimate_validation": val})
+    val = validate_estimate_lines(
+        raw_lines,
+        visible_part_codes=visible_parts or None,
+        damage_observations=dmg_obs or None,
     )
-
     prev_count = db.query(Estimate).filter(Estimate.claim_id == claim.id).count()
     est = Estimate(
         tenant_id=claim.tenant_id,
@@ -1178,15 +1411,25 @@ def submit_and_validate_estimate(
                 reviewer_status="pending" if ln["variance_flag"] else "accepted",
             )
         )
+    db.flush()
 
-    if claim.status in {
-        ClaimStatus.TRIAGED.value,
-        ClaimStatus.SURVEY_ASSIGNED.value,
-        ClaimStatus.AI_ASSESSMENT.value,
-        ClaimStatus.REPAIR_IN_PROGRESS.value,
-    }:
-        claim.status = validate_transition(claim.status, ClaimStatus.ESTIMATE_REVIEW.value).value
     claim.estimated_loss_inr = est.total_claimed_inr
+    orch = ClaimOrchestrator(db, user)
+    orch.handle_event(
+        claim,
+        event_id=f"estimate:{est.id}",
+        event_type="EstimateSubmitted",
+        source=user.role.value,
+        payload={"estimate_id": est.id, "claimed": str(est.total_claimed_inr)},
+        auto_advance=False,
+    )
+    agent_res = orch.run_agent(
+        claim,
+        "estimate_validation",
+        enforce_dependencies=False,
+        override_facts={"estimate_validation": val},
+        apply_state_progression=True,
+    )
     emit_outbox_event(
         db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="EstimateValidated", payload={"estimate_id": est.id}
     )
@@ -1293,9 +1536,14 @@ def assign_surveyor_and_garage(
     db.add(sa)
     surveyor.active_load += 1
     claim.assigned_surveyor_id = surveyor.id
-    if claim.status in {ClaimStatus.REGISTERED.value, ClaimStatus.COVERAGE_CHECKED.value, ClaimStatus.TRIAGED.value, ClaimStatus.ESTIMATE_REVIEW.value}:
-        claim.status = validate_transition(claim.status, ClaimStatus.SURVEY_ASSIGNED.value).value
-    claim.next_expected_action = f"Surveyor {surveyor.name} to inspect vehicle & submit report by {due_at.date()}"
+    orch = ClaimOrchestrator(db, user)
+    orch._safe_transition(
+        claim,
+        ClaimStatus.SURVEY_REQUIRED.value,
+        reason=f"Verified surveyor {surveyor.name} assigned",
+        trigger_event="SurveyorAssigned",
+        next_expected_action=f"Surveyor {surveyor.name} to inspect vehicle & submit report by {due_at.date()}",
+    )
 
     complete_stage_sla_timer(db, claim_id=claim.id, stage="surveyor_allocation")
     create_stage_sla_timer(db, tenant_id=claim.tenant_id, claim_id=claim.id, stage="survey_report_submission")
@@ -1326,6 +1574,21 @@ def assign_surveyor_and_garage(
         object_id=surveyor.id,
         details={"surveyor_name": surveyor.name, "licence": surveyor.licence_or_contract_id},
     )
+    prov_res = AGENT_REGISTRY["provider_coordination"].execute(
+        _build_agent_req(
+            claim,
+            user,
+            "provider_coordination",
+            {
+                "requires_mandatory_survey": claim.requires_mandatory_survey,
+                "ev_battery_impacted": claim.ev_battery_impacted,
+                "recommended_surveyor": {"id": surveyor.id, "name": surveyor.name, "licence": surveyor.licence_or_contract_id},
+                "recommended_provider": {"id": surveyor.id, "name": surveyor.name},
+                "preferred_garage_id": claim.assigned_garage_id,
+            },
+        )
+    )
+    record_agent_publication(db, claim=claim, agent_name="provider_coordination", response=prov_res)
     db.commit()
     return {"assignment_id": sa.id, "surveyor_name": surveyor.name, "report_due_at": due_at.isoformat()}
 
@@ -1353,9 +1616,17 @@ def submit_survey_report(
     }
     complete_stage_sla_timer(db, claim_id=claim.id, stage="survey_report_submission")
     create_stage_sla_timer(db, tenant_id=claim.tenant_id, claim_id=claim.id, stage="claim_decision")
-    if claim.status == ClaimStatus.SURVEY_ASSIGNED.value:
-        claim.status = validate_transition(claim.status, ClaimStatus.ESTIMATE_REVIEW.value).value
-    claim.next_expected_action = "Generate deterministic settlement recommendation"
+    orch = ClaimOrchestrator(db, user)
+    if claim.status in {ClaimStatus.SURVEY_ASSIGNED.value, ClaimStatus.SURVEY_REQUIRED.value}:
+        orch._safe_transition(
+            claim,
+            ClaimStatus.ESTIMATE_VALIDATION.value,
+            reason="Signed surveyor report received",
+            trigger_event="SurveyReportReceived",
+            next_expected_action="Generate deterministic settlement recommendation",
+        )
+    else:
+        claim.next_expected_action = "Generate deterministic settlement recommendation"
 
     emit_outbox_event(
         db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="SurveyReportReceived", payload={"survey_id": sa.id}
@@ -1407,14 +1678,20 @@ def run_fraud_checks(
             db.add(fa)
             created.append(ind["indicator_code"])
 
+    entity_graph = build_entity_relationship_graph(db, claim)
     agent_res = AGENT_REGISTRY["fraud_intelligence"].execute(
         _build_agent_req(
             claim,
             user,
             "fraud_intelligence",
-            {"indicators": [{**i, "confidence": str(i["confidence"])} for i in indicators]},
-        )
+            {
+                "indicators": [{**i, "confidence": str(i["confidence"])} for i in indicators],
+                "entity_graph": entity_graph,
+            },
+        ),
+        action_executor=ControlledActionExecutor(db, claim, user),
     )
+    record_agent_publication(db, claim=claim, agent_name="fraud_intelligence", response=agent_res)
     if created:
         emit_outbox_event(
             db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="FraudAlertRaised", payload={"codes": created}
@@ -1552,7 +1829,7 @@ def recommend_settlement(
                 )
             )
 
-    calc = SettlementCalculator().calculate(
+    scenarios_res = SettlementCalculator().calculate_scenarios(
         db=db,
         lines=lines_input,
         vehicle_first_reg=vehicle.first_registration_date,
@@ -1564,6 +1841,7 @@ def recommend_settlement(
         salvage_value_inr=body.salvage_value_inr,
         requested_pathway=body.requested_pathway,
     )
+    calc = scenarios_res["primary"]
 
     prev_count = db.query(Settlement).filter(Settlement.claim_id == claim.id).count()
     stl = Settlement(
@@ -1588,6 +1866,21 @@ def recommend_settlement(
     db.add(stl)
     db.flush()
 
+    open_alerts = (
+        db.query(FraudAlert)
+        .filter(FraudAlert.claim_id == claim.id, FraudAlert.status.in_(["new", "assigned", "investigating"]))
+        .count()
+    )
+    active_conditions: list[str] = []
+    if open_alerts > 0:
+        active_conditions.append("fraud_alert_open")
+    if claim.injury_or_fatality:
+        active_conditions.append("tp_injury")
+    if claim.ev_battery_impacted:
+        active_conditions.append("ev_battery")
+    if calc.is_total_loss:
+        active_conditions.append("total_loss")
+
     approval = Approval(
         tenant_id=claim.tenant_id,
         claim_id=claim.id,
@@ -1599,24 +1892,31 @@ def recommend_settlement(
         rationale="Pending independent checker approval under DoA matrix",
     )
     db.add(approval)
+    db.flush()
 
-    agent_res = AGENT_REGISTRY["settlement_recommendation"].execute(
-        _build_agent_req(
-            claim,
-            user,
-            "settlement_recommendation",
-            {"calculation": {"gross": str(calc.gross_assessed_inr), "net": str(calc.net_payable_inr)}},
-        )
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "settlement_recommendation",
+        enforce_dependencies=False,
+        override_facts={
+            "settlement_id": stl.id,
+            "active_conditions": active_conditions,
+            "scenarios": scenarios_res["scenarios"],
+            "calculation": {
+                "gross": str(calc.gross_assessed_inr),
+                "depreciation": str(calc.depreciation_deduction_inr),
+                "addon_waiver": str(calc.addon_waiver_inr),
+                "compulsory_excess": str(calc.compulsory_excess_inr),
+                "salvage": str(calc.salvage_deduction_inr),
+                "net": str(calc.net_payable_inr),
+                "is_total_loss": calc.is_total_loss,
+                "ctl_threshold_inr": str(calc.ctl_threshold_inr),
+                "idv_inr": str(calc.idv_inr),
+            },
+        },
+        apply_state_progression=True,
     )
-
-    if claim.status in {
-        ClaimStatus.TRIAGED.value,
-        ClaimStatus.SURVEY_ASSIGNED.value,
-        ClaimStatus.AI_ASSESSMENT.value,
-        ClaimStatus.ESTIMATE_REVIEW.value,
-    }:
-        claim.status = validate_transition(claim.status, ClaimStatus.SETTLEMENT_RECOMMENDED.value).value
-    claim.status = validate_transition(claim.status, ClaimStatus.APPROVAL_PENDING.value).value
     claim.next_expected_action = f"Authorised checker approval required for INR {calc.net_payable_inr}"
 
     complete_stage_sla_timer(db, claim_id=claim.id, stage="claim_decision")
@@ -1639,7 +1939,13 @@ def recommend_settlement(
         after_state={"net_payable_inr": str(calc.net_payable_inr), "pathway": calc.pathway},
     )
     db.commit()
-    return {"settlement_id": stl.id, "approval_id": approval.id, "net_payable_inr": str(calc.net_payable_inr), "agent_response": agent_res.model_dump()}
+    return {
+        "settlement_id": stl.id,
+        "approval_id": approval.id,
+        "net_payable_inr": str(calc.net_payable_inr),
+        "scenarios": scenarios_res["scenarios"],
+        "agent_response": agent_res.model_dump(),
+    }
 
 
 @router.post("/claims/{claim_id}/approvals")
@@ -1683,17 +1989,34 @@ def decide_approval(
     approval.decided_at = datetime.now(timezone.utc)
 
     stl = db.query(Settlement).filter(Settlement.id == approval.settlement_id).first() if approval.settlement_id else None
+    orch = ClaimOrchestrator(db, user)
+    gate_task = orch._get_or_create_task(claim, "human_approval_gate")
     if body.decision == "approved":
         if stl:
             stl.approval_status = "approved"
-        claim.status = validate_transition(claim.status, ClaimStatus.APPROVED.value).value
-        claim.next_expected_action = "Finance Approver to verify payee bank & initiate payment"
+        db.flush()
+        orch.transition_state(
+            claim,
+            ClaimStatus.APPROVED.value,
+            reason=f"Independent Checker ({user.email}) approved INR {approval.amount_inr}",
+            trigger_event="ApprovalGranted",
+            next_expected_action="Finance Approver to verify payee bank & initiate payment",
+        )
+        gate_task.status = "completed"
+        gate_task.completed_at = datetime.now(timezone.utc)
         event_type = "ApprovalGranted"
     else:
         if stl:
             stl.approval_status = "rejected"
-        claim.status = validate_transition(claim.status, ClaimStatus.CLARIFICATION_REQUESTED.value).value
-        claim.next_expected_action = f"Returned by checker: {body.rationale}"
+        db.flush()
+        orch.transition_state(
+            claim,
+            ClaimStatus.HUMAN_REVIEW.value,
+            reason=f"Returned by Checker: {body.rationale}",
+            trigger_event="ApprovalRejected",
+            next_expected_action=f"Returned by checker: {body.rationale}",
+        )
+        gate_task.status = "waiting_human"
         event_type = "ApprovalRejected"
 
     emit_outbox_event(
@@ -1776,13 +2099,29 @@ def initiate_payment(
     )
     db.add(pmt)
     db.flush()
+    orch = ClaimOrchestrator(db, user)
     if claim.status == ClaimStatus.APPROVED.value:
-        claim.status = validate_transition(claim.status, ClaimStatus.PAYMENT_INITIATED.value).value
-    claim.next_expected_action = (
-        "Reconcile timed-out payment safely before retry"
-        if pmt.status == "timeout_reconcile_pending"
-        else "Track repair completion and customer confirmation"
-    )
+        orch.transition_state(
+            claim,
+            ClaimStatus.PAYMENT_PENDING.value,
+            reason="Finance initiated idempotent payout instruction",
+            trigger_event="PaymentInitiated",
+            next_expected_action=(
+                "Reconcile timed-out payment safely before retry"
+                if pmt.status == "timeout_reconcile_pending"
+                else "Track payment reconciliation and QA closure"
+            ),
+        )
+    else:
+        claim.next_expected_action = (
+            "Reconcile timed-out payment safely before retry"
+            if pmt.status == "timeout_reconcile_pending"
+            else "Track repair completion and customer confirmation"
+        )
+    pmt_task = orch._get_or_create_task(claim, "payment_execution")
+    pmt_task.status = "completed" if pmt.status == "confirmed" else "waiting_human"
+    if pmt.status == "confirmed":
+        pmt_task.completed_at = datetime.now(timezone.utc)
     emit_outbox_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1819,6 +2158,21 @@ def reconcile_payment(
     recon = IntegrationAdapterRegistry.reconcile_payment(pmt.gateway_reference or pmt.id)
     pmt.status = recon["status"]
     pmt.gateway_reference = recon["utr"]
+    db.flush()
+    orch = ClaimOrchestrator(db, user)
+    orch._safe_transition(
+        claim,
+        ClaimStatus.PAYMENT_RECONCILIATION.value,
+        reason=f"Gateway UTR {pmt.gateway_reference} reconciled safely",
+        trigger_event="PaymentReconciled",
+        next_expected_action="Run QA compliance check & close claim",
+    )
+    recon_task = orch._get_or_create_task(claim, "payment_reconciliation")
+    recon_task.status = "completed"
+    recon_task.completed_at = datetime.now(timezone.utc)
+    pmt_task = orch._get_or_create_task(claim, "payment_execution")
+    pmt_task.status = "completed"
+    pmt_task.completed_at = pmt_task.completed_at or datetime.now(timezone.utc)
     record_audit_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1873,22 +2227,48 @@ def close_claim(
     claim = _get_claim_for_user(db, claim_id, user)
     confirmed_pmt = db.query(Payment).filter(Payment.claim_id == claim.id, Payment.status == "confirmed").first()
     open_grievance = db.query(Grievance).filter(Grievance.claim_id == claim.id, Grievance.status != "resolved").first()
+    unresolved_mismatch = (
+        db.query(ExtractedFact)
+        .filter(ExtractedFact.claim_id == claim.id, ExtractedFact.validation_status == "mismatch")
+        .first()
+    )
+    signed_survey = (
+        db.query(SurveyAssignment)
+        .filter(SurveyAssignment.claim_id == claim.id, SurveyAssignment.signed_by_surveyor.is_(True))
+        .first()
+    )
+    approved_app = db.query(Approval).filter(Approval.claim_id == claim.id, Approval.decision == "approved").first()
     checks = {
+        "no_unresolved_doc_mismatch": unresolved_mismatch is None,
+        "coverage_checked": claim.coverage_factsheet is not None,
+        "survey_report_signed": (not claim.requires_mandatory_survey) or (signed_survey is not None),
+        "maker_checker_approved": (approved_app is not None) or claim.status == ClaimStatus.DECLINED_PARTIAL.value,
         "confirmed_payment_or_declined": confirmed_pmt is not None or claim.status == ClaimStatus.DECLINED_PARTIAL.value,
         "no_open_grievance": open_grievance is None,
     }
-    qa_res = AGENT_REGISTRY["qa_compliance"].execute(
-        _build_agent_req(claim, user, "qa_compliance", {"checks": checks})
+    orch = ClaimOrchestrator(db, user)
+    qa_res = orch.run_agent(
+        claim,
+        "qa_compliance",
+        enforce_dependencies=False,
+        override_facts={"checks": checks},
+        apply_state_progression=False,
     )
     if qa_res.result["failed_controls"]:
+        db.commit()
         raise DomainError(
             ErrorCode.STATE_CONFLICT,
             f"Cannot close claim; unmet QA controls: {qa_res.result['failed_controls']}",
             status_code=409,
         )
 
-    claim.status = validate_transition(claim.status, ClaimStatus.CLOSED.value).value
-    claim.next_expected_action = "Claim closed; audit & evidence retained"
+    orch.transition_state(
+        claim,
+        ClaimStatus.CLOSED.value,
+        reason="All QA compliance controls passed; payment reconciled",
+        trigger_event="ClaimClosed",
+        next_expected_action="Claim closed; audit & evidence retained",
+    )
     emit_outbox_event(db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="ClaimClosed", payload={})
     record_audit_event(
         db,
@@ -1937,8 +2317,26 @@ def send_communication(
 ):
     claim = _get_claim_for_user(db, claim_id, user)
     agent_res = AGENT_REGISTRY["customer_communication"].execute(
-        _build_agent_req(claim, user, "customer_communication", {"draft_message": body.body, "is_adverse": body.is_adverse})
+        _build_agent_req(
+            claim,
+            user,
+            "customer_communication",
+            {
+                "claim_number": claim.claim_number,
+                "vehicle_reg": claim.vehicle_reg_input,
+                "claim_status": claim.status,
+                "next_expected_action": claim.next_expected_action,
+                "missing_documents": claim.missing_documents,
+                "channel": body.channel,
+                "language": body.language,
+                "message_type": body.message_type,
+                "subject": body.subject,
+                "draft_message": body.body,
+                "is_adverse": body.is_adverse,
+            },
+        )
     )
+    record_agent_publication(db, claim=claim, agent_name="customer_communication", response=agent_res)
     comm = Communication(
         tenant_id=claim.tenant_id,
         claim_id=claim.id,
@@ -2015,3 +2413,542 @@ def resolve_grievance(
     complete_stage_sla_timer(db, claim_id=claim.id, stage="grievance_resolution")
     db.commit()
     return {"id": g.id, "status": g.status, "resolution_notes": g.resolution_notes}
+
+
+@router.get("/claims/{claim_id}/orchestration")
+def get_claim_orchestration(
+    claim_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    executions = (
+        db.query(AgentExecutionRecord)
+        .filter(AgentExecutionRecord.claim_id == claim.id)
+        .order_by(AgentExecutionRecord.created_at.asc())
+        .all()
+    )
+    tasks = db.query(ClaimTask).filter(ClaimTask.claim_id == claim.id).order_by(ClaimTask.created_at.desc()).all()
+    decisions = (
+        db.query(DecisionRecord)
+        .filter(DecisionRecord.claim_id == claim.id)
+        .order_by(DecisionRecord.created_at.desc())
+        .all()
+    )
+    orch = ClaimOrchestrator(db, user)
+    dag = []
+    for order_idx, name in enumerate(ORCHESTRATION_ORDER, start=1):
+        spec = AGENT_CAPABILITY_CONTRACTS[name]
+        deps_ok, missing = orch.check_dependencies(claim, name)
+        stage_status = (claim.workflow_state or {}).get("stage_statuses", {}).get(name, "pending")
+        dag.append(
+            {
+                "order": order_idx,
+                "agent_name": name,
+                "display_name": spec.display_name,
+                "stage": spec.stage,
+                "depends_on": spec.depends_on,
+                "dependencies_satisfied": deps_ok,
+                "missing_dependencies": missing,
+                "current_status": stage_status,
+                "can_request_rework_from": spec.can_request_rework_from,
+            }
+        )
+
+    pub_results = dict((claim.workflow_state or {}).get("published_results", {}))
+    if not siu_visible and "fraud_intelligence" in pub_results:
+        pub_results["fraud_intelligence"] = {"status": pub_results["fraud_intelligence"].get("status", "restricted"), "restricted": True}
+
+    scheduled_tasks = orch.sync_task_schedule(claim)
+    dlq_items = (
+        db.query(DeadLetterRecord)
+        .filter(DeadLetterRecord.claim_id == claim.id)
+        .order_by(DeadLetterRecord.created_at.desc())
+        .all()
+    )
+    compensations = (
+        db.query(CompensationLog)
+        .filter(CompensationLog.claim_id == claim.id)
+        .order_by(CompensationLog.created_at.desc())
+        .all()
+    )
+    events = (
+        db.query(OrchestrationEventLog)
+        .filter(OrchestrationEventLog.claim_id == claim.id)
+        .order_by(OrchestrationEventLog.created_at.desc())
+        .all()
+    )
+    timers = db.query(SLATimer).filter(SLATimer.claim_id == claim.id).all()
+    canonical_st = to_canonical_state(claim.status)
+    state_contract = WORKFLOW_STATE_SPECS.get(canonical_st)
+
+    return {
+        "claim_id": claim.id,
+        "claim_status": claim.status,
+        "canonical_state": canonical_st,
+        "triage_track": (claim.workflow_state or {}).get("triage_track"),
+        "paused": bool((claim.workflow_state or {}).get("paused", False)),
+        "pause_reason": (claim.workflow_state or {}).get("pause_reason"),
+        "state_contract": state_contract.model_dump() if state_contract else None,
+        "state_history": (claim.workflow_state or {}).get("state_history", []),
+        "parallel_waves": (claim.workflow_state or {}).get("parallel_waves", []),
+        "scheduled_tasks": [
+            {
+                "id": ot.id,
+                "task_key": ot.task_key,
+                "title": ot.title,
+                "agent_or_service": ot.agent_or_service,
+                "execution_mode": ot.execution_mode,
+                "parallel_group": ot.parallel_group,
+                "depends_on": ot.depends_on,
+                "condition_expression": ot.condition_expression,
+                "target_state": ot.target_state,
+                "status": ot.status,
+                "attempt_count": ot.attempt_count,
+                "max_retries": ot.max_retries,
+                "backoff_delay_ms": ot.backoff_delay_ms,
+                "retry_history": ot.retry_history,
+                "error_message": ot.error_message,
+            }
+            for ot in scheduled_tasks
+        ],
+        "dlq_items": [
+            {
+                "id": d.id,
+                "task_key": d.task_key,
+                "agent_or_service": d.agent_or_service,
+                "state_at_failure": d.state_at_failure,
+                "error_code": d.error_code,
+                "failure_reason": d.failure_reason,
+                "attempt_count": d.attempt_count,
+                "retry_history": d.retry_history,
+                "status": d.status,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in dlq_items
+        ],
+        "compensations": [
+            {
+                "id": cp.id,
+                "trigger_reason": cp.trigger_reason,
+                "failed_state": cp.failed_state,
+                "compensating_action": cp.compensating_action,
+                "target_object_type": cp.target_object_type,
+                "target_object_id": cp.target_object_id,
+                "status": cp.status,
+                "created_at": cp.created_at.isoformat(),
+            }
+            for cp in compensations
+        ],
+        "events": [
+            {
+                "id": ev_row.id,
+                "event_id": ev_row.event_id,
+                "event_type": ev_row.event_type,
+                "source": ev_row.source,
+                "processing_status": ev_row.processing_status,
+                "resulting_state": ev_row.resulting_state,
+                "duplicate_hits": ev_row.duplicate_hits,
+                "created_at": ev_row.created_at.isoformat(),
+            }
+            for ev_row in events
+        ],
+        "sla_timers": [
+            {
+                "id": t.id,
+                "stage": t.stage,
+                "status": compute_timer_status(t.due_at, t.completed_at, t.paused),
+                "paused": t.paused,
+                "due_at": t.due_at.isoformat(),
+                "owner_role": t.owner_role,
+                "daily_penalty_inr": str(t.daily_penalty_inr),
+            }
+            for t in timers
+        ],
+        "dag": dag,
+        "published_results": pub_results,
+        "rework_queue": (claim.workflow_state or {}).get("rework_queue", []),
+        "escalations": (claim.workflow_state or {}).get("escalations", []),
+        "executions": [
+            {
+                "id": ex.id,
+                "agent_name": ex.agent_name,
+                "attempt_number": ex.attempt_number,
+                "status": ex.status,
+                "dependencies_satisfied": ex.dependencies_satisfied,
+                "actions_executed": ex.actions_executed,
+                "rework_requests": ex.rework_requests,
+                "decision": None if (ex.agent_name == "fraud_intelligence" and not siu_visible) else ex.decision,
+                "error_message": ex.error_message,
+                "duration_ms": ex.duration_ms,
+                "created_at": ex.created_at.isoformat(),
+            }
+            for ex in executions
+        ],
+        "tasks": [
+            {
+                "id": t.id,
+                "task_type": t.task_type,
+                "title": t.title,
+                "assigned_role": t.assigned_role,
+                "created_by_agent": t.created_by_agent,
+                "priority": t.priority,
+                "status": t.status,
+                "reason_code": t.reason_code,
+            }
+            for t in tasks
+            if siu_visible or t.task_type != "siu_investigation"
+        ],
+        "decisions": [
+            {
+                "id": d.id,
+                "agent_name": d.agent_name,
+                "decision_id": d.decision_id,
+                "routing_outcome": d.routing_outcome,
+                "reason_codes": d.reason_codes,
+                "evidence": d.evidence,
+                "policy_rule_refs": d.policy_rule_refs,
+                "confidence": str(d.confidence),
+                "confidence_band": d.confidence_band,
+                "explanation": d.explanation,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in decisions
+            if siu_visible or d.agent_name != "fraud_intelligence"
+        ],
+    }
+
+
+@router.post("/claims/{claim_id}/orchestrate")
+def run_claim_orchestration(
+    claim_id: str,
+    body: OrchestrateRequest = OrchestrateRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    summary = orch.orchestrate_claim(
+        claim,
+        stop_on_human_gate=body.stop_on_human_gate,
+        max_steps=body.max_steps,
+        simulate_timeout_agent=body.simulate_timeout_agent,
+        simulate_transient_timeout_once_agent=body.simulate_transient_timeout_once_agent,
+    )
+    db.commit()
+    return summary
+
+
+@router.post("/claims/{claim_id}/orchestration/events")
+def dispatch_orchestration_event(
+    claim_id: str,
+    body: OrchestrationEventRequest,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.POLICYHOLDER, Role.GARAGE, Role.SURVEYOR)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.handle_event(
+        claim,
+        event_id=body.event_id,
+        event_type=body.event_type,
+        source=body.source,
+        payload=body.payload,
+        auto_advance=body.auto_advance,
+    )
+    db.commit()
+    return res
+
+
+@router.post("/claims/{claim_id}/orchestration/pause")
+def pause_claim_workflow(
+    claim_id: str,
+    body: WorkflowPauseRequest = WorkflowPauseRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.pause_workflow(claim, reason=body.reason)
+    db.commit()
+    return res
+
+
+@router.post("/claims/{claim_id}/orchestration/resume")
+def resume_claim_workflow(
+    claim_id: str,
+    body: WorkflowResumeRequest = WorkflowResumeRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.resume_workflow(
+        claim,
+        resolution_notes=body.resolution_notes,
+        run_ready_stages=body.run_ready_stages,
+    )
+    db.commit()
+    return res
+
+
+@router.post("/claims/{claim_id}/orchestration/compensate")
+def compensate_claim_workflow(
+    claim_id: str,
+    body: CompensationRequest = CompensationRequest(),
+    user: UserContext = Depends(require_roles(Role.CLAIMS_MANAGER, Role.ADMIN, Role.CLAIMS_HANDLER)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.run_compensation(
+        claim,
+        trigger_reason=body.trigger_reason,
+        target_state=body.target_state,
+    )
+    db.commit()
+    return res
+
+
+@router.post("/claims/{claim_id}/orchestrate/{agent_name}")
+def run_single_orchestrated_agent(
+    claim_id: str,
+    agent_name: str,
+    body: SingleAgentOrchestrateRequest = SingleAgentOrchestrateRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    resp = orch.run_agent(
+        claim,
+        agent_name,
+        enforce_dependencies=body.enforce_dependencies,
+        simulate_timeout=body.simulate_timeout,
+        simulate_transient_timeout_once=body.simulate_transient_timeout_once,
+    )
+    db.commit()
+    if resp.status == AgentStatus.BLOCKED_DEPENDENCY:
+        raise DomainError(
+            ErrorCode.STATE_CONFLICT,
+            f"Dependency gate blocked '{agent_name}': {', '.join(resp.missing_information)}",
+            status_code=409,
+        )
+    return {"claim_status": claim.status, "agent_response": resp.model_dump()}
+
+
+@router.post("/claims/{claim_id}/rework")
+def request_stage_rework(
+    claim_id: str,
+    body: ReworkSubmitRequest,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.SURVEYOR)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.apply_rework_request(
+        claim,
+        ReworkRequest(
+            from_agent=body.from_agent,
+            to_agent=body.to_agent,
+            reason_code=body.reason_code,
+            instructions=body.instructions,
+            blocking=body.blocking,
+        ),
+    )
+    db.commit()
+    return {"claim_status": claim.status, **res}
+
+
+@router.post("/claims/{claim_id}/orchestration/recover")
+def recover_claim_orchestration(
+    claim_id: str,
+    body: OrchestrationRecoverRequest = OrchestrationRecoverRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    orch = ClaimOrchestrator(db, user)
+    res = orch.recover_orchestration(
+        claim,
+        resolution_notes=body.resolution_notes,
+        resume_pipeline=body.resume_pipeline,
+    )
+    db.commit()
+    return {"claim_status": claim.status, **res}
+
+
+@router.get("/claims/{claim_id}/tasks")
+def list_claim_tasks(
+    claim_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    tasks = db.query(ClaimTask).filter(ClaimTask.claim_id == claim.id).order_by(ClaimTask.created_at.desc()).all()
+    return {
+        "items": [
+            {
+                "id": t.id,
+                "task_type": t.task_type,
+                "title": t.title,
+                "description": t.description,
+                "assigned_role": t.assigned_role,
+                "created_by_agent": t.created_by_agent,
+                "priority": t.priority,
+                "status": t.status,
+                "reason_code": t.reason_code,
+                "due_at": t.due_at.isoformat() if t.due_at else None,
+                "created_at": t.created_at.isoformat(),
+            }
+            for t in tasks
+            if siu_visible or t.task_type != "siu_investigation"
+        ]
+    }
+
+
+@router.patch("/claims/{claim_id}/tasks/{task_id}")
+def update_claim_task(
+    claim_id: str,
+    task_id: str,
+    body: TaskUpdateRequest,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    task = db.query(ClaimTask).filter(ClaimTask.id == task_id, ClaimTask.claim_id == claim.id).first()
+    if not task:
+        raise DomainError(ErrorCode.NOT_FOUND, "Claim task not found", status_code=404)
+    task.status = body.status
+    if body.status == "completed":
+        task.completed_at = datetime.now(timezone.utc)
+    if body.notes:
+        task.metadata_json = {**(task.metadata_json or {}), "completion_notes": body.notes}
+    record_audit_event(
+        db,
+        tenant_id=claim.tenant_id,
+        claim_id=claim.id,
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        action="CLAIM_TASK_UPDATED",
+        object_type="claim_task",
+        object_id=task.id,
+        after_state={"status": task.status},
+    )
+    db.commit()
+    return {"id": task.id, "status": task.status}
+
+
+@router.get("/claims/{claim_id}/decisions")
+def list_claim_decisions(
+    claim_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    decisions = (
+        db.query(DecisionRecord)
+        .filter(DecisionRecord.claim_id == claim.id)
+        .order_by(DecisionRecord.created_at.desc())
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": d.id,
+                "agent_name": d.agent_name,
+                "stage": d.stage,
+                "decision_id": d.decision_id,
+                "routing_outcome": d.routing_outcome,
+                "reason_codes": d.reason_codes,
+                "evidence": d.evidence,
+                "policy_rule_refs": d.policy_rule_refs,
+                "confidence": str(d.confidence),
+                "confidence_band": d.confidence_band,
+                "explanation": d.explanation,
+                "alternatives_considered": d.alternatives_considered,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in decisions
+            if siu_visible or d.agent_name != "fraud_intelligence"
+        ]
+    }
+
+
+@router.post("/claims/{claim_id}/provider-coordination")
+def coordinate_claim_providers(
+    claim_id: str,
+    body: ProviderCoordinateRequest = ProviderCoordinateRequest(),
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    vehicle = db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
+    facts = {
+        "requires_mandatory_survey": claim.requires_mandatory_survey,
+        "ev_battery_impacted": claim.ev_battery_impacted,
+        "is_ev": vehicle.is_ev if vehicle else False,
+        "towing_needed": body.towing_needed or claim.towing_needed,
+        "vehicle_immobile": claim.vehicle_immobile,
+        "preferred_garage_id": body.preferred_garage_id or claim.assigned_garage_id,
+        "preferred_surveyor_id": body.preferred_surveyor_id or claim.assigned_surveyor_id,
+    }
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "provider_coordination",
+        enforce_dependencies=False,
+        override_facts=facts,
+        apply_state_progression=True,
+    )
+    db.commit()
+    return {"claim_status": claim.status, "agent_response": agent_res.model_dump()}
+
+
+@router.post("/claims/{claim_id}/payments/agent-release", status_code=201)
+def initiate_approved_payment_via_agent(
+    claim_id: str,
+    body: PaymentInitiateRequest,
+    user: UserContext = Depends(require_roles(Role.FINANCE_APPROVER, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    stl = db.query(Settlement).filter(Settlement.id == body.settlement_id, Settlement.claim_id == claim.id).first()
+    if not stl or stl.approval_status != "approved":
+        raise DomainError(
+            ErrorCode.HUMAN_REVIEW_REQUIRED,
+            "Controlled agent payment release requires an approved settlement",
+            status_code=409,
+        )
+    orch = ClaimOrchestrator(db, user)
+    agent_res = orch.run_agent(
+        claim,
+        "settlement_recommendation",
+        enforce_dependencies=False,
+        override_facts={
+            "settlement_id": stl.id,
+            "idempotency_key": body.idempotency_key,
+            "payee_type": body.payee_type,
+            "payee_name": body.payee_name,
+            "simulate_timeout": body.simulate_timeout,
+            "initiate_approved_payment": True,
+            "calculation": {"gross": str(stl.gross_assessed_inr), "net": str(stl.net_payable_inr)},
+        },
+        apply_state_progression=False,
+    )
+    if claim.status == ClaimStatus.APPROVED.value:
+        orch.transition_state(
+            claim,
+            ClaimStatus.PAYMENT_PENDING.value,
+            reason="Finance approved payout instruction initiated via controlled agent gate",
+            trigger_event="PaymentInitiated",
+            next_expected_action="Track payment reconciliation & QA closure",
+        )
+    pmt_task = orch._get_or_create_task(claim, "payment_execution")
+    pmt_task.status = "completed"
+    pmt_task.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"claim_status": claim.status, "agent_response": agent_res.model_dump()}

@@ -10,7 +10,7 @@ Motor-insurance claims sit at the intersection of **strict statutory regulation*
 
 Accordingly, the system enforces five non-negotiable architectural invariants:
 
-1. **Workflow-First, Agent-Assisted:** The relational domain database (`services/claims/models.py`) and explicit state machine (`services/claims/state_machine.py`) own claim state, SLA timers, and transactional outbox events. Agents perform bounded sub-tasks inside explicit workflow steps.
+1. **Orchestrator-First, Agent-Assisted:** The `ClaimOrchestrator` (`services/workflow/orchestrator.py`), 8-part state contracts (`services/workflow/state_specs.py`), relational domain database (`services/claims/models.py`), and explicit state machine (`services/claims/state_machine.py`) own all claim progression, DAG scheduling, parallel execution, retries, DLQ, compensation, SLA timers, pause/resume/recovery, and transactional outbox events. Agents never independently decide workflow state or overall progression; `ControlledActionExecutor` enforces strict tool/policy boundaries.
 2. **Deterministic Financial & Regulatory Core:** All money math (`Decimal` with `ROUND_HALF_UP`), depreciation schedules, deductibles, Constructive Total Loss (`>= 75%` IDV), mandatory survey thresholds (`>= ₹50,000`), and Delegation-of-Authority (DoA) checks execute in deterministic Python services backed by effective-dated JSON rules (`rules/india/`, `rules/common/`).
 3. **Least-Privilege, Tool-Permissioned Agents:** Every agent inherits from `BoundedAgent` (`services/agent_runtime/base.py`), declares an explicit `allowed_tools` set, receives PII-masked `minimised_facts`, and returns schema-validated `AgentInvocationResponse` objects (`packages/contracts/agents.py`).
 4. **Server-Side Tenant & ABAC Isolation:** Every endpoint validates JWT claims and enforces `enforce_claim_abac`, `enforce_siu_access`, and `enforce_tp_medical_access` (`packages/security/auth.py`) at the API/query layer—never via UI hiding.
@@ -34,11 +34,16 @@ flowchart TB
         SAN["PII Masker · MIME Sniffer · Malware & Prompt-Injection Scanner\n(packages/security/sanitizer.py)"]
     end
 
+    subgraph Orchestration["First-Class Claim Orchestration Engine (services/workflow/)"]
+        ORCH["ClaimOrchestrator DAG & Saga Coordinator\n(orchestrator.py: Parallel Waves, Retries, DLQ, Pause/Resume)"]
+        SPECS["8-Part StateContracts & TaskDAGSpecs\n(state_specs.py: Entry, Data, Actions, Exit, Owner, SLA, Retry, Escalation)"]
+        SLA["SLA Timers & Escalation Sweep\n(sla_engine.py)"]
+    end
+
     subgraph Core["Claims Modular Monolith & Deterministic Core"]
-        CLAIMS["Claims Domain Service & State Machine\n(services/claims/state_machine.py)"]
+        CLAIMS["Claims Domain Service & State Machine\n(services/claims/state_machine.py: 15 Canonical States)"]
         RULES["Versioned Rules Engine & Hybrid Policy RAG\n(services/rules_engine/loader.py, knowledge.py)"]
         SETTLE["Deterministic Decimal Calculator & DoA Matrix\n(services/settlement/calculator.py, authority.py)"]
-        SLA["SLA Timers & Escalation Engine\n(services/workflow/sla_engine.py)"]
         AUDIT["Append-Only SHA-256 Audit & Transactional Outbox\n(services/claims/audit.py)"]
     end
 
@@ -65,16 +70,19 @@ flowchart TB
     EXTAPI --> CORS
     CORS --> AUTH --> SAN
     CORS --> ERR
-    SAN --> CLAIMS
+    SAN --> ORCH
+    ORCH --> SPECS
+    ORCH --> SLA
+    ORCH --> CLAIMS
+    ORCH --> AGENTS
     CLAIMS --> RULES
     CLAIMS --> SETTLE
-    CLAIMS --> SLA
     CLAIMS --> AUDIT
-    CLAIMS --> AGENTS
     AGENTS --> GW
     AGENTS --> DOCAI
     AGENTS --> DMGAI
     AGENTS --> FRDAI
+    ORCH --> DB
     CLAIMS --> DB
     CLAIMS --> VAULT
     RULES --> KB
@@ -88,13 +96,14 @@ flowchart TB
 
 | Layer | Directory / Module | Key Responsibilities | Non-Responsibilities (Hard Boundaries) |
 |---|---|---|---|
-| **Frontend UI** | `apps/web/src/` | Role-aware workspaces, accessible UI (`WCAG 2.2 AA` contrast/labels), explicit badges distinguishing Verified Facts vs Extracted vs AI Assistive vs Human Decisions | Never computes authoritative payouts or enforces security alone |
+| **Frontend UI** | `apps/web/src/` | Role-aware workspaces, accessible UI (`WCAG 2.2 AA` contrast/labels), explicit badges distinguishing Verified Facts vs Extracted vs AI Assistive vs Human Decisions, Orchestration Control & 8-Part State Inspector | Never computes authoritative payouts or enforces security alone |
 | **API Gateway / Edge** | `apps/api/` | Versioned `/api/v1` REST contracts, OpenAPI docs, `X-Correlation-ID` propagation, idempotency key headers, standardized error responses | Never embeds business math or SQL in route handlers where a domain service owns it |
 | **Security & Privacy** | `packages/security/` | JWT issuance/validation, 11-role RBAC + tenant/partner ABAC, SIU/TP medical compartmentalization, PII masking in logs/prompts, upload magic-byte & EICAR malware checks, prompt-injection sanitization | Never logs raw PAN, Aadhaar, phone numbers, or bank account numbers |
-| **Domain & State Machine** | `services/claims/` | 24 relational entities, explicit state transition graph (`ALLOWED_TRANSITIONS`), append-only SHA-256 audit events, transactional outbox | Never deletes audit history or allows unvalidated state jumps |
+| **Claim Orchestration Engine** | `services/workflow/` | First-class DAG `ClaimOrchestrator`, exclusive ownership of state transitions, 8-property `StateContractSpec` (`state_specs.py`), Post-FNOL `ThreadPoolExecutor` parallel waves, conditional/sequential gating, exponential-backoff retries, DLQ, Saga compensation, pause/resume/recovery, duplicate-event dedup, SLA sweeps | Never delegates workflow control or state mutations back to individual agents |
+| **Domain & State Machine** | `services/claims/` | 31 relational entities (incl. `OrchestrationTask`, `OrchestrationEventLog`, `DeadLetterRecord`, `CompensationLog`), explicit state transition graph (`ALLOWED_TRANSITIONS` + 15 canonical states), append-only SHA-256 audit events, transactional outbox | Never deletes audit history or allows unvalidated state jumps |
 | **Rules & Knowledge** | `services/rules_engine/` | Loads effective-dated JSON rules, syncs `RuleVersion` rows, hybrid TF-IDF + cosine retrieval over synthetic policy wordings with clause/page citations | Never hard-codes regulatory thresholds inside LLM prompts |
 | **Settlement & Authority** | `services/settlement/` | `Decimal` line-by-line depreciation, Zero Dep & Consumables waivers, excess, CTL evaluation, DoA maker-checker enforcement | Never allows same-user maker/checker or bulk approvals |
-| **Bounded Agents** | `agents/` + `services/agent_runtime/` | 11 specialised agents with least-privilege tool allowlists, confidence bands, limitations, and outage fallback | Never mutates DB tables directly, repudiates claims, or releases payments |
+| **Bounded Agents** | `agents/` + `services/agent_runtime/` | 11 specialised agents with least-privilege tool allowlists (`mutate_claim_state_directly` explicitly prohibited), confidence bands, limitations, and outage fallback | Never mutates claim states or DB tables directly, repudiates claims, or releases payments |
 
 ---
 

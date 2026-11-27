@@ -20,7 +20,10 @@ class FNOLCreateRequest(BaseModel):
     intake_channel: str = "web"
     incident_at: Optional[datetime] = None
     incident_location: str
+    geo_coords: Optional[str] = None
+    location_landmark: str = ""
     incident_description: str
+    channel_transcript: Optional[str] = None
     driver_name: str = ""
     driver_licence_ref: str = ""
     vehicle_immobile: bool = False
@@ -32,6 +35,7 @@ class FNOLCreateRequest(BaseModel):
     estimated_loss_inr: Decimal = Decimal("0.00")
     preferred_garage_id: Optional[str] = None
     preferred_language: str = "en-IN"
+    auto_send_ack: bool = False
 
 
 class FactCorrectionRequest(BaseModel):
@@ -109,6 +113,7 @@ class CommunicationCreateRequest(BaseModel):
     channel: str = "email"
     language: str = "en-IN"
     template_id: str = "CLAIM_UPDATE"
+    message_type: str = "status_update"
     subject: str
     body: str
     is_adverse: bool = False
@@ -140,3 +145,66 @@ class AiOutageToggleRequest(BaseModel):
 class RepairMilestoneRequest(BaseModel):
     milestone: str
     notes: str = ""
+
+
+class OrchestrateRequest(BaseModel):
+    stop_on_human_gate: bool = True
+    max_steps: int = 15
+    simulate_timeout_agent: Optional[str] = None
+    simulate_transient_timeout_once_agent: Optional[str] = None
+
+
+class SingleAgentOrchestrateRequest(BaseModel):
+    enforce_dependencies: bool = True
+    simulate_timeout: bool = False
+    simulate_transient_timeout_once: bool = False
+
+
+class ReworkSubmitRequest(BaseModel):
+    from_agent: str
+    to_agent: str
+    reason_code: str
+    instructions: str
+    blocking: bool = True
+
+
+class OrchestrationRecoverRequest(BaseModel):
+    resolution_notes: str = "Resolved upstream holds and recovered orchestration."
+    resume_pipeline: bool = True
+
+
+class OrchestrationEventRequest(BaseModel):
+    event_id: str
+    event_type: str
+    source: str = "api"
+    payload: dict = {}
+    auto_advance: bool = True
+
+
+class WorkflowPauseRequest(BaseModel):
+    reason: str = "Paused for operational review"
+
+
+class WorkflowResumeRequest(BaseModel):
+    resolution_notes: str = "Resumed workflow from checkpoint"
+    run_ready_stages: bool = True
+
+
+class CompensationRequest(BaseModel):
+    trigger_reason: str = "Downstream failure or cancellation rollback"
+    target_state: str = "HUMAN_REVIEW"
+
+
+class DLQActionRequest(BaseModel):
+    resolution_notes: str = "Operator resolved DLQ item"
+
+
+class TaskUpdateRequest(BaseModel):
+    status: str = "completed"
+    notes: str = ""
+
+
+class ProviderCoordinateRequest(BaseModel):
+    preferred_garage_id: Optional[str] = None
+    preferred_surveyor_id: Optional[str] = None
+    towing_needed: bool = False

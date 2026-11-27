@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 const NAV_ITEMS = [
   { href: "/", label: "Command Centre" },
   { href: "/fnol", label: "FNOL Intake" },
+  { href: "/agents", label: "11 Agents & Matrix" },
   { href: "/portal", label: "Customer Portal" },
   { href: "/siu", label: "SIU Fraud Desk" },
   { href: "/partners", label: "Surveyor & Garage" },
