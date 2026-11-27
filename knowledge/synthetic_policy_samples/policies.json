@@ -61,6 +61,48 @@
         "page": 9,
         "title": "Notice of Loss & Fair Documentation",
         "text": "Notice shall be given to the Company upon occurrence of any accidental loss or damage. In alignment with IRDAI Master Circular 2024, no claim shall be rejected solely for delayed intimation or non-submission of non-essential documents where the delay is reasonably explained and loss authenticity is verifiable; missing records trigger structured follow-up."
+      },
+      {
+        "clause_id": "SEC-1-5",
+        "section": "Section I — Depreciation & Deductions",
+        "page": 6,
+        "title": "Compulsory & Voluntary Excess",
+        "text": "The Insured shall bear the compulsory excess specified in the policy schedule for the vehicle class in respect of each and every own-damage claim, plus any voluntary deductible opted for at inception. Excesses are deducted from the amount payable after depreciation and are applied once per claim, including any supplementary estimate on the same claim."
+      },
+      {
+        "clause_id": "SEC-1-6",
+        "section": "Section I — Limit of Liability",
+        "page": 6,
+        "title": "IDV Limit of Liability & Basis of Settlement",
+        "text": "The Insured's Declared Value (IDV) specified in the schedule is the agreed value of the vehicle and the maximum amount payable for a total loss or constructive total loss. A partial-loss settlement shall not exceed the IDV. Unless the policy schedule expressly provides a pro-rata (average) condition, a partial loss is not reduced for any difference between the IDV and the market value of the vehicle."
+      },
+      {
+        "clause_id": "SEC-1-7",
+        "section": "Section I — Total Loss Settlement",
+        "page": 7,
+        "title": "Salvage & Total Loss Settlement",
+        "text": "On a total loss the Company shall pay the IDV less applicable excesses against surrender of the vehicle and its documents, and shall be entitled to the salvage. Where the Insured elects to retain the salvage, its assessed value shall be deducted from the amount payable."
+      },
+      {
+        "clause_id": "SEC-1-8",
+        "section": "Section I — Repair or Replacement",
+        "page": 7,
+        "title": "Repair, Reinstatement or Replacement Option",
+        "text": "The Company may at its option repair, reinstate or replace the vehicle or any part thereof, or pay in cash the amount of the loss or damage, provided the repair is technically feasible and safe as certified by the assessing surveyor. Safety-critical parts shall be replaced and not repaired."
+      },
+      {
+        "clause_id": "COND-CLAIM-02",
+        "section": "Conditions — Claim Settlement Mode",
+        "page": 9,
+        "title": "Cashless Network Repair & Reimbursement",
+        "text": "In a cashless claim the Company settles the approved amount directly with the network garage and the Insured pays the excess and any non-admissible amount. In a reimbursement claim the Insured pays the garage and then receives the admissible amount against the original GST invoice, proof of payment and repair completion confirmation."
+      },
+      {
+        "clause_id": "COND-CLAIM-03",
+        "section": "Conditions — Supplementary Estimates",
+        "page": 10,
+        "title": "Supplementary Estimates & Re-inspection",
+        "text": "Additional damage found on dismantling shall be notified through a supplementary estimate before the repair is carried out. A supplementary estimate that increases the approved repair cost beyond the re-inspection variance threshold requires a surveyor re-inspection and a fresh authority check on the cumulative amount."
       }
     ]
   },

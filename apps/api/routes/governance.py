@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from apps.api.schemas import AiOutageToggleRequest, DLQActionRequest, RuleSimulateRequest
+from apps.api.schemas import AiOutageToggleRequest, DLQActionRequest, RuleSimulateRequest, SettlementWorkbenchRequest
 from packages.contracts.errors import DomainError, ErrorCode
 from packages.security.auth import INTERNAL_ROLES, Role, UserContext, get_current_user, require_roles
 from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS, ORCHESTRATION_ORDER
@@ -27,6 +27,7 @@ from services.claims.models import (
 from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.knowledge import HybridPolicyRetriever, load_rate_card
 from services.rules_engine.loader import sync_rules_to_db
+from services.settlement.workbench import build_settlement_workbench, inputs_from_mapping
 from services.workflow.ecosystem import build_ecosystem_dashboard, serialize_provider_scorecard
 from services.workflow.orchestrator import ClaimOrchestrator
 from services.workflow.sla_engine import compute_timer_status, sweep_sla_breaches
@@ -411,3 +412,14 @@ def list_demo_users(db: Session = Depends(get_db)):
             for u in users
         ]
     }
+
+
+@router.post("/settlement/workbench")
+def settlement_workbench(
+    body: SettlementWorkbenchRequest,
+    user: UserContext = Depends(require_roles(Role.CLAIMS_HANDLER, Role.CLAIMS_MANAGER, Role.LEGAL_TP, Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Settlement decision workbench: twelve comparable scenarios on the synthetic demo claim (read-only what-if)."""
+    overrides = body.model_dump(exclude_none=True)
+    return build_settlement_workbench(inputs_from_mapping(overrides), db=db)
