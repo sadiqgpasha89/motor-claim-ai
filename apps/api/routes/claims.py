@@ -97,6 +97,7 @@ from services.claims.models import (
     Vehicle,
 )
 from services.claims.state_machine import ClaimStatus, to_canonical_state, validate_transition
+from services.claims.supplementary import assert_supplement_allowed, review_supplement
 from services.damage_ai.assessor import assess_damage_from_evidence, validate_estimate_lines
 from services.document_ai.processor import extract_document_facts
 from services.fraud_intelligence.detector import build_entity_relationship_graph, run_fraud_and_anomaly_checks
@@ -148,6 +149,9 @@ from services.workflow.tp_liability import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["claims"])
+
+# Payment statuses that no longer count as money paid or in flight.
+UNPAID_PAYMENT_STATUSES = ("failed", "rejected", "reversed", "cancelled")
 
 
 def _get_claim_for_user(db: Session, claim_id: str, user: UserContext) -> Claim:
@@ -1619,6 +1623,8 @@ def submit_and_validate_estimate(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    if body.is_supplement:
+        assert_supplement_allowed(claim)
     dmg_rows = db.query(DamageAssessment).filter(DamageAssessment.claim_id == claim.id).all()
     visible_parts = {d.part_code for d in dmg_rows if d.part_code}
     dmg_obs = [
@@ -1696,12 +1702,14 @@ def submit_and_validate_estimate(
         object_id=est.id,
         details={"claimed": str(est.total_claimed_inr), "recommended": str(est.total_approved_inr), "anomalies": len(val["anomalies"])},
     )
+    supplementary_review = review_supplement(db, claim, est, user) if est.is_supplement else None
     if not val["anomalies"]:
         _safe_proactive_notify(db, claim, user, "estimate_approved")
     db.commit()
     return {
         "estimate_id": est.id,
         "validation": val,
+        "supplementary_review": supplementary_review,
         "risk_tier": claim.risk_tier,
         "operational_path": claim.operational_path,
         "risk_assessment": sanitize_risk_payload_for_user(claim.risk_assessment, siu_visible=(user.role in SIU_ALLOWED_ROLES)),
@@ -2431,11 +2439,29 @@ def initiate_payment(
             "Payment cannot be initiated without an approved settlement",
             status_code=409,
         )
+    # Lock the claim row so two concurrent payouts cannot both read the same paid total.
+    db.query(Claim).filter(Claim.id == claim.id).with_for_update().first()
+    already_paid = sum(
+        (
+            Decimal(str(p.amount_inr))
+            for p in db.query(Payment).filter(
+                Payment.claim_id == claim.id, Payment.status.notin_(UNPAID_PAYMENT_STATUSES)
+            )
+        ),
+        Decimal("0.00"),
+    )
+    payable_inr = Decimal(str(stl.net_payable_inr)) - already_paid
+    if payable_inr <= Decimal("0.00"):
+        raise DomainError(
+            ErrorCode.STATE_CONFLICT,
+            f"Nothing is payable. INR {already_paid:.2f} was already paid or is in flight against this claim.",
+            status_code=409,
+        )
 
     bank_res = IntegrationAdapterRegistry.validate_bank_account(body.account_last4, body.ifsc)
     pg_res = IntegrationAdapterRegistry.execute_payment(
         idempotency_key=body.idempotency_key,
-        amount_inr=Decimal(str(stl.net_payable_inr)),
+        amount_inr=payable_inr,
         payee_name=body.payee_name,
         simulate_timeout=body.simulate_timeout,
     )
@@ -2449,7 +2475,7 @@ def initiate_payment(
         payee_name=body.payee_name,
         bank_account_masked=mask_bank_account(body.account_last4),
         bank_verified=bank_res["verified"],
-        amount_inr=Decimal(str(stl.net_payable_inr)),
+        amount_inr=payable_inr,
         status=pg_res["status"],
         gateway_reference=pg_res["gateway_reference"],
         approved_by_finance_id=user.user_id,

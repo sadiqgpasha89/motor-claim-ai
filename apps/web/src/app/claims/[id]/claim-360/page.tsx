@@ -42,8 +42,29 @@ interface Trace {
   human_intervention: { required: boolean; resolved: boolean } | null;
 }
 
+interface Complexity {
+  score: number;
+  band: string;
+  drivers: { driver: string; points: number; why: string }[];
+  expected_handling_hours: number;
+  expected_human_touchpoints: number;
+  recommended_skill: string;
+  disclaimer: string;
+}
+
+interface SlaPrediction {
+  [key: string]: unknown;
+}
+
+interface Analysis {
+  repair_replace: { components: { part_code: string; decision: string; confidence: number; human_review_required: boolean; reasons: string[] }[] } | null;
+  benchmark: { city_tier: string; flagged_lines: number; lines: { part_code: string; line_type: string; flags: string[] }[] } | null;
+  fusion: { fused_confidence: number; agreed_zones: string[]; contradictions: { message: string }[]; human_review_required: boolean } | null;
+}
+
 interface Claim360 {
   claim_id: string;
+  intelligence: { complexity: Complexity; sla_risk: { predictions: SlaPrediction[] } };
   overview: {
     claim_number: string;
     status: string;
@@ -110,13 +131,31 @@ export default function Claim360Page() {
   const { token } = useAuth();
   const [data, setData] = useState<Claim360 | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [live, setLive] = useState(true);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   useEffect(() => {
     if (!token || !id) return;
-    apiFetch<Claim360>(`/api/v1/claims/${id}/claim-360`, {}, token)
-      .then(setData)
-      .catch((e: Error) => setError(e.message));
-  }, [token, id]);
+    const load = () =>
+      apiFetch<Claim360>(`/api/v1/claims/${id}/claim-360`, {}, token)
+        .then(setData)
+        .catch((e: Error) => setError(e.message));
+    load();
+    if (!live) return;
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
+  }, [token, id, live]);
+
+  const runAnalysis = async () => {
+    if (!token) return;
+    const get = <T,>(path: string) => apiFetch<T>(`/api/v1/claims/${id}/${path}`, {}, token).catch(() => null);
+    const [repair_replace, benchmark, fusion] = await Promise.all([
+      get<NonNullable<Analysis["repair_replace"]>>("repair-replace-analysis"),
+      get<NonNullable<Analysis["benchmark"]>>("estimate-benchmark"),
+      get<NonNullable<Analysis["fusion"]>>("multimodal-fusion"),
+    ]);
+    setAnalysis({ repair_replace, benchmark, fusion });
+  };
 
   if (error) return <div className="p-4 bg-red-50 border border-red-300 text-red-900 rounded-lg text-sm">{error}</div>;
   if (!data) return <div className="text-sm text-slate-600">Loading Claim 360…</div>;
@@ -133,9 +172,14 @@ export default function Claim360Page() {
             {o.paused && <span className="ml-2 px-2 py-0.5 text-xs bg-amber-100 border border-amber-300 rounded">PAUSED</span>}
           </p>
         </div>
-        <Link href={`/claims/${data.claim_id}`} className="px-3 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg">
-          Open full claim workspace
-        </Link>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setLive(!live)} className="px-3 py-2 text-xs font-semibold border border-slate-300 rounded-lg">
+            {live ? "Live: refreshing every 10s" : "Live refresh off"}
+          </button>
+          <Link href={`/claims/${data.claim_id}`} className="px-3 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg">
+            Open full claim workspace
+          </Link>
+        </div>
       </div>
 
       <section className={`p-5 rounded-xl border ${a.do_i_need_to_act.required ? "bg-amber-50 border-amber-300" : "bg-white border-slate-200"}`}>
@@ -189,6 +233,48 @@ export default function Claim360Page() {
           </div>
         </section>
       </div>
+
+      <section className="bg-white p-5 rounded-xl border border-slate-200 space-y-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-bold text-slate-900">Claim intelligence</h2>
+          <button type="button" onClick={runAnalysis} className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg">
+            Run damage analysis
+          </button>
+        </div>
+        <p>
+          Predicted complexity: <b>{data.intelligence.complexity.band}</b> (score {data.intelligence.complexity.score}) · about{" "}
+          {data.intelligence.complexity.expected_handling_hours}h · {data.intelligence.complexity.expected_human_touchpoints} human touchpoints ·
+          skill: {data.intelligence.complexity.recommended_skill}
+        </p>
+        <ul className="list-disc pl-5 text-xs text-slate-700">
+          {data.intelligence.complexity.drivers.map((d) => (
+            <li key={d.driver}>+{d.points} {d.why}</li>
+          ))}
+        </ul>
+        <p className="text-xs text-slate-500">{data.intelligence.complexity.disclaimer} SLA risk predictions: {data.intelligence.sla_risk.predictions.length}.</p>
+        {analysis && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 bg-slate-50 rounded border border-slate-200">
+              <h3 className="font-semibold">Repair vs replace</h3>
+              {analysis.repair_replace
+                ? analysis.repair_replace.components.map((c) => (
+                    <p key={c.part_code}>{c.part_code}: <b>{c.decision}</b>{c.human_review_required ? " (human review)" : ""}</p>
+                  ))
+                : <p>Not available.</p>}
+            </div>
+            <div className="p-3 bg-slate-50 rounded border border-slate-200">
+              <h3 className="font-semibold">Estimate benchmark</h3>
+              {analysis.benchmark ? <p>{analysis.benchmark.city_tier} labour tier · {analysis.benchmark.flagged_lines} flagged line(s)</p> : <p>Not available.</p>}
+            </div>
+            <div className="p-3 bg-slate-50 rounded border border-slate-200">
+              <h3 className="font-semibold">Multimodal check</h3>
+              {analysis.fusion ? (
+                <p>Confidence {analysis.fusion.fused_confidence} · zones {analysis.fusion.agreed_zones.join(", ") || "none agreed"}{analysis.fusion.contradictions.map((x) => ` · ${x.message}`)}</p>
+              ) : <p>Not available.</p>}
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="bg-white p-5 rounded-xl border border-slate-200">
         <h2 className="text-base font-bold text-slate-900 mb-1">AI execution timeline</h2>

@@ -23,3 +23,14 @@ def test_site_section_and_scripts_are_wired():
     html = (SITE / "index.html").read_text(encoding="utf-8")
     assert 'id="agent-ops"' in html and 'href="#agent-ops"' in html
     assert html.index("claim360-data.js") < html.index("agent-ops.js")
+
+
+def test_intelligence_section_and_data_are_wired():
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    assert 'id="claim-intelligence"' in html and 'href="#claim-intelligence"' in html
+    assert html.index("intelligence-data.js") < html.index('src="intelligence.js"')
+    text = (SITE / "intelligence-data.js").read_text(encoding="utf-8")
+    data = json.loads(text.split("window.INTELLIGENCE_DEMO = ", 1)[1].rstrip().rstrip(";"))
+    assert data["fraud_network"]["never_auto_reject"] is True
+    assert data["supplementary"]["reinspection_required"] is True
+    assert any(c["decision"] == "replace_and_inspect" for c in data["repair_replace"]["components"])

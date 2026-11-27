@@ -30,6 +30,7 @@
         <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#tp-liability">TP Liability</a>
         <a href="#agent-ops">Claim 360 &amp; Agent Ops</a>
+        <a href="#claim-intelligence">Claim Intelligence</a>
         <a href="#sla-operations">Predictive SLA</a>
         <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
@@ -573,6 +574,23 @@ flowchart LR
         Backend: <code>services/claims/claim360.py</code>, <code>services/observability/</code>,
         <code>GET /api/v1/claims/{id}/claim-360</code>, <code>GET /api/v1/operations/agent-observability/dashboard</code>.
         UI: <code>apps/web</code> routes <code>/claims/[id]/claim-360</code> and <code>/agent-command-center</code>.
+      </p>
+    </section>
+
+    <section id="claim-intelligence">
+      <h2>2I. Claim Intelligence &mdash; Damage, Estimates, Fraud Network &amp; Complexity</h2>
+      <p class="section-sub">
+        Phase 2 adds six advisory capabilities, all deterministic and rule-driven from <code>rules/india/intelligence_rules.json</code>:
+        repair vs replace economics (safety critical and EV battery parts are never decided from photos), parts and labour benchmarking by city tier,
+        multimodal damage fusion with contradiction checks, supplementary estimate review on <strong>cumulative</strong> totals,
+        predicted claim complexity with a measured backtest, and a weighted fraud relationship graph that opens SIU leads and
+        <strong>never rejects a claim</strong>. The tables are a capture of live API calls. All data is DEMO / SYNTHETIC and thresholds are illustrative.
+      </p>
+      <div class="tabs" role="tablist" aria-label="Claim intelligence views" id="intel-tabs"></div>
+      <div id="intel-body" class="card" style="margin-top:12px;"></div>
+      <p class="section-sub" style="margin-top:10px;">
+        Backend: <code>services/damage_ai/</code>, <code>services/claims/supplementary.py</code>, <code>services/fraud_intelligence/graph.py</code>,
+        <code>services/workflow/complexity.py</code>, <code>apps/api/routes/intelligence.py</code>.
       </p>
     </section>
 
@@ -1651,6 +1669,8 @@ classDiagram
   <script src="settlement-workbench-data.js"></script>
   <script src="claim360-data.js"></script>
   <script src="agent-ops.js"></script>
+  <script src="intelligence-data.js"></script>
+  <script src="intelligence.js"></script>
   <script src="settlement-engine.js"></script>
   <script src="settlement-workbench.js"></script>
 </body>
