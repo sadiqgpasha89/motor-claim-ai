@@ -58,7 +58,7 @@ Every canonical state in `WORKFLOW_STATE_SPECS` defines 8 explicit properties:
 3. Allowed actions (`allowed_actions`)
 4. Exit conditions (`exit_conditions` / `evaluate_state_exit_conditions`)
 5. Responsible agent/service (`responsible_owner`)
-6. SLA (`SLASpec`: warning, target, escalation targets)
+6. SLA (`SLASpec`: warning, target, escalation targets) Predictive SLA clocks, rule versions and the SLA agent are described in [sla-management.md](sla-management.md).
 7. Retry strategy (`RetryStrategySpec`: max retries, exponential backoff, jitter, timeout)
 8. Human escalation criteria (`human_escalation_criteria`)
 

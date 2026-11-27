@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MotorClaim AI Intelligence Solution — Autonomous Claims Workflow &amp; Architecture</title>
   <meta name="description"
-    content="Interactive claim-centric business automation showcase for MotorClaim AI: 8 autonomous claims operations from FNOL to Closure, 11 tool-permissioned agents, IRDAI 2024 rules, failure fallbacks, and deterministic settlement." />
+    content="Interactive claim-centric business automation showcase for MotorClaim AI: 8 autonomous claims operations from FNOL to Closure, 12 tool-permissioned agents, predictive SLA operations, IRDAI 2024 rules, failure fallbacks, and deterministic settlement." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -29,13 +29,14 @@
         <a href="#damage-ai">Visual Damage AI</a>
         <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#tp-liability">TP Liability</a>
+        <a href="#sla-operations">Predictive SLA</a>
         <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
         <a href="#visitors">Q&amp;A &amp; Failures</a>
         <a href="#architecture">System Design</a>
-        <a href="#agents">11-Agent Matrix</a>
+        <a href="#agents">12-Agent Matrix</a>
         <a href="#pipelines">Pipelines</a>
         <a href="#calculator">Settlement Workbench</a>
       </nav>
@@ -51,7 +52,7 @@
         <strong>Claim Orchestration Engine</strong> (<code>services/workflow/orchestrator.py</code>) owns every
         deterministic state transition, DAG task schedule, parallel execution wave, exponential-backoff retry, timeout,
         human approval gate, Dead-Letter Queue (DLQ), compensation saga, SLA timer, duplicate-event guard, and
-        pause/resume checkpoint — coordinating <strong>11 tool-permissioned agents</strong> and deterministic Python
+        pause/resume checkpoint — coordinating <strong>12 tool-permissioned agents</strong> and deterministic Python
         <code>Decimal</code> IRDAI 2024 rules.
       </p>
 
@@ -103,7 +104,7 @@
       </div>
       <div class="card">
         <div class="stat-label">Specialised Agents</div>
-        <div class="stat-num">11 Bounded</div>
+        <div class="stat-num">12 Bounded</div>
         <p class="section-sub" style="margin:6px 0 0;">Strict <code>allowed_tools</code> allowlists; agents cannot mutate overall workflow state</p>
       </div>
       <div class="card">
@@ -552,6 +553,152 @@ flowchart LR
       </div>
     </section>
 
+    <!-- SECTION 2G: PREDICTIVE SLA OPERATIONS -->
+    <section id="sla-operations">
+      <h2>2G. Predictive SLA Operations &mdash; Rules Service, Dashboard &amp; Bounded SLA Agent</h2>
+      <p class="section-sub">
+        SLA management is <strong>predictive and operational, not reactive</strong>. Every deadline, version, pause
+        condition and escalation step comes from a versioned <strong>SLA rules service</strong>
+        (<code>rules/common/sla_rules.json</code> &rarr; <code>services/sla/rules.py</code>); nothing is hardcoded in prompts
+        or in this page &mdash; the tables below are rendered from a generated copy of that catalogue
+        (<code>site/sla-catalogue.js</code>, kept in sync by a test). Clocks are derived from claim events, with
+        pause intervals, so the same engine answers <em>"what is breached?"</em> and <em>"what is about to breach, and why?"</em>
+        The <strong>predictive SLA agent</strong> (<code>sla_intelligence</code>) recommends reassignment, escalation,
+        reminders, scheduling and prioritisation &mdash; and executes <strong>only authorised actions</strong>.
+      </p>
+
+      <div class="eco-shell">
+        <div class="eco-toolbar">
+          <div>
+            <h3 style="margin:0;">SLA Dashboard &mdash; 8 Metrics, Rule-Driven</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Change the claim family or the clock start date: the governing rule version changes with it (for example, document
+              verification moves from v1.0.0 to v1.1.0 on its effective date).
+            </p>
+          </div>
+          <div class="tp-lab-form" style="margin:0;">
+            <label>Claim family
+              <select id="sla-family" onchange="renderSlaDashboard()">
+                <option value="own_damage">Own damage (cashless / reimbursement / total loss / theft)</option>
+                <option value="third_party">Third party</option>
+              </select>
+            </label>
+            <label>Clock starts on
+              <input id="sla-asof" type="date" onchange="renderSlaDashboard()" />
+            </label>
+          </div>
+        </div>
+        <p id="sla-asof-note" class="section-sub" style="margin:0 0 8px;"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SLA</th>
+                <th>Target</th>
+                <th>Regulatory window</th>
+                <th>Start &rarr; stop event</th>
+                <th>Escalation sequence</th>
+                <th>Responsible team</th>
+                <th>Pause conditions</th>
+              </tr>
+            </thead>
+            <tbody id="sla-dashboard-body"></tbody>
+          </table>
+        </div>
+        <p class="section-sub" style="margin-top:8px;">
+          Live API: <code>GET /api/v1/sla/dashboard</code> adds per-metric attainment, p90 duration, open/paused/breached counts,
+          penalty exposure and predicted breaches; <code>GET /api/v1/claims/{id}/sla</code> shows one claim's clocks.
+        </p>
+
+        <div class="eco-sim-box">
+          <h3 style="margin:0;">SLA Rules Service &mdash; Rule Contract Explorer</h3>
+          <p class="section-sub" style="margin:4px 0 8px;">
+            Each rule carries: rule version, applicable claim type, trigger event, start condition, pause conditions, deadline,
+            escalation sequence, responsible team and breach action. <code>POST /api/v1/sla/rules/validate</code> dry-runs a draft
+            catalogue (unknown events or actions, out-of-order escalation, duplicate or overlapping versions) without publishing it.
+          </p>
+          <div class="tp-lab-form">
+            <label>Metric
+              <select id="sla-rule-metric" onchange="renderSlaRuleExplorer()"></select>
+            </label>
+          </div>
+          <div id="sla-rule-detail"></div>
+        </div>
+
+        <div class="eco-sim-box">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <h3 style="margin:0;">Predictive SLA Lab &mdash; Breach Risk, Drivers &amp; Authorised Actions</h3>
+              <p class="section-sub" style="margin:4px 0 0;">
+                A browser port of the explainable baseline <code>sla-risk-baseline-v1</code> (expected remaining work vs remaining
+                budget, with an uncertainty band). It is a transparent heuristic, not a trained model; the contract is
+                swappable. Try an overloaded surveyor, then switch role or claim family to see what the agent may execute.
+              </p>
+            </div>
+          </div>
+          <div class="tp-lab-form">
+            <label>SLA metric <select id="sla-lab-metric" onchange="runSlaLab()"></select></label>
+            <label>Claim family
+              <select id="sla-lab-family" onchange="runSlaLab()">
+                <option value="own_damage">Own damage</option>
+                <option value="third_party">Third party</option>
+              </select>
+            </label>
+            <label>Active hours elapsed <input id="sla-lab-elapsed" type="number" value="140" min="0" step="6" oninput="runSlaLab()" /></label>
+            <label>Owner capacity used (%) <input id="sla-lab-load" type="number" value="92" min="0" max="150" step="5" oninput="runSlaLab()" /></label>
+            <label>Inspection reschedules <input id="sla-lab-resched" type="number" value="1" min="0" max="6" oninput="runSlaLab()" /></label>
+            <label>Unanswered follow-ups <input id="sla-lab-followups" type="number" value="1" min="0" max="6" oninput="runSlaLab()" /></label>
+            <label>Risk tier
+              <select id="sla-lab-tier" onchange="runSlaLab()">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM" selected>Medium</option>
+                <option value="HIGH">High</option>
+              </select>
+            </label>
+            <label>Queue pressure (%) <input id="sla-lab-queue" type="number" value="20" min="0" max="100" step="10" oninput="runSlaLab()" /></label>
+            <label>Hours since document request <input id="sla-lab-docage" type="number" value="10" min="0" step="6" oninput="runSlaLab()" /></label>
+            <label>Agent mode
+              <select id="sla-lab-mode" onchange="runSlaLab()">
+                <option value="recommend">Recommend (read-only)</option>
+                <option value="execute" selected>Execute authorised actions</option>
+              </select>
+            </label>
+            <label>Acting role
+              <select id="sla-lab-role" onchange="runSlaLab()">
+                <option value="claims_manager" selected>claims_manager</option>
+                <option value="claims_handler">claims_handler</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <label class="risk-check-label"><input type="checkbox" id="sla-lab-ev" onchange="runSlaLab()" /> EV high-voltage claim</label>
+            <label class="risk-check-label"><input type="checkbox" id="sla-lab-docs" onchange="runSlaLab()" /> Customer documents still owed</label>
+            <label class="risk-check-label"><input type="checkbox" id="sla-lab-custgarage" onchange="runSlaLab()" /> Garage was chosen by the customer</label>
+          </div>
+          <div id="sla-lab-summary"></div>
+          <div id="sla-lab-output" class="orch-lab-output"></div>
+        </div>
+
+        <div class="eco-sim-box">
+          <h3 style="margin:0;">What the SLA Agent Predicts &amp; What It May Execute</h3>
+          <p class="section-sub" style="margin:4px 0 8px;">
+            It predicts <strong>claims likely to breach</strong>, <strong>garages causing delays</strong>, <strong>surveyors
+            overloaded</strong>, <strong>documents likely to delay processing</strong> and <strong>queue bottlenecks</strong>
+            (<code>GET /api/v1/sla/insights</code>, <code>/sla/predictions</code>), then acts through
+            <code>POST /api/v1/sla/agent/run</code> in <code>recommend</code> or <code>execute</code> mode.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Action</th><th>Authority</th><th>Tool</th><th>Approver</th><th>What it does</th></tr>
+              </thead>
+              <tbody id="sla-action-matrix"></tbody>
+            </table>
+          </div>
+          <div id="sla-guardrails" class="card" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- SECTION 2F: ELECTRIC-VEHICLE (EV) CLAIMS WORKFLOW -->
     <section id="ev-claims">
       <h2>2F. EV Claims Workflow &mdash; Safety-First, Never Cleared from Photographs (IN-EV-CLAIMS-2026)</h2>
@@ -743,7 +890,7 @@ flowchart LR
     <section id="capabilities">
       <h2>3. Bounded Action-Taking, Rework Loops &amp; Decision Intelligence</h2>
       <p class="section-sub">
-        Upgrading our 11 bounded agents in-place without duplicating agents — adding strict dependency gating,
+        Upgrading our bounded agents in-place without duplicating agents — adding strict dependency gating,
         rework loops, safe tool-driven execution, and complete decision explainability.
       </p>
 
@@ -1078,7 +1225,7 @@ flowchart TB
     end
     subgraph AI["Bounded AI Plane (No Direct State Control)"]
         MGW["Model Gateway (Stub / Gemini / Anthropic + Outage Fallback)"]
-        AGENTS["11 Tool-Permissioned BoundedAgents"]
+        AGENTS["12 Tool-Permissioned BoundedAgents"]
     end
     subgraph Data["Storage &amp; Adapters"]
         DB[("PostgreSQL 16 + pgvector / SQLite")]
@@ -1102,9 +1249,9 @@ flowchart TB
       </div>
     </section>
 
-    <!-- SECTION 6: 11 BOUNDED AGENTS CAPABILITY MATRIX -->
+    <!-- SECTION 6: 12 BOUNDED AGENTS CAPABILITY MATRIX -->
     <section id="agents">
-      <h2>6. Upgraded 11-Agent Capability Matrix &amp; Contracts</h2>
+      <h2>6. Upgraded 12-Agent Capability Matrix &amp; Contracts</h2>
       <p class="section-sub">
         Implemented in-place in <code>agents/specialists.py</code> and <code>services/agent_runtime/contracts.py</code>
         (no duplicate agents). Click any agent row below to inspect its formal Input/Output Contract and human gate.
@@ -1454,6 +1601,8 @@ classDiagram
   <script src="workflow-data.js"></script>
   <script src="app.js"></script>
   <script src="tp-liability.js"></script>
+  <script src="sla-catalogue.js"></script>
+  <script src="sla.js"></script>
   <script src="ev-claims.js"></script>
   <script src="settlement-workbench-data.js"></script>
   <script src="settlement-engine.js"></script>

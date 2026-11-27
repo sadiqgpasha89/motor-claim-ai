@@ -41,6 +41,10 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
   - Cost & sign-off: `POST .../ev/cost-benchmark` · `.../ev/cost-benchmark/review` · `.../ev/technical-sign-off` (the only call that lifts the settlement hold)
   - After settlement: `POST .../ev/recertification` · `.../ev/salvage-events` · `.../ev/advance` · `.../ev/close`
   - OD-only endpoints (`settlement-recommendations`, `approvals`, `payments`, `payments/agent-release`) return `409 HUMAN_REVIEW_REQUIRED` for an EV claim until technical sign-off, and `close` until the EV case is closed. The error `details` carry `rule_id`, `ev_workflow_url` and the `blockers`.
+- **Predictive SLA operations** (`docs/sla-management.md`; read endpoints for internal roles, execute mode for `claims_manager` / `admin`):
+  - `GET /api/v1/sla/rules` · `POST /api/v1/sla/rules/validate` (dry run, never publishes)
+  - `GET /api/v1/sla/dashboard` · `GET /api/v1/sla/predictions?min_risk_band=&limit=` · `GET /api/v1/sla/insights` · `GET /api/v1/claims/{claim_id}/sla`
+  - `POST /api/v1/sla/agent/run` `{mode: recommend|execute, claim_ids?, min_risk_band?, limit?}`
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
 - `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`

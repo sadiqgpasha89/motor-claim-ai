@@ -6,8 +6,8 @@ from services.agent_runtime.gateway import ModelGateway
 from tests.conftest import auth_headers
 
 
-def test_all_11_agents_return_valid_typed_contracts():
-    assert len(AGENT_REGISTRY) == 11
+def test_all_12_agents_return_valid_typed_contracts():
+    assert len(AGENT_REGISTRY) == 12
     for name, agent in AGENT_REGISTRY.items():
         req = AgentInvocationRequest(
             tenant_id="tenant-in-demo",
@@ -66,8 +66,9 @@ def test_agent_contracts_endpoint_and_capability_matrix(client):
     resp = client.get("/api/v1/agents/contracts", headers=hdrs)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["total_agents"] == 11
-    assert len(body["contracts"]) == 11
+    assert body["total_agents"] == 12
+    assert len(body["contracts"]) == 12
+    assert body["operations_agents"] == ["sla_intelligence"]
     names = {c["agent_name"] for c in body["contracts"]}
     assert names == set(AGENT_REGISTRY.keys())
     for c in body["contracts"]:

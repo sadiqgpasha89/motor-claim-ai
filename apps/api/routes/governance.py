@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from apps.api.schemas import AiOutageToggleRequest, DLQActionRequest, RuleSimulateRequest, SettlementWorkbenchRequest
 from packages.contracts.errors import DomainError, ErrorCode
 from packages.security.auth import INTERNAL_ROLES, Role, UserContext, get_current_user, require_roles
-from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS, ORCHESTRATION_ORDER
+from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS, OPERATIONS_AGENTS, ORCHESTRATION_ORDER
 from services.agent_runtime.gateway import ModelGateway
 from services.claims.audit import record_audit_event
 from services.claims.db import get_db
@@ -294,7 +294,8 @@ def list_agent_contracts(user: UserContext = Depends(get_current_user)):
     return {
         "total_agents": len(AGENT_CAPABILITY_CONTRACTS),
         "orchestration_order": ORCHESTRATION_ORDER,
-        "contracts": [AGENT_CAPABILITY_CONTRACTS[name].model_dump() for name in ORCHESTRATION_ORDER],
+        "operations_agents": OPERATIONS_AGENTS,
+        "contracts": [AGENT_CAPABILITY_CONTRACTS[name].model_dump() for name in [*ORCHESTRATION_ORDER, *OPERATIONS_AGENTS]],
     }
 
 
