@@ -45,3 +45,14 @@ def test_platform_section_and_data_are_wired():
     assert data["tool_calls"]["denied_agent"]["http_status"] == 403
     assert data["tool_calls"]["denied_payment_tool"]["http_status"] == 403
     assert data["audit_integrity"]["ok"] is True
+
+
+def test_product_section_and_data_are_wired():
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    assert 'id="product-portal"' in html and 'href="#product-portal"' in html
+    assert html.index("product-data.js") < html.index('src="product.js"')
+    text = (SITE / "product-data.js").read_text(encoding="utf-8")
+    data = json.loads(text.split("window.PRODUCT_DEMO = ", 1)[1].rstrip().rstrip(";"))
+    assert data["kpi_framework"]["total_count"] == 17
+    assert len(data["demos"]["demos"]) == 5 and len(data["capability_model"]["capability_model"]) == 16
+    assert all(k["value"] is None for k in data["kpi_framework"]["kpis"] if k["id"] in {"customer_satisfaction", "cost_per_claim"})
