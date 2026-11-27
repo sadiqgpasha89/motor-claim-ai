@@ -1169,6 +1169,19 @@ def assess_damage_from_evidence(
         "structured_assessment_table": structured_assessment_table,
         "visual_workflow_steps": visual_workflow_steps,
         "ev_safety_alerts": ev_safety_alerts,
+        "ev_safety_determination": (
+            {
+                "safe_to_operate": "not_determinable_from_photographs",
+                "photo_only_clearance_allowed": False,
+                "required_before_any_operation": (
+                    "Physical inspection by an EV-HV certified surveyor, HV isolation and an OEM diagnostic scan; "
+                    "release only after post-repair HV recertification (IN-EV-CLAIMS-2026)."
+                ),
+                "workflow": "EV claims workflow",
+            }
+            if (is_ev or ev_battery_impacted or ev_safety_alerts)
+            else None
+        ),
         "disclaimer": (
             "AI damage output is assistive only. Component-level confidence governs repairability; "
             "hidden structural damage cannot be confirmed from photographs alone."

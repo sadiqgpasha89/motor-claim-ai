@@ -30,6 +30,7 @@
         <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#tp-liability">TP Liability</a>
         <a href="#sla-operations">Predictive SLA</a>
+        <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
@@ -37,7 +38,7 @@
         <a href="#architecture">System Design</a>
         <a href="#agents">12-Agent Matrix</a>
         <a href="#pipelines">Pipelines</a>
-        <a href="#calculator">Settlement Sim</a>
+        <a href="#calculator">Settlement Workbench</a>
       </nav>
     </div>
   </header>
@@ -552,9 +553,9 @@ flowchart LR
       </div>
     </section>
 
-    <!-- SECTION 2F: PREDICTIVE SLA OPERATIONS -->
+    <!-- SECTION 2G: PREDICTIVE SLA OPERATIONS -->
     <section id="sla-operations">
-      <h2>2F. Predictive SLA Operations &mdash; Rules Service, Dashboard &amp; Bounded SLA Agent</h2>
+      <h2>2G. Predictive SLA Operations &mdash; Rules Service, Dashboard &amp; Bounded SLA Agent</h2>
       <p class="section-sub">
         SLA management is <strong>predictive and operational, not reactive</strong>. Every deadline, version, pause
         condition and escalation step comes from a versioned <strong>SLA rules service</strong>
@@ -694,6 +695,124 @@ flowchart LR
             </table>
           </div>
           <div id="sla-guardrails" class="card" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2F: ELECTRIC-VEHICLE (EV) CLAIMS WORKFLOW -->
+    <section id="ev-claims">
+      <h2>2F. EV Claims Workflow &mdash; Safety-First, Never Cleared from Photographs (IN-EV-CLAIMS-2026)</h2>
+      <p class="section-sub">
+        An electric vehicle is <strong>not ordinary vehicle damage</strong>. Battery, high-voltage and thermal hazards are
+        invisible in photos and can surface days later, so EV claims run on a dedicated lifecycle
+        (<code>services/workflow/ev_claims.py</code>, <code>EVClaimCase</code>) that opens automatically at FNOL with an
+        <strong>HV safety hold</strong>. The hard rule: <strong>the system never infers that an EV is safe to operate from
+        external photographs</strong>. Potential battery damage is routed to a specialist surveyor, flatbed recovery, OEM
+        diagnostics and a human technical sign-off; every OD settlement, approval, payment and closure endpoint returns
+        <code>409 HUMAN_REVIEW_REQUIRED</code> until then, the settlement agent returns <code>NEEDS_HUMAN</code>, and the
+        risk engine never marks an EV straight-through eligible.
+      </p>
+
+      <div id="ev-compare" class="grid-2" style="margin-bottom:18px;"></div>
+
+      <div class="eco-shell">
+        <div class="eco-toolbar">
+          <div>
+            <h3 style="margin:0;">EV Claims Lifecycle &amp; Dedicated Task Queues</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              11 stages, each with its own queue, owner role, SLA and exit gate. Safety escalations (emergency: thermal;
+              urgent: HV or charging) can be raised by the policyholder at any time and block every stage until a manager
+              resolves them with evidence. Software output (impact band, repair-versus-replace, cost benchmark) is advisory.
+            </p>
+          </div>
+        </div>
+        <div id="ev-stage-strip" class="state-strip"></div>
+        <div id="ev-stage-inspector"></div>
+
+        <div class="eco-sim-box">
+          <div>
+            <h3 style="margin:0;">EV Safety Lab &mdash; Impact Detection, Thermal Risk &amp; Specialist Routing</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Tick the signals reported at FNOL or found later, and see the risk class, thermal level, escalation and which
+              stages apply. There is deliberately <strong>no &ldquo;safe&rdquo; outcome</strong>: with no signals the band is
+              still &ldquo;battery impact not excluded&rdquo;. Mirrors <code>rules/india/ev_claims_controls.json</code>
+              (synthetic thresholds; OEM and EV safety-officer sign-off required before production).
+            </p>
+          </div>
+          <div class="btn-row" style="margin:10px 0;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('glass')">Glass-only claim</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('pothole')">Pothole / underbody strike</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('smoke')">Smoke after impact</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('flood')">Flooded EV</button>
+          </div>
+          <div class="tp-lab-form">
+            <label>Peril
+              <select id="ev-peril" onchange="runEvLab()">
+                <option value="road_accident">Road accident</option>
+                <option value="flood">Flood</option>
+                <option value="fire">Fire</option>
+                <option value="ev_high_voltage">EV high-voltage event</option>
+                <option value="glass_damage">Glass damage</option>
+              </select>
+            </label>
+            <label class="risk-check-label"><input type="checkbox" id="ev-flagged" onchange="runEvLab()" /> Claim flagged &ldquo;traction battery impacted&rdquo;</label>
+          </div>
+          <div id="ev-signal-picker" class="ev-picker"></div>
+          <div id="ev-lab-summary"></div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="runEvLab()">Evaluate case</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('photo_only')">Photo-only clearance attempt</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('od_endpoint')">Try OD settlement endpoint on an EV</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('agent')">Settlement agent on an EV</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('thermal')">Thermal escalation walkthrough</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('salvage')">Salvage &amp; disposal chain</button>
+          </div>
+          <div id="ev-lab-output" class="orch-lab-output"></div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="eco-sim-box" style="margin:0;">
+            <h3 style="margin:0;">OEM Diagnostics &amp; Battery Disposition</h3>
+            <p class="section-sub" style="margin:4px 0 10px;">A reported result is checked against the measured value; a critical failure bars in-place repair.</p>
+            <div class="tp-lab-form">
+              <label>Insulation resistance (ohm/V)
+                <input id="ev-insulation" type="number" value="180" min="0" step="10" oninput="runEvDiag()" />
+              </label>
+              <label>Result reported by the workshop
+                <select id="ev-reported" onchange="runEvDiag()">
+                  <option value="fail">fail</option>
+                  <option value="pass">pass</option>
+                </select>
+              </label>
+            </div>
+            <div id="ev-diag-output" class="orch-lab-output"></div>
+          </div>
+          <div class="eco-sim-box" style="margin:0;">
+            <h3 style="margin:0;">EV Parts Cost Benchmark</h3>
+            <p class="section-sub" style="margin:4px 0 10px;">EV and HV labour bands (synthetic, INR). Flagged lines need a manager review note.</p>
+            <div class="tp-lab-form">
+              <label>EV part
+                <select id="ev-part" onchange="runEvBenchmark()">
+                  <option value="PRT-EV-BAT-TRAY">Battery underbody shield &amp; tray</option>
+                  <option value="PRT-EV-PACK-FULL">Traction battery pack (complete)</option>
+                  <option value="PRT-EV-MODULE">Battery module (each)</option>
+                  <option value="PRT-EV-BMS">Battery management system</option>
+                  <option value="PRT-EV-HV-JB">HV junction box / PDU</option>
+                  <option value="PRT-EV-HV-HARNESS">Orange HV cable harness</option>
+                  <option value="PRT-EV-INVERTER">Inverter / motor controller</option>
+                  <option value="PRT-EV-MOTOR">Drive motor assembly</option>
+                  <option value="PRT-EV-DCDC">DC-DC converter</option>
+                  <option value="PRT-EV-OBC" selected>Onboard charger</option>
+                  <option value="PRT-EV-CHG-PORT">Charge port / inlet</option>
+                  <option value="PRT-EV-COOLANT-PLATE">Battery cooling plate kit</option>
+                </select>
+              </label>
+              <label>Quoted unit price (INR)
+                <input id="ev-quote" type="number" value="140000" min="0" step="1000" oninput="runEvBenchmark()" />
+              </label>
+            </div>
+            <div id="ev-bench-output" class="orch-lab-output"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -1259,59 +1378,70 @@ classDiagram
       </div>
     </section>
 
-    <!-- SECTION 9: DETERMINISTIC SETTLEMENT SIMULATOR -->
+    <!-- SECTION 9: SETTLEMENT DECISION WORKBENCH -->
     <section id="calculator">
-      <h2>9. Interactive Deterministic Settlement Simulator</h2>
+      <h2>9. Settlement Decision Workbench</h2>
       <p class="section-sub">
-        Mirrors the exact Python <code>Decimal</code> calculation trace inside
-        <code>services/settlement/calculator.py</code> on the sample <code>CLM-DEMO-2026-0001</code> approved lines
-        (&#8377;48,700.00 gross after deduplicating the garage quote).
+        The deterministic <code>Decimal</code> calculator in <code>services/settlement/calculator.py</code> expanded into a decision
+        workbench: <strong>twelve scenarios</strong> on the synthetic claim <code>CLM-DEMO-2026-0001</code>, each showing what was
+        claimed, assessed, approved and deducted, which policy clause applied, who approves it, what the customer receives and
+        why that differs from the request. The browser engine (<code>site/settlement-engine.js</code>) is tested to match the Python
+        engine (<code>services/settlement/workbench.py</code>) to the paisa.
       </p>
+
       <div class="card">
-        <div class="sim-row">
-          <label><input type="checkbox" id="sim-zd" checked onchange="recalcDemo()" /> Zero Depreciation Add-on
-            (<code>ADDON-ZD-01</code>)</label>
-          <label><input type="checkbox" id="sim-cons" checked onchange="recalcDemo()" /> Consumables Add-on
-            (<code>ADDON-CONS-01</code>)</label>
-          <label>Vehicle Age (months):
-            <select id="sim-age" onchange="recalcDemo()">
-              <option value="0">0–6 months (0% metal)</option>
-              <option value="0.05">6–12 months (5% metal)</option>
-              <option value="0.10" selected>12–24 months (10% metal)</option>
-              <option value="0.25">36–48 months (25% metal)</option>
-              <option value="0.40">60–120 months (40% metal)</option>
-            </select>
-          </label>
-          <label>Compulsory Excess (&#8377;):
-            <input type="number" id="sim-excess" value="1000" min="0" step="500" onchange="recalcDemo()" />
-          </label>
-          <label>CTL Salvage Value (&#8377;):
-            <input type="number" id="sim-salvage" value="85000" min="0" step="5000" onchange="recalcDemo()" />
-          </label>
+        <div class="swb-banner">
+          <span class="badge badge-amber">Illustrative values &mdash; synthetic demo claim</span>
+          <span id="swb-claim-ref" class="swb-muted"></span>
         </div>
-        <div class="grid-4" style="margin-bottom:16px;">
-          <div>
-            <div class="stat-label">Gross Assessed</div>
-            <div class="stat-num" id="out-gross">&#8377;48,700.00</div>
-          </div>
-          <div>
-            <div class="stat-label">Applied Depreciation</div>
-            <div class="stat-num" id="out-dep">&#8377;0.00</div>
-          </div>
-          <div>
-            <div class="stat-label">Zero-Dep Waiver</div>
-            <div class="stat-num" id="out-waiver">&#8377;7,030.00</div>
-          </div>
-          <div>
-            <div class="stat-label">Net Payable</div>
-            <div class="stat-num" style="color:var(--emerald);" id="out-net">&#8377;47,700.00</div>
-          </div>
+        <div class="swb-controls">
+          <label><input type="checkbox" id="swb-zd" /> Zero Depreciation add-on (<code>ADDON-ZD-01</code>)</label>
+          <label><input type="checkbox" id="swb-cons" /> Consumables add-on (<code>ADDON-CONS-01</code>)</label>
+          <label>Vehicle age band
+            <select id="swb-age"></select>
+          </label>
+          <label>Excess by vehicle class
+            <select id="swb-class"></select>
+          </label>
+          <label>Compulsory excess (&#8377;)
+            <input type="number" id="swb-comp" min="0" step="500" />
+          </label>
+          <label>Voluntary deductible
+            <select id="swb-vol"></select>
+          </label>
+          <label>IDV (&#8377;)
+            <input type="number" id="swb-idv" min="0" step="10000" />
+          </label>
+          <label>Market value (&#8377;)
+            <input type="number" id="swb-mv" min="0" step="10000" />
+          </label>
+          <label>Salvage value (&#8377;)
+            <input type="number" id="swb-salvage" min="0" step="5000" />
+          </label>
+          <button type="button" class="btn btn-outline btn-sm" id="swb-reset">Reset to demo values</button>
         </div>
-        <div class="table-wrap" style="margin-bottom:16px;">
+      </div>
+
+      <div class="grid-2" style="margin-top:18px;">
+        <div class="card">
+          <h3 style="margin-top:0;">Settlement calculation workbench</h3>
+          <div id="swb-ledger"></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">Claim at a glance</h3>
+          <div id="swb-summary"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h3 style="margin-top:0;">Line-by-line decision trace</h3>
+        <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Line / Part</th>
+                <th>Claimed</th>
+                <th>Assessed</th>
                 <th>Approved</th>
                 <th>Raw Dep</th>
                 <th>Applied Dep</th>
@@ -1319,28 +1449,33 @@ classDiagram
                 <th>Rule Applied</th>
               </tr>
             </thead>
-            <tbody id="sim-trace-body"></tbody>
-          </table>
-        </div>
-        <h3 style="margin-top:0;">Multi-Scenario Settlement Comparison (Cashless · Reimbursement · No-Addons · CTL Salvage)</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Scenario</th>
-                <th>Pathway</th>
-                <th>Gross</th>
-                <th>Dep</th>
-                <th>Waiver</th>
-                <th>Excess</th>
-                <th>Salvage</th>
-                <th>Net Payable</th>
-              </tr>
-            </thead>
-            <tbody id="sim-scenarios-body"></tbody>
+            <tbody id="swb-trace-body"></tbody>
           </table>
         </div>
       </div>
+
+      <h3 style="margin:26px 0 10px;">Twelve settlement scenarios at a glance (select a row to open its decision record)</h3>
+      <div class="table-wrap">
+        <table class="swb-compare">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Scenario</th>
+              <th>Claimed</th>
+              <th>Approved</th>
+              <th>Deducted</th>
+              <th>Add-on benefit</th>
+              <th>Net payable</th>
+              <th>Customer pays</th>
+              <th>Approver</th>
+            </tr>
+          </thead>
+          <tbody id="swb-compare-body"></tbody>
+        </table>
+      </div>
+
+      <div class="tabs" id="swb-picker" style="margin-top:18px;"></div>
+      <div class="card" id="swb-detail"></div>
     </section>
 
     <!-- SECTION 10: SCENARIOS & QUICK START -->
@@ -1468,6 +1603,10 @@ classDiagram
   <script src="tp-liability.js"></script>
   <script src="sla-catalogue.js"></script>
   <script src="sla.js"></script>
+  <script src="ev-claims.js"></script>
+  <script src="settlement-workbench-data.js"></script>
+  <script src="settlement-engine.js"></script>
+  <script src="settlement-workbench.js"></script>
 </body>
 
 </html>

@@ -1,0 +1,159 @@
+{
+  "claim_ref": "CLM-DEMO-2026-0001",
+  "title": "Front-end collision, private car (synthetic demo claim)",
+  "disclaimer": "Illustrative values - synthetic demo claim",
+  "incident_at": "2026-11-20T10:00:00+00:00",
+  "defaults": {
+    "vehicle_age_months": 18,
+    "idv_inr": "780000.00",
+    "market_value_inr": "910000.00",
+    "compulsory_deductible_inr": "1000.00",
+    "voluntary_deductible_inr": "0.00",
+    "salvage_value_inr": "85000.00",
+    "zero_depreciation": true,
+    "consumables": true
+  },
+  "quote_lines": [
+    {
+      "id": "L1",
+      "part_code": "PRT-FRT-BMP-01",
+      "description": "Front Bumper Assembly (plastic)",
+      "part_category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "line_type": "part",
+      "claimed_inr": "12500.00",
+      "assessed_inr": "12500.00",
+      "assessment_code": null
+    },
+    {
+      "id": "L1D",
+      "part_code": "PRT-FRT-BMP-01",
+      "description": "Front Bumper Assembly (duplicate quote line)",
+      "part_category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "line_type": "part",
+      "claimed_inr": "12500.00",
+      "assessed_inr": "0.00",
+      "assessment_code": "duplicate_line"
+    },
+    {
+      "id": "L2",
+      "part_code": "PRT-HL-LED-RH",
+      "description": "Headlamp Assembly LED RH (glass)",
+      "part_category": "glass",
+      "line_type": "part",
+      "claimed_inr": "18400.00",
+      "assessed_inr": "18400.00",
+      "assessment_code": null
+    },
+    {
+      "id": "L3",
+      "part_code": "PRT-FND-RH-01",
+      "description": "Front Fender Panel RH (metal)",
+      "part_category": "metal",
+      "line_type": "part",
+      "claimed_inr": "11000.00",
+      "assessed_inr": "7800.00",
+      "assessment_code": "rate_variance"
+    },
+    {
+      "id": "L4",
+      "part_code": "LABOUR-RNR-01",
+      "description": "Bumper + Fender R&R Labour & Painting",
+      "part_category": "labour",
+      "line_type": "labour",
+      "claimed_inr": "7600.00",
+      "assessed_inr": "7600.00",
+      "assessment_code": null
+    },
+    {
+      "id": "L5",
+      "part_code": "PRT-CONS-KIT-01",
+      "description": "AC Gas, Coolant & Fasteners Kit",
+      "part_category": "consumables_default",
+      "line_type": "consumable",
+      "claimed_inr": "2400.00",
+      "assessed_inr": "2400.00",
+      "assessment_code": null
+    }
+  ],
+  "partial_approval": {
+    "withheld_line_ids": ["L2"],
+    "reason_code": "evidence_pending"
+  },
+  "repair_alternative": {
+    "replaces_line_ids": ["L1", "L3", "L4"],
+    "lines": [
+      {
+        "id": "R1",
+        "part_code": "BMP-REP-01",
+        "description": "Front Bumper Repair - plastic welding (labour)",
+        "part_category": "labour",
+        "line_type": "labour",
+        "amount_inr": "3600.00"
+      },
+      {
+        "id": "R2",
+        "part_code": "PNT-BMP-01",
+        "description": "Front Bumper Refinish - paint & material",
+        "part_category": "paint",
+        "line_type": "paint",
+        "amount_inr": "2400.00"
+      },
+      {
+        "id": "R3",
+        "part_code": "FND-REP-01",
+        "description": "Front Fender RH Repair - denting (labour)",
+        "part_category": "labour",
+        "line_type": "labour",
+        "amount_inr": "2800.00"
+      },
+      {
+        "id": "R4",
+        "part_code": "PNT-FND-01",
+        "description": "Front Fender RH Refinish - paint & material",
+        "part_category": "paint",
+        "line_type": "paint",
+        "amount_inr": "2200.00"
+      }
+    ]
+  },
+  "supplementary_lines": [
+    {
+      "id": "S1",
+      "part_code": "PRT-RAD-SUP-01",
+      "description": "Radiator Support Panel (metal) - found on dismantling",
+      "part_category": "metal",
+      "line_type": "part",
+      "amount_inr": "6200.00"
+    },
+    {
+      "id": "S2",
+      "part_code": "PRT-ACC-01",
+      "description": "AC Condenser (metal) - found on dismantling",
+      "part_category": "metal",
+      "line_type": "part",
+      "amount_inr": "5800.00"
+    },
+    {
+      "id": "S3",
+      "part_code": "PRT-FSH-01",
+      "description": "Radiator Fan Shroud (plastic) - found on dismantling",
+      "part_category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "line_type": "part",
+      "amount_inr": "2400.00"
+    },
+    {
+      "id": "S4",
+      "part_code": "LABOUR-SUP-01",
+      "description": "Dismantling & supplementary labour",
+      "part_category": "labour",
+      "line_type": "labour",
+      "amount_inr": "3400.00"
+    }
+  ],
+  "stress_ctl_line": {
+    "part_code": "STRUCT-SHELL-AGG",
+    "description": "Structural body-shell & assemblies (aggregate estimate)",
+    "part_category": "metal",
+    "line_type": "part"
+  }
+}

@@ -323,6 +323,7 @@ def seed_all(db: Session) -> None:
         User(id="usr-handler2", tenant_id=t1.id, email="handler2@demo.in", name="Ananya Rao (Checker Handler)", role="claims_handler"),
         User(id="usr-surveyor", tenant_id=t1.id, email="surveyor@demo.in", name="R. K. Sharma (Surveyor)", role="surveyor", partner_id=surv1.id),
         User(id="usr-garage", tenant_id=t1.id, email="garage@demo.in", name="Apex Motors Advisor", role="garage", partner_id=gar1.id),
+        User(id="usr-garage-ev", tenant_id=t1.id, email="garage.ev@demo.in", name="VoltCare OEM EV Technician", role="garage", partner_id=gar_ev.id),
         User(id="usr-siu", tenant_id=t1.id, email="siu@demo.in", name="Karan Malhotra (SIU Analyst)", role="siu_investigator"),
         User(id="usr-manager", tenant_id=t1.id, email="manager@demo.in", name="Sunita Iyer (Claims Manager)", role="claims_manager"),
         User(id="usr-legal", tenant_id=t1.id, email="legal@demo.in", name="Adv. Ritu Verma (Legal / TP)", role="legal_tp"),
@@ -1595,6 +1596,7 @@ def seed_all(db: Session) -> None:
 
     db.flush()
     _seed_tp_liability_case(db, t1.id)
+    _seed_ev_claim_case(db, t1.id)
     _seed_sla_scenarios(db, t1.id, now)
 
     db.commit()
@@ -1812,3 +1814,70 @@ def _seed_sla_scenarios(db: Session, tenant_id: str, now: datetime) -> None:
         ))
         cc.updated_at = hrs(closed_ago)
     db.flush()
+
+
+def _seed_ev_claim_case(db: Session, tenant_id: str) -> None:
+    """CLM-DEMO-2026-0011: an EV underbody strike worked through the dedicated EV lifecycle (IN-EV-CLAIMS-2026)."""
+    from packages.security.auth import Role, UserContext
+    from services.claims.models import Claim as _Claim
+    from services.workflow import ev_claims as evw
+
+    claim = db.query(_Claim).filter(_Claim.id == "clm-demo-0011").first()
+    if not claim:
+        return
+    handler = UserContext(user_id="usr-handler", tenant_id=tenant_id, email="handler@demo.in", name="Vikram Mehta (Claims Handler)", role=Role.CLAIMS_HANDLER)
+    surveyor = UserContext(user_id="usr-surveyor", tenant_id=tenant_id, email="surveyor@demo.in", name="R. K. Sharma (Surveyor)", role=Role.SURVEYOR, partner_id="prov-surv-01")
+    case = evw.open_ev_case(db, claim, handler, system_initiated=True)
+    evw.record_triage(
+        db,
+        case,
+        claim,
+        handler,
+        signals=["underbody_impact", "hv_warning_light", "coolant_leak_near_pack", "loss_of_drive_power"],
+        notes="Stone strike on the pack underbody shield; HV warning lit on the dash. Customer says the car 'still moves' - not accepted as clearance. DEMO / SYNTHETIC.",
+        customer_declared_drivable=True,
+        vehicle_location="BKC, Mumbai",
+    )
+    db.flush()
+    manager = UserContext(user_id="usr-manager", tenant_id=tenant_id, email="manager@demo.in", name="Sunita Iyer (Claims Manager)", role=Role.CLAIMS_MANAGER)
+    urgent_ids = [e["id"] for e in evw.open_escalations(case)]
+    for esc_id in urgent_ids:
+        evw.acknowledge_safety_escalation(db, case, manager, escalation_id=esc_id, actions_taken="EV flatbed recovery dispatched; customer told not to drive, charge or touch orange cables.")
+    evw.advance_stage(db, case, claim, handler, note="Triage confirmed; HV hold applied")
+    evw.record_recovery(
+        db,
+        case,
+        claim,
+        handler,
+        provider_id="prov-tow-01",
+        tow_method="flatbed",
+        hv_isolation_method="Service disconnect removed by EV-certified technician; 12V isolated",
+        hv_isolation_verified=True,
+        quarantine_location="Open-air quarantine bay B3, VoltCare OEM EV Specialist Centre",
+        quarantine_clearance_m=Decimal("8"),
+        notes="Flatbed recovery; vehicle never driven after the event.",
+    )
+    for esc_id in urgent_ids:
+        evw.resolve_safety_escalation(
+            db, case, claim, manager, escalation_id=esc_id,
+            resolution="Vehicle flatbedded to the EV centre and the HV system isolated; no thermal indicators on arrival.",
+            evidence_ref="ISOLATION-LOG-EV-0011", thermal_stable_confirmed=False,
+        )
+    evw.advance_stage(db, case, claim, handler, note="Recovered and isolated")
+    evw.record_specialist_survey(
+        db,
+        case,
+        claim,
+        surveyor,
+        surveyor_provider_id="prov-surv-01",
+        inspection_mode="physical_on_lift",
+        hv_isolation_verified=True,
+        pack_findings=["Underbody shield cracked with a 40 mm indentation over the pack tray", "Coolant weep at the left pack coolant port"],
+        hv_system_findings=["Orange HV harness clips displaced; no insulation breach visible"],
+        charging_system_findings=["Charge port intact"],
+        thermal_indicators_observed=False,
+        pack_removal_required=True,
+        report_ref="SURV-EV-2026-0011-A",
+        notes="Physical inspection on lift. Pack condition still requires OEM diagnostics.",
+    )
+    evw.advance_stage(db, case, claim, handler, note="Specialist survey on file")
