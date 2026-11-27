@@ -1,0 +1,103 @@
+{
+  "rule_id": "IN-INTELLIGENCE-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Claims Intelligence Rules: Repair vs Replace, Parts & Labour Benchmarking, Supplementary Estimates, Complexity, Fraud Graph, Multimodal Fusion",
+  "source_reference": "Insurer Claims Technical Standards (Synthetic V1), IRDAI Master Circular 2024, rate card RC-IN-2026-DEMO-V1",
+  "owner": "Head of Claims Technical & Claims Analytics",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "disclaimer": "Reference configuration for synthetic/demo use. Every threshold, weight and multiplier is illustrative and heuristic. Calibrate against closed-claim history and obtain technical and compliance sign-off before production use.",
+  "controls": {
+    "repair_replace": {
+      "confidence_floor": "0.65",
+      "ctl_idv_ratio_threshold": "0.75",
+      "severe_straightening_multiplier": "1.35",
+      "category_policy": {
+        "plastic": {"max_repair_severity": "moderate", "repair_cost_max_ratio": "0.60", "note": "Plastic bumpers and trims are repaired only when the damage is cosmetic or a small crack."},
+        "metal": {"max_repair_severity": "severe", "repair_cost_max_ratio": "0.70", "note": "Steel panels can be straightened and refinished when the repair costs clearly less than a new panel."},
+        "glass": {"max_repair_severity": "minor", "repair_cost_max_ratio": "0.40", "note": "Glass and lamp units are repaired only for a chip. A crack in the vision zone is replaced."},
+        "safety_critical": {"max_repair_severity": "none", "repair_cost_max_ratio": "0.00", "note": "Structural, airbag, steering and ADAS parts are replaced and inspected. Never repaired from photographs."},
+        "ev_battery": {"max_repair_severity": "none", "repair_cost_max_ratio": "0.00", "note": "Traction battery decisions need an EV-HV certified specialist. Never decided from photographs."}
+      },
+      "safety_critical_part_codes": ["PRT-RAD-SUP-01"],
+      "ev_battery_part_codes": ["PRT-EV-BAT-TRAY"]
+    },
+    "benchmarking": {
+      "city_tier_labour_multiplier": {"metro": "1.15", "tier2": "1.00", "tier3": "0.90"},
+      "standard_labour_rate_inr_per_hour": "650.00",
+      "adjacent_zone_groups": {
+        "front_end": ["PRT-FRT-BMP-01", "PRT-HL-LED-RH", "PRT-HL-LED-LH", "PRT-FND-RH-01", "PRT-FND-LH-01", "PRT-BON-01", "PRT-RAD-SUP-01"],
+        "rear_end": ["PRT-RR-BMP-01", "PRT-TL-LED-01"],
+        "right_side": ["PRT-DOOR-RH-01", "PRT-FND-RH-01"],
+        "left_side": ["PRT-DOOR-LH-01", "PRT-FND-LH-01", "PRT-ORVM-LH-01"]
+      },
+      "labour_overlap_discount_pct": "0.25",
+      "paint_blend_discount_pct": "0.20",
+      "aftermarket_discount_pct": "0.15",
+      "tolerance_above_band_pct": "0.10",
+      "hours_over_standard_flag_ratio": "1.25"
+    },
+    "supplementary": {
+      "reinspection_variance_source": "IN-SETTLEMENT-SCENARIOS-2026:supplementary_reinspection_variance_threshold",
+      "reinspection_variance_default": "0.20",
+      "escalate_cumulative_gross_inr": "250000.00",
+      "adjacent_zone_plausibility": true,
+      "hidden_damage_keywords": ["hidden", "internal", "underbody", "support", "mounting", "radiator", "bracket", "teardown", "sensor"],
+      "allowed_claim_statuses": ["ESTIMATE_VALIDATION", "ESTIMATE_REVIEW", "SETTLEMENT_PENDING_APPROVAL", "SETTLEMENT_RECOMMENDED", "APPROVAL_PENDING", "APPROVED", "PAYMENT_PENDING", "PAYMENT_INITIATED", "PAYMENT_RECONCILIATION", "REPAIR_IN_PROGRESS"]
+    },
+    "complexity": {
+      "model_id": "complexity-baseline-v1",
+      "bands": {"simple": 0, "standard": 25, "complex": 50, "specialist": 75},
+      "weights": {
+        "loss_over_50k": 10,
+        "loss_over_250k": 15,
+        "loss_to_idv_ratio_over_50pct": 15,
+        "injury_or_fatality": 25,
+        "ev_battery": 20,
+        "multiple_vehicles": 12,
+        "legal_dispute": 15,
+        "missing_documents": 4,
+        "missing_documents_cap": 12,
+        "theft_fire_flood_total_loss": 15,
+        "vehicle_age_over_60_months": 4,
+        "police_involved": 4,
+        "towing_needed": 3,
+        "repeat_vehicle_claims": 8,
+        "fraud_signal_over_threshold": 12,
+        "third_party_claim": 20,
+        "high_risk_tier": 10
+      },
+      "expected_handling_hours": {"simple": 6, "standard": 36, "complex": 120, "specialist": 240},
+      "expected_human_touchpoints": {"simple": 0, "standard": 2, "complex": 5, "specialist": 9},
+      "recommended_skill": {"simple": "straight_through_agentic", "standard": "claims_handler", "complex": "senior_handler_with_siu_support", "specialist": "specialist_team_lead"}
+    },
+    "fraud_graph": {
+      "edge_weights": {"SHARED_EVIDENCE_CHECKSUM": 0.90, "SHARED_BANK_ACCOUNT": 0.85, "SHARED_PHONE_TOKEN": 0.70, "SHARED_VEHICLE": 0.45, "SHARED_GARAGE": 0.35, "SHARED_SURVEYOR": 0.25, "SHARED_LOCATION_WINDOW": 0.40, "SHARED_CUSTOMER": 0.30},
+      "ring_min_claims": 3,
+      "ring_min_weighted_density": 0.60,
+      "location_window_days": 30,
+      "high_network_score": 0.65,
+      "siu_case_threshold": 0.60,
+      "never_auto_reject": true
+    },
+    "multimodal": {
+      "modality_weights": {"photos": 0.35, "fnol_narrative": 0.20, "estimate": 0.20, "surveyor_notes": 0.15, "vehicle_signals": 0.10},
+      "contradiction_penalty": 0.12,
+      "min_modalities": 2,
+      "zone_keywords": {
+        "front": ["front", "bumper", "bonnet", "hood", "headlamp", "headlight", "grille", "radiator"],
+        "rear": ["rear", "back", "boot", "tail", "tailgate"],
+        "left": ["left", "lh", "driver side"],
+        "right": ["right", "rh", "passenger side"],
+        "underbody": ["underbody", "undercarriage", "battery", "sump", "scraped"]
+      },
+      "part_zone": {
+        "PRT-FRT-BMP-01": "front", "PRT-HL-LED-RH": "front", "PRT-HL-LED-LH": "front", "PRT-BON-01": "front", "PRT-RAD-SUP-01": "front", "PRT-WS-LAM-01": "front",
+        "PRT-FND-RH-01": "right", "PRT-DOOR-RH-01": "right", "PRT-FND-LH-01": "left", "PRT-DOOR-LH-01": "left", "PRT-ORVM-LH-01": "left",
+        "PRT-RR-BMP-01": "rear", "PRT-TL-LED-01": "rear", "PRT-EV-BAT-TRAY": "underbody"
+      }
+    }
+  }
+}

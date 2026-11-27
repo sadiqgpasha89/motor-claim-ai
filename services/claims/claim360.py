@@ -27,6 +27,8 @@ from services.claims.models import (
 )
 from services.claims.state_machine import to_canonical_state
 from services.observability.operations import serialize_trace
+from services.sla.service import build_snapshot, claim_sla_view
+from services.workflow.complexity import predict_complexity
 from services.workflow.sla_engine import compute_timer_status
 
 OPEN_TASK_STATUSES = {"open", "waiting_human"}
@@ -54,6 +56,13 @@ def _timeline(traces: list[AgentExecutionRecord], claim: Claim, audits: list[Aud
             items.append({"at": a.created_at.isoformat(), "kind": "human_or_audit", "title": a.action,
                           "detail": f"{a.actor_role} {a.outcome}", "actor_role": a.actor_role})
     return sorted(items, key=lambda i: i["at"])
+
+
+def _sla_risk(db: Session, claim: Claim) -> dict[str, Any]:
+    """Predicted SLA risk per clock. Taken from the SLA engine, not recomputed here."""
+    view = claim_sla_view(build_snapshot(db, claim.tenant_id, claim_ids=[claim.id]), claim.id)
+    preds = view["predictions"]
+    return {"catalogue_version": view["catalogue_version"], "predictions": preds, "signals": view["signals"]}
 
 
 def build_claim_360(db: Session, claim: Claim, user: UserContext, *, include_fraud: bool) -> dict[str, Any]:
@@ -142,6 +151,10 @@ def build_claim_360(db: Session, claim: Claim, user: UserContext, *, include_fra
         },
         "answers": answers,
         "blockers": blockers,
+        "intelligence": {
+            "complexity": predict_complexity(db, claim),
+            "sla_risk": _sla_risk(db, claim),
+        },
         "workflow": nodes,
         "execution_timeline": _timeline(traces, claim, audits),
         "agent_executions": [serialize_trace(t) for t in traces],
