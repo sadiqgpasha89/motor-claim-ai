@@ -1163,10 +1163,209 @@
       "  • Fraud Score Guardrail: fraud_signal_score=" + fraud.toFixed(3) + " | fraud_score_can_reject=false (NEVER auto-rejects claim!)";
   };
 
+  window.renderDamageAiLab = function (scenarioId) {
+    var lab = DATA.damageAiLab;
+    var tabsEl = el("damage-scenario-tabs");
+    var stepperEl = el("damage-workflow-stepper");
+    var bodyEl = el("damage-lab-body");
+    if (!lab || !tabsEl || !stepperEl || !bodyEl) return;
+
+    var activeId = scenarioId && lab.scenarios[scenarioId] ? scenarioId : lab.activeId;
+    var sc = lab.scenarios[activeId];
+    if (!sc) return;
+
+    tabsEl.innerHTML = Object.keys(lab.scenarios)
+      .map(function (k) {
+        var item = lab.scenarios[k];
+        var activeCls = k === activeId ? "btn-primary" : "btn-outline";
+        return (
+          '<button type="button" class="btn ' +
+          activeCls +
+          ' btn-sm" onclick="renderDamageAiLab(\'' +
+          escapeHtml(k) +
+          "')\">" +
+          escapeHtml(item.label) +
+          "</button>"
+        );
+      })
+      .join("");
+
+    stepperEl.innerHTML = sc.workflowSteps
+      .map(function (st) {
+        return (
+          '<div class="dmg-step-card ' +
+          escapeHtml(st.status) +
+          '">' +
+          '<div style="display:flex; justify-content:space-between; font-weight:700;"><span>Step ' +
+          st.num +
+          '</span><span style="text-transform:uppercase; font-size:10px;">' +
+          escapeHtml(st.status) +
+          "</span></div>" +
+          '<div style="font-weight:700; margin-top:2px;">' +
+          escapeHtml(st.title) +
+          "</div>" +
+          '<div style="color:#475569; margin-top:3px; font-size:11.5px;">' +
+          escapeHtml(st.summary) +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+
+    var svgBoxes = sc.components
+      .map(function (c) {
+        var color = c.repairability === "uncertain" ? "#f59e0b" : c.repairability === "replace" ? "#f43f5e" : "#10b981";
+        var dash = c.repairability === "uncertain" ? ' stroke-dasharray="2 1"' : "";
+        return (
+          '<rect x="' +
+          c.bbox.x +
+          '" y="' +
+          c.bbox.y +
+          '" width="' +
+          c.bbox.w +
+          '" height="' +
+          c.bbox.h +
+          '" fill="' +
+          color +
+          '" fill-opacity="0.2" stroke="' +
+          color +
+          '" stroke-width="1.2"' +
+          dash +
+          ' rx="1.5"/>' +
+          '<text x="' +
+          (c.bbox.x + 1.2) +
+          '" y="' +
+          Math.max(6, c.bbox.y - 1.5) +
+          '" fill="' +
+          color +
+          '" font-size="3.4" font-weight="bold">' +
+          escapeHtml(c.component) +
+          " · " +
+          Math.round(c.confidence * 100) +
+          "% (" +
+          escapeHtml(c.repairability) +
+          ")</text>"
+        );
+      })
+      .join("");
+
+    var compCards = sc.components
+      .map(function (c) {
+        var pct = Math.round(c.confidence * 100);
+        var repBadge =
+          c.repairability === "uncertain" ? "badge-amber" : c.repairability === "replace" ? "badge-rose" : "badge-green";
+        var barCls = pct >= 80 ? "" : pct >= 65 ? " medium" : " low";
+        return (
+          '<div class="dmg-comp-card">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
+          "<div><strong>" +
+          escapeHtml(c.fullName) +
+          '</strong><div style="font-size:11.5px; color:#475569;">Location: <code>' +
+          escapeHtml(c.location) +
+          "</code> · Severity: <strong>" +
+          escapeHtml(c.severity) +
+          "</strong> · Quality: <strong>" +
+          escapeHtml(c.imageQuality) +
+          "</strong></div></div>" +
+          '<span class="badge ' +
+          repBadge +
+          '">' +
+          escapeHtml(c.repairability.toUpperCase()) +
+          "</span></div>" +
+          '<div><div style="display:flex; justify-content:space-between; font-weight:700;"><span>Component Confidence</span><span>' +
+          pct +
+          "% (" +
+          c.confidence.toFixed(2) +
+          ')</span></div><div class="conf-meter-wrap"><div class="conf-bar"><div class="conf-fill' +
+          barCls +
+          '" style="width:' +
+          pct +
+          '%;"></div></div></div><div style="font-size:11.5px; color:#475569; margin-top:4px;">' +
+          escapeHtml(c.rationale) +
+          "</div></div>" +
+          '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px;"><strong>Visible damage:</strong> ' +
+          escapeHtml(c.visibleDamage) +
+          "</div>" +
+          '<div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px;"><strong>Possible hidden damage:</strong> ' +
+          escapeHtml(c.hiddenDamage) +
+          "</div>" +
+          '<div style="font-size:11.5px; color:#334155;"><strong>Est:</strong> ' +
+          escapeHtml(c.cost) +
+          "<br/><strong>Evidence:</strong> <code>" +
+          escapeHtml(c.evidence) +
+          "</code></div>" +
+          "</div>"
+        );
+      })
+      .join("");
+
+    var tableRows = [
+      ["Vehicle", sc.vehicle],
+      ["Damage location", sc.components.map(function (c) { return c.location; }).join(", ")],
+      ["Damaged component", sc.components.map(function (c) { return c.component; }).join(", ")],
+      ["Damage severity", sc.components.map(function (c) { return c.severity; }).join(", ")],
+      ["Repairability", sc.components.map(function (c) { return c.component + ": " + c.repairability; }).join(" | ")],
+      ["Visible damage", sc.components.map(function (c) { return c.visibleDamage; }).join(" | ")],
+      ["Possible hidden damage", sc.components.map(function (c) { return c.hiddenDamage; }).join(" | ")],
+      ["Image quality", sc.overallImageQuality + " (overall score " + Math.round(sc.overallImageScore * 100) + "%)"],
+      ["Confidence", sc.components.map(function (c) { return c.component + ": " + c.confidence.toFixed(2); }).join(" | ")],
+      ["Evidence", sc.components.map(function (c) { return c.evidence; }).join(" ; ")]
+    ]
+      .map(function (r) {
+        return "<tr><th style='width:170px;'>" + escapeHtml(r[0]) + "</th><td>" + escapeHtml(r[1]) + "</td></tr>";
+      })
+      .join("");
+
+    var incHtml = sc.inconsistencies.length
+      ? sc.inconsistencies.map(function (i) { return "<div class='badge badge-rose' style='display:block; margin-bottom:6px;'>" + escapeHtml(i) + "</div>"; }).join("")
+      : "<span class='badge badge-green'>Zero cross-photo or FNOL inconsistencies</span>";
+
+    bodyEl.innerHTML =
+      '<div class="risk-guardrail-banner" style="margin-top:0;">' +
+      "<span><strong>Component Confidence Guardrail:</strong> " +
+      escapeHtml(sc.guardrailNote) +
+      "</span>" +
+      '<span class="badge ' +
+      (sc.routeToHumanAssessor ? "badge-amber" : "badge-green") +
+      '">' +
+      (sc.routeToHumanAssessor ? "Routed to Human Assessor (" + escapeHtml(sc.recommendedRole) + ")" : "Autonomous Ready") +
+      "</span></div>" +
+      '<div class="grid-2">' +
+      '<div class="dmg-canvas-box">' +
+      '<div style="display:flex; justify-content:space-between; font-size:12px;"><span><strong>Detected Vehicle:</strong> ' +
+      escapeHtml(sc.vehicle) +
+      '</span><span class="badge badge-blue">Img Quality: ' +
+      escapeHtml(sc.overallImageQuality) +
+      " (" +
+      Math.round(sc.overallImageScore * 100) +
+      "%)</span></div>" +
+      '<svg viewBox="0 0 100 100" style="width:100%; height:230px; background:#020617; border:1px solid #334155; border-radius:8px;">' +
+      '<rect x="14" y="16" width="72" height="68" rx="14" fill="#1e293b" stroke="#475569" stroke-width="1.2"/>' +
+      '<rect x="24" y="24" width="52" height="18" rx="5" fill="#0f172a" stroke="#64748b" stroke-width="0.8"/>' +
+      '<rect x="24" y="58" width="52" height="14" rx="4" fill="#0f172a" stroke="#64748b" stroke-width="0.8"/>' +
+      '<text x="50" y="51" text-anchor="middle" fill="#94a3b8" font-size="3.4" font-family="monospace">BOUNDING-BOX REGION MAP</text>' +
+      svgBoxes +
+      "</svg>" +
+      '<div style="font-size:12px;"><strong>Inconsistencies:</strong> ' +
+      incHtml +
+      "<br/><strong>Additional Photo Requests:</strong> " +
+      escapeHtml(sc.photoRequests.join(" · ")) +
+      "</div>" +
+      "</div>" +
+      '<div class="table-wrap"><table><tbody>' +
+      tableRows +
+      "</tbody></table></div>" +
+      "</div>" +
+      '<div class="dmg-comp-grid">' +
+      compCards +
+      "</div>";
+  };
+
   document.addEventListener("DOMContentLoaded", function () {
     renderOrchestratorEngine();
     if (window.runOrchLab) window.runOrchLab("parallel_wave");
     if (window.applyRiskPreset) window.applyRiskPreset("low_fast_track");
+    if (window.renderDamageAiLab) window.renderDamageAiLab("guardrail_uncertain");
     renderActiveWorkflow();
     renderQuestions();
     renderCapabilityMatrix();

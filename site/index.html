@@ -26,6 +26,7 @@
         <a href="#workflow">Live Claim Workflow</a>
         <a href="#orchestrator">Orchestration Engine</a>
         <a href="#risk-processing">Risk-Based Paths</a>
+        <a href="#damage-ai">Visual Damage AI</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
         <a href="#visitors">Q&amp;A &amp; Failures</a>
@@ -368,6 +369,34 @@ flowchart LR
     HIGH --> HOLD["Preserve Evidence (legal_hold=true)<br/>+ Assign SIU / Legal TP / EV Specialist"]
     FRD["Advisory fraud_signal_score"] -.->|"NEVER Auto-Rejects Claim"| HIGH
         </pre>
+      </div>
+    </section>
+
+    <!-- SECTION 2C: EXPANDED VISUAL DAMAGE ASSESSMENT AI -->
+    <section id="damage-ai">
+      <h2>2C. Visual Damage Assessment AI &amp; Component-Level Confidence</h2>
+      <p class="section-sub">
+        Executes a <strong>10-step visual damage workflow</strong> producing structured per-component assessments
+        (<code>Vehicle</code>, <code>Damage location</code>, <code>Damaged component</code>, <code>Damage severity</code>,
+        <code>Repairability</code>, <code>Visible vs Possible hidden damage</code>, <code>Image quality</code>,
+        <code>Per-component Confidence</code>, and <code>Bounding-Box Evidence</code>). Crucially, high overall image
+        confidence never forces an autonomous beyond-repair decision on an occluded or uncertain component.
+      </p>
+
+      <div class="damage-lab-shell">
+        <div class="damage-lab-toolbar">
+          <div>
+            <h3 style="margin:0;">Interactive Visual Damage Workflow &amp; Component Confidence Lab</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Switch inspection scenarios below to see per-component confidence calibration, cross-photo comparison,
+              inconsistency detection, parts &amp; labour estimation, and human assessor routing.
+            </p>
+          </div>
+          <div id="damage-scenario-tabs" class="btn-row"></div>
+        </div>
+
+        <div id="damage-workflow-stepper" class="dmg-stepper-grid"></div>
+        <div id="damage-lab-body"></div>
       </div>
     </section>
 

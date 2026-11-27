@@ -650,6 +650,7 @@ def get_claim_360(
             "missing_documents": claim.missing_documents,
             "coverage_factsheet": claim.coverage_factsheet,
             "triage_summary": claim.triage_summary,
+            "damage_report": claim.damage_report,
             "risk_assessment": safe_risk_assessment,
             "risk_history": safe_risk_history,
             "workflow_state": claim.workflow_state,
@@ -722,18 +723,32 @@ def get_claim_360(
             }
             for f in facts
         ],
+        "damage_report": claim.damage_report,
         "damage_assessments": [
             {
                 "id": d.id,
+                "evidence_id": d.evidence_id,
                 "component_name": d.component_name,
                 "part_code": d.part_code,
+                "damage_location": d.damage_location,
+                "damage_severity": d.damage_severity,
+                "repairability": d.repairability,
                 "damage_class": d.damage_class,
                 "observation_type": d.observation_type,
                 "recommended_action": d.recommended_action,
+                "visible_damage": d.visible_damage,
+                "possible_hidden_damage": d.possible_hidden_damage,
+                "image_quality": d.image_quality,
                 "confidence": str(d.confidence),
+                "confidence_factors": d.confidence_factors or {},
+                "evidence_refs": d.evidence_refs or [],
+                "estimated_parts_inr": str(d.estimated_parts_inr),
+                "estimated_labour_inr": str(d.estimated_labour_inr),
+                "estimated_paint_inr": str(d.estimated_paint_inr),
                 "limitations": d.limitations,
                 "reviewer_outcome": d.reviewer_outcome,
                 "reviewer_notes": d.reviewer_notes,
+                "model_version": d.model_version,
             }
             for d in damages
         ],
@@ -1391,14 +1406,35 @@ def run_damage_assessment(
         .all()
     )
     img_records = [
-        {"filename": im.filename, "image_angle": im.image_angle, "image_quality_status": im.image_quality_status}
+        {
+            "id": im.id,
+            "filename": im.filename,
+            "image_angle": im.image_angle,
+            "image_quality_status": im.image_quality_status,
+            "sha256": im.sha256,
+            "ocr_text": im.ocr_text,
+        }
         for im in images
     ]
+    veh_info = (
+        {
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "variant": vehicle.cc_class.replace("_", " ").title(),
+            "year": vehicle.year,
+            "registration_number": vehicle.registration_number,
+            "is_ev": vehicle.is_ev,
+            "fuel_type": vehicle.fuel_type,
+        }
+        if vehicle
+        else {"registration_number": claim.vehicle_reg_input, "is_ev": claim.ev_battery_impacted}
+    )
     payload = assess_damage_from_evidence(
         claim_description=claim.incident_description,
         is_ev=vehicle.is_ev if vehicle else claim.ev_battery_impacted,
         ev_battery_impacted=claim.ev_battery_impacted,
         image_records=img_records,
+        vehicle_info=veh_info,
     )
     orch = ClaimOrchestrator(db, user)
     agent_res = orch.run_agent(
@@ -1422,10 +1458,14 @@ def run_damage_assessment(
         action="DAMAGE_ASSESSMENT_EXECUTED",
         object_type="claim",
         object_id=claim.id,
-        details={"observations": len(saved), "missing_angles": payload["missing_angles"]},
+        details={
+            "observations": len(saved),
+            "missing_angles": payload["missing_angles"],
+            "route_to_human_assessor": payload["human_assessor_routing"]["route_to_human_assessor"],
+        },
     )
     db.commit()
-    return {"observations": saved, "agent_response": agent_res.model_dump()}
+    return {"observations": saved, "damage_report": agent_res.result, "agent_response": agent_res.model_dump()}
 
 
 @router.patch("/claims/{claim_id}/damage-assessments/{assessment_id}")

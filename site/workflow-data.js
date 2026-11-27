@@ -500,29 +500,30 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
         {
           opKey: "Assessment",
           stepCode: "05",
-          nodeTitle: "Damage Assessment Agent",
+          nodeTitle: "Damage Assessment Agent (10-Step Vision)",
           codeRef: "DamageAssessmentAgent (damage_assessment)",
           actorType: "agent",
           wakeTrigger: "6 vehicle angle images available -> POST /api/v1/claims/{id}/damage-assessments",
-          executionStatus: "COMPLETED · Assistive",
+          executionStatus: "COMPLETED · Per-Component Confidence",
           statusKind: "blue",
           evidence: [
-            "PRT-FRT-BMP-01: Front Bumper deformation (visible_observed, conf 0.89 -> replace)",
-            "PRT-HL-LED-RH: LED Headlamp crack (visible_observed, conf 0.86 -> replace)",
-            "PRT-FND-RH-01: Front Fender RH dent (visible_observed, conf 0.81 -> repair)"
+            "Vehicle detected: 2024 Maruti Suzuki Baleno Alpha AGS (conf 0.94)",
+            "PRT-FRT-BMP-01 Bumper: front_center, moderate, replace (conf 0.87, corroborated front+closeup)",
+            "PRT-HL-LED-RH Headlight: front_right, moderate, replace (conf 0.92, corroborated front+right+closeup)",
+            "PRT-FND-RH-01 Fender: front_right, minor, repair (conf 0.92, corroborated front+right+closeup)"
           ],
           dataRetrieved: [
-            "6 vehicle photographs & angle metadata",
-            "Vehicle taxonomy & incident description keywords"
+            "6 vehicle photographs, angle metadata & bounding boxes",
+            "Rate Card RC-IN-2026-DEMO-V1 parts & labour benchmarks"
           ],
-          toolsInvoked: ["vision_model", "image_quality_check", "vehicle_taxonomy"],
-          allowedDecisions: "Generates assistive observations explicitly split into visible_observed vs inferred_possible. Cannot confirm hidden structural damage from photos.",
+          toolsInvoked: ["vision_model", "image_quality_check", "vehicle_taxonomy", "bbox_localizer", "cross_photo_compare", "parts_labour_estimator"],
+          allowedDecisions: "Calibrates confidence per component independently of overall image score; separates visible_damage vs possible_hidden_damage; routes uncertain components (<0.72) to human assessor.",
           agentOutput:
-            "3 visible_observed damage components tagged; 0 missing angles; no recapture needed. Marked assistive pending surveyor sign-off.",
-          confidence: 0.86,
+            "10-step visual damage workflow complete: 3 components localized with bounding boxes, zero cross-photo inconsistencies, parts+labour pre-estimate calculated.",
+          confidence: 0.87,
           confidenceBand: "HIGH",
-          businessRules: ["Image Quality Gate >= 320x240", "Assistive Provenance Separation"],
-          failureBehavior: "Blurry/dark photos or >3 missing angles drop confidence to 0.62 and request guided customer recapture.",
+          businessRules: ["Image Quality Gate >= 320x240", "Component-Confidence Guardrail (>= 0.72)", "Visible vs Possible Hidden Split"],
+          failureBehavior: "Occluded/uncertain parts or inconsistencies drop component confidence (<0.72), set repairability='uncertain', request close-ups, and route to human assessor.",
           humanReviewRequired: false,
           nextAction: "validate_estimate -> Compare against Garage Estimate & Rate Card"
         },
@@ -1792,14 +1793,14 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       agentName: "damage_assessment",
       displayName: "Damage Assessment",
       stage: "4. Assessment",
-      enhancement: "Damage localization, severity, repairability, part identification, image quality confidence",
-      responsibility: "Localizes damage zones across 6 angles, scores severity & repairability, maps OEM part codes, separates visible vs inferred damage, and computes image quality confidence.",
-      inputContract: "assessment_payload (6-angle images, incident description, is_ev, ev_battery_impacted)",
-      outputContract: "observations[], damage_zones[], overall_severity, image_quality_confidence, recapture_required_files[]",
+      enhancement: "10-step visual workflow, vehicle detection, bounding boxes, per-component confidence, cross-photo comparison, parts/labour estimate & human routing",
+      responsibility: "Executes the 10-step visual damage pipeline: validates photo quality (good/poor/recapture), detects vehicle & bounding-box regions, calibrates per-component confidence (never overriding uncertain components with overall image score), compares across photos, estimates parts/labour, requests photos, and routes uncertain cases to a human assessor.",
+      inputContract: "assessment_payload (6-angle images, incident description, vehicle_info, is_ev, ev_battery_impacted)",
+      outputContract: "vehicle, observations[] (per-component confidence, repairability, bbox evidence), cross_photo_comparison[], inconsistencies[], parts_labour_estimate, additional_photo_requests[], human_assessor_routing",
       authorisedActions: ["request_documents", "create_claim_task"],
       dependsOn: ["claim_triage"],
       reworkTargets: ["document_intelligence"],
-      humanGate: "Low image quality or >3 missing angles request customer photo recapture."
+      humanGate: "Poor/recapture photos, component confidence < 0.72, uncertain repairability, inconsistencies, or EV HV impact routes to human assessor."
     },
     {
       agentName: "estimate_validation",
@@ -2131,5 +2132,239 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       retryStrategy: "1 retry · 200ms base (no DLQ)",
       humanEscalation: ["Post-closure grievance or supplement triggers formal Reopen workflow"]
     }
-  ]
+  ],
+
+  damageAiLab: {
+    activeId: "guardrail_uncertain",
+    scenarios: {
+      guardrail_uncertain: {
+        id: "guardrail_uncertain",
+        label: "1. Component Guardrail (High Img, Uncertain Bumper)",
+        vehicle: "2024 Maruti Suzuki Baleno Alpha AGS (MH02DEMO1042)",
+        overallImageQuality: "good",
+        overallImageScore: 0.92,
+        routeToHumanAssessor: true,
+        recommendedRole: "surveyor",
+        guardrailNote:
+          "Overall image quality is 92% (good), yet Front Bumper lower mounting tabs are partially shadowed (63% component confidence -> repairability='uncertain'). The agent refuses to force 'replace beyond repair' and routes to a human assessor.",
+        workflowSteps: [
+          { num: 1, title: "Upload photos", status: "completed", summary: "4 daylight photos uploaded (front, front_right, right, closeup)." },
+          { num: 2, title: "Image quality", status: "completed", summary: "Overall quality: good (0.92); all frames >= 1280x720." },
+          { num: 3, title: "Detect vehicle & regions", status: "completed", summary: "Baleno Alpha AGS matched (0.94); 3 regions localized." },
+          { num: 4, title: "Classify components", status: "completed", summary: "Headlight (0.91), Fender (0.85), Bumper (0.63)." },
+          { num: 5, title: "Compare across photos", status: "completed", summary: "Headlight & fender corroborated across 2+ angles; bumper lower lip single-view." },
+          { num: 6, title: "Identify inconsistencies", status: "completed", summary: "Zero FNOL-vs-photo location conflicts." },
+          { num: 7, title: "Repair vs replace", status: "warning", summary: "Headlight=replace, Fender=repair, Bumper=uncertain." },
+          { num: 8, title: "Parts & labour est", status: "completed", summary: "₹26,200 baseline + ₹12,500 uncertain bumper variance." },
+          { num: 9, title: "Request extra photos", status: "warning", summary: "Requested rear, odometer & 45° lower bumper closeup." },
+          { num: 10, title: "Route uncertain", status: "needs_human", summary: "Routed to IIISLA Surveyor for bumper clip verification." }
+        ],
+        components: [
+          {
+            component: "Headlight",
+            fullName: "Headlamp Assembly LED RH (PRT-HL-LED-RH)",
+            location: "front_right",
+            severity: "moderate",
+            repairability: "replace",
+            visibleDamage: "Sealed polycarbonate lens cracked; moisture seal breached.",
+            hiddenDamage: "Leveling motor & upper bracket alignment check needed.",
+            imageQuality: "good",
+            confidence: 0.91,
+            rationale: "Corroborated across front + closeup daylight photos (0.91).",
+            evidence: "demo_front.jpg + demo_closeup.jpg · bbox(810,300,260,180)",
+            cost: "OEM ₹18,400 + Labour ₹1,200 = ₹19,600",
+            bbox: { x: 63, y: 40, w: 20, h: 24 }
+          },
+          {
+            component: "Fender",
+            fullName: "Front Fender Panel RH (PRT-FND-RH-01)",
+            location: "front_right",
+            severity: "minor",
+            repairability: "repair",
+            visibleDamage: "Wheel-arch crease & surface paint scuff.",
+            hiddenDamage: "Inner apron & wheel-well liner alignment check.",
+            imageQuality: "good",
+            confidence: 0.85,
+            rationale: "Clean panel geometry in front_right + right photos; repairable via denting & paint.",
+            evidence: "demo_right.jpg · bbox(780,260,210,160)",
+            cost: "Parts ₹0 + Labour ₹2,800 + Paint ₹3,800 = ₹6,600",
+            bbox: { x: 66, y: 24, w: 18, h: 16 }
+          },
+          {
+            component: "Bumper",
+            fullName: "Front Bumper Assembly (PRT-FRT-BMP-01)",
+            location: "front_center",
+            severity: "moderate",
+            repairability: "uncertain",
+            visibleDamage: "Outer fascia abrasion; lower mounting tabs in shadow.",
+            hiddenDamage: "Bumper absorber foam, crash box & PDC harness require teardown.",
+            imageQuality: "good",
+            confidence: 0.63,
+            rationale: "Overall photo is 92% sharp, but shadowed lower clip prevents confirming beyond-repair replacement.",
+            evidence: "demo_front.jpg · bbox(280,430,720,190)",
+            cost: "Range ₹7,700 (repair) – ₹20,200 (OEM replace)",
+            bbox: { x: 22, y: 60, w: 56, h: 26 }
+          }
+        ],
+        inconsistencies: [],
+        photoRequests: ["45° lower bumper mounting closeup (HIGH)", "Rear & Odometer angles (LOW)"]
+      },
+      inconsistency_mismatch: {
+        id: "inconsistency_mismatch",
+        label: "2. Cross-Photo & FNOL Location Mismatch",
+        vehicle: "2023 Hyundai Creta SX (KA03DEMO5521)",
+        overallImageQuality: "good",
+        overallImageScore: 0.89,
+        routeToHumanAssessor: true,
+        recommendedRole: "surveyor",
+        guardrailNote:
+          "FNOL states rear-end tailgate & rear bumper collision, but uploaded evidence only contains front-angle photos. Cross-photo check flags location mismatch and prevents automated classification.",
+        workflowSteps: [
+          { num: 1, title: "Upload photos", status: "completed", summary: "2 front photos uploaded (front_1.jpg, closeup_1.jpg)." },
+          { num: 2, title: "Image quality", status: "completed", summary: "Resolution good (0.89), no blur." },
+          { num: 3, title: "Detect vehicle & regions", status: "completed", summary: "Creta SX matched; rear region has zero photo coverage." },
+          { num: 4, title: "Classify components", status: "completed", summary: "Rear Bumper (0.55 uncertain), Tail Lamp (0.57 uncertain)." },
+          { num: 5, title: "Compare across photos", status: "warning", summary: "Conflicting: 0 rear angles match rear FNOL narrative." },
+          { num: 6, title: "Identify inconsistencies", status: "needs_human", summary: "1 high inconsistency: fnol_vs_photo_location_mismatch." },
+          { num: 7, title: "Repair vs replace", status: "warning", summary: "Both rear items downgraded to uncertain." },
+          { num: 8, title: "Parts & labour est", status: "completed", summary: "Range ₹7,100 – ₹30,250 pending rear photos." },
+          { num: 9, title: "Request extra photos", status: "needs_human", summary: "Mandatory rear & rear-closeup photo request sent." },
+          { num: 10, title: "Route uncertain", status: "needs_human", summary: "Routed to Human Assessor for FNOL/photo reconciliation." }
+        ],
+        components: [
+          {
+            component: "Rear Bumper",
+            fullName: "Rear Bumper Assembly (PRT-RR-BMP-01)",
+            location: "rear",
+            severity: "moderate",
+            repairability: "uncertain",
+            visibleDamage: "No rear photo uploaded yet; inferred from FNOL only.",
+            hiddenDamage: "Rear crash beam & boot floor pan require physical lift.",
+            imageQuality: "poor",
+            confidence: 0.55,
+            rationale: "Confidence penalized (-0.16) for FNOL-vs-photo location mismatch.",
+            evidence: "No matching rear image uploaded",
+            cost: "Range ₹7,100 (repair) – ₹18,900 (replace)",
+            bbox: { x: 21, y: 54, w: 58, h: 29 }
+          },
+          {
+            component: "Tail Lamp",
+            fullName: "Tail Lamp Assembly LED (PRT-TL-LED-01)",
+            location: "rear",
+            severity: "moderate",
+            repairability: "uncertain",
+            visibleDamage: "Awaiting rear view to confirm lens fracture.",
+            hiddenDamage: "Lamp pocket & grommet seal check.",
+            imageQuality: "poor",
+            confidence: 0.57,
+            rationale: "Cannot recommend replacement without rear photo evidence.",
+            evidence: "No matching rear image uploaded",
+            cost: "Range ₹950 – ₹11,350",
+            bbox: { x: 64, y: 66, w: 18, h: 16 }
+          }
+        ],
+        inconsistencies: ["[fnol_vs_photo_location_mismatch] FNOL describes rear-end damage, but uploaded photos only show front angle."],
+        photoRequests: ["Rear full-view daylight photo (HIGH)", "Rear tail lamp closeup (HIGH)"]
+      },
+      recapture_gate: {
+        id: "recapture_gate",
+        label: "3. Poor / Blurry Night Photo Recapture",
+        vehicle: "2024 Maruti Suzuki Baleno Alpha AGS (MH02DEMO1042)",
+        overallImageQuality: "recapture",
+        overallImageScore: 0.38,
+        routeToHumanAssessor: true,
+        recommendedRole: "surveyor",
+        guardrailNote:
+          "dark_blurry_front.jpg failed sharpness and luminance thresholds (34% quality). Agent blocks replacement recommendation and triggers guided daylight recapture.",
+        workflowSteps: [
+          { num: 1, title: "Upload photos", status: "completed", summary: "1 photo uploaded (dark_blurry_front.jpg)." },
+          { num: 2, title: "Image quality", status: "needs_human", summary: "RECAPTURE needed (luma=22.4, blur detected)." },
+          { num: 3, title: "Detect vehicle & regions", status: "warning", summary: "Low light limits edge detection (0.78)." },
+          { num: 4, title: "Classify components", status: "completed", summary: "Front Bumper classified at 0.41 low confidence." },
+          { num: 5, title: "Compare across photos", status: "warning", summary: "Single blurry frame; zero corroboration." },
+          { num: 6, title: "Identify inconsistencies", status: "completed", summary: "No narrative conflicts." },
+          { num: 7, title: "Repair vs replace", status: "warning", summary: "Downgraded to uncertain due to recapture quality." },
+          { num: 8, title: "Parts & labour est", status: "completed", summary: "Pending clear daylight photo." },
+          { num: 9, title: "Request extra photos", status: "needs_human", summary: "Sent WhatsApp guided daylight recapture checklist." },
+          { num: 10, title: "Route uncertain", status: "needs_human", summary: "Held in HUMAN_REVIEW awaiting daylight recapture." }
+        ],
+        components: [
+          {
+            component: "Bumper",
+            fullName: "Front Bumper Assembly (PRT-FRT-BMP-01)",
+            location: "front_center",
+            severity: "moderate",
+            repairability: "uncertain",
+            visibleDamage: "Frame underexposed/blurred; surface abrasion suspected.",
+            hiddenDamage: "Absorber foam & grille brackets require clear photo / check.",
+            imageQuality: "recapture",
+            confidence: 0.41,
+            rationale: "Component image quality is 'recapture' (0.34); withheld from automated decision.",
+            evidence: "dark_blurry_front.jpg (recapture) · bbox(280,430,720,190)",
+            cost: "Range ₹7,700 – ₹20,200",
+            bbox: { x: 22, y: 60, w: 56, h: 26 }
+          }
+        ],
+        inconsistencies: [],
+        photoRequests: ["Daylight front bumper photo (HIGH)", "Daylight close-up & 4 remaining angles (MEDIUM)"]
+      },
+      ev_underbody: {
+        id: "ev_underbody",
+        label: "4. EV Underbody HV Battery Impact",
+        vehicle: "2025 Tata Nexon EV Empowered+ LR (MH01EV2025)",
+        overallImageQuality: "poor",
+        overallImageScore: 0.72,
+        routeToHumanAssessor: true,
+        recommendedRole: "ev_specialist",
+        guardrailNote:
+          "EV High-Voltage Safety protocol active: exterior photos can never assess traction battery cell state-of-health. Underbody tray is marked uncertain (0.58) and routed to an EV Specialist for HV isolation + OEM BMS diagnostic scan.",
+        workflowSteps: [
+          { num: 1, title: "Upload photos", status: "completed", summary: "2 photos: ev_front_left.jpg + ev_underbody_shadow.jpg." },
+          { num: 2, title: "Image quality", status: "warning", summary: "Front good (0.91), underbody poor/shadowed (0.61)." },
+          { num: 3, title: "Detect vehicle & regions", status: "completed", summary: "Tata Nexon EV (is_ev=true) · front + underbody." },
+          { num: 4, title: "Classify components", status: "completed", summary: "Front Bumper (0.81), EV Battery Tray (0.58)." },
+          { num: 5, title: "Compare across photos", status: "completed", summary: "Underbody single shadowed frame." },
+          { num: 6, title: "Identify inconsistencies", status: "completed", summary: "Consistent with stone impact & HV dash warning." },
+          { num: 7, title: "Repair vs replace", status: "warning", summary: "EV Battery Tray = uncertain (mandatory BMS scan)." },
+          { num: 8, title: "Parts & labour est", status: "completed", summary: "Range ₹12,500 – ₹54,500 (HV tray OEM ₹42k)." },
+          { num: 9, title: "Request extra photos", status: "warning", summary: "Lift/ramp underbody photo post-HV isolation." },
+          { num: 10, title: "Route uncertain", status: "needs_human", summary: "Routed to EV Specialist + VoltCare EV Hub." }
+        ],
+        components: [
+          {
+            component: "Bumper",
+            fullName: "Front Bumper Assembly (PRT-FRT-BMP-01)",
+            location: "front_left",
+            severity: "moderate",
+            repairability: "replace",
+            visibleDamage: "Lower lip splitter cracked from stone strike.",
+            hiddenDamage: "Front cooling shutter & radar bracket alignment.",
+            imageQuality: "good",
+            confidence: 0.81,
+            rationale: "Front-left view clearly shows lower lip fracture.",
+            evidence: "ev_front_left.jpg · bbox(210,300,260,180)",
+            cost: "OEM ₹12,500 + Labour ₹3,200 + Paint ₹4,500 = ₹20,200",
+            bbox: { x: 16, y: 42, w: 22, h: 24 }
+          },
+          {
+            component: "EV Battery Tray",
+            fullName: "EV Traction Battery Underbody Shield & Tray (PRT-EV-BAT-TRAY)",
+            location: "underbody",
+            severity: "severe",
+            repairability: "uncertain",
+            visibleDamage: "Shadowed underbody shield scuff; cell integrity invisible externally.",
+            hiddenDamage: "HV battery enclosure, coolant manifold, pyro-fuse & BMS cell balance.",
+            imageQuality: "poor",
+            confidence: 0.58,
+            rationale: "EV battery state-of-health cannot be confirmed from exterior photos; mandatory HV isolation & BMS scan.",
+            evidence: "ev_underbody_shadow.jpg (poor) · bbox(300,510,680,150)",
+            cost: "Range ₹12,500 (inspect) – ₹54,500 (tray replace)",
+            bbox: { x: 23, y: 71, w: 53, h: 21 }
+          }
+        ],
+        inconsistencies: [],
+        photoRequests: ["Post-HV-isolation lift photo of underbody tray (HIGH)", "BMS diagnostic report PDF (HIGH)"]
+      }
+    }
+  }
 };

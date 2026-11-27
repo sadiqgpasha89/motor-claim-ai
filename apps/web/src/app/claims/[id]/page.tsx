@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ShieldAlert, Upload } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Eye, ShieldAlert, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ProvenanceBadge, RiskTierBadge, SlaBadge, StatusPill } from "@/components/Badges";
@@ -60,6 +60,148 @@ interface RiskHistoryEntry {
   driver_codes: string[];
   explanation: string;
   timestamp: string;
+}
+
+interface DamageEvidenceRef {
+  evidence_id?: string | null;
+  filename: string;
+  angle: string;
+  location_hint?: string;
+  image_quality: string;
+  sha256_prefix?: string;
+  region_label?: string;
+  bbox?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    norm_x: number;
+    norm_y: number;
+    norm_w: number;
+    norm_h: number;
+  };
+}
+
+interface DamageReportObservation {
+  damaged_component: string;
+  component_name: string;
+  part_code: string;
+  part_category: string;
+  damage_location: string;
+  zone: string;
+  damage_severity: string;
+  repairability: string;
+  recommended_action: string;
+  observation_type: string;
+  visible_damage: string;
+  possible_hidden_damage: string;
+  image_quality: string;
+  confidence: number;
+  component_confidence: number;
+  confidence_band: string;
+  confidence_factors?: {
+    overall_image_quality?: number;
+    component_image_quality?: string;
+    angles_supporting_count?: number;
+    rationale?: string;
+  };
+  evidence?: DamageEvidenceRef[];
+  estimated_cost?: {
+    parts_oem_inr: string;
+    parts_oes_inr: string;
+    labour_inr: string;
+    paint_inr: string;
+    subtotal_oem_inr: string;
+    subtotal_oes_inr: string;
+    estimate_range_inr: string;
+  };
+  repair_vs_replace_rationale?: string;
+  limitations?: string;
+}
+
+interface DamageReport {
+  model_version: string;
+  vehicle?: {
+    make: string;
+    model: string;
+    variant: string;
+    year: number;
+    registration_number: string;
+    is_ev: boolean;
+    detection_status: string;
+    detection_confidence: number;
+    display_label: string;
+  };
+  observations: DamageReportObservation[];
+  damage_zones: string[];
+  damage_locations?: string[];
+  overall_severity: string;
+  overall_image_quality?: string;
+  image_quality_confidence: number;
+  missing_angles: string[];
+  recapture_required_files: string[];
+  poor_quality_files?: string[];
+  per_image_quality?: Array<{
+    evidence_id?: string;
+    filename: string;
+    angle: string;
+    normalized_quality: string;
+    quality_confidence: number;
+    issues: string[];
+  }>;
+  cross_photo_comparison?: Array<{
+    damage_location: string;
+    zone: string;
+    photos_covering: string[];
+    angles_covered: string[];
+    agreement_status: string;
+    notes: string;
+  }>;
+  inconsistencies?: Array<{
+    inconsistency_id: string;
+    type: string;
+    severity: string;
+    summary: string;
+    resolution_required: string;
+  }>;
+  parts_labour_estimate?: {
+    rate_card_id: string;
+    parts_oem_total_inr: string;
+    parts_oes_total_inr: string;
+    labour_total_inr: string;
+    paint_total_inr: string;
+    total_recommended_inr: string;
+    uncertain_exposure_min_inr: string;
+    uncertain_exposure_max_inr: string;
+  };
+  additional_photo_requests?: Array<{
+    angle: string;
+    reason_code: string;
+    priority: string;
+    reason: string;
+    guidance: string;
+  }>;
+  human_assessor_routing?: {
+    route_to_human_assessor: boolean;
+    recommended_role: string;
+    trigger_reasons: string[];
+    uncertain_components: string[];
+    confidence_guardrail_triggered: boolean;
+  };
+  structured_assessment_table?: Array<{
+    field: string;
+    value: string;
+    detail: string;
+  }>;
+  visual_workflow_steps?: Array<{
+    step_number: number;
+    step_key: string;
+    title: string;
+    status: string;
+    summary: string;
+  }>;
+  ev_safety_alerts?: string[];
+  disclaimer?: string;
 }
 
 interface Claim360 {
@@ -132,14 +274,26 @@ interface Claim360 {
     confidence: string;
     validation_status: string;
   }>;
+  damage_report?: DamageReport | null;
   damage_assessments: Array<{
     id: string;
     component_name: string;
     part_code?: string;
+    damage_location?: string;
+    damage_severity?: string;
+    repairability?: string;
     damage_class: string;
     observation_type: string;
     recommended_action: string;
+    visible_damage?: string;
+    possible_hidden_damage?: string;
+    image_quality?: string;
     confidence: string;
+    confidence_factors?: Record<string, unknown>;
+    evidence_refs?: DamageEvidenceRef[];
+    estimated_parts_inr?: string;
+    estimated_labour_inr?: string;
+    estimated_paint_inr?: string;
     limitations: string;
     reviewer_outcome: string;
   }>;
@@ -1240,40 +1394,368 @@ export default function Claim360Page() {
       {/* TAB 3: DAMAGE & ESTIMATE */}
       {tab === "damage_estimate" && (
         <div className="space-y-6">
+          {/* Visual Damage AI Header & Controls */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-blue-700" />
+                    Visual Damage Assessment AI (10-Step Pipeline)
+                  </h2>
+                  <ProvenanceBadge kind="ai_assistive" />
+                  {data.damage_report?.human_assessor_routing?.route_to_human_assessor && (
+                    <span className="px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300 rounded-full">
+                      ROUTED TO HUMAN ASSESSOR ({data.damage_report.human_assessor_routing.recommended_role.toUpperCase()})
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Component-level confidence calibration: overall photo confidence never forces a beyond-repair decision on an occluded or uncertain part.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => runAction("Visual Damage Assessment", `/api/v1/claims/${claimId}/damage-assessments`)}
+                  className="px-3.5 py-2 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+                >
+                  Run 10-Step Damage AI
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Accident Photo Upload */}
+            <form onSubmit={handleUpload} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-semibold text-slate-700">Step 1 · Upload Accident Photo:</span>
+              <input
+                type="file"
+                accept="image/*,.txt,.pdf"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="text-xs"
+              />
+              <button
+                type="submit"
+                disabled={!uploadFile}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-700 text-white rounded disabled:opacity-40"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Upload &amp; Validate Photo
+              </button>
+              <span className="text-slate-500">
+                Tip: Include angle in filename (e.g. <code>front_left.jpg</code>, <code>closeup.jpg</code>, <code>dark_blurry.jpg</code>, <code>shadow_bumper.jpg</code>).
+              </span>
+            </form>
+
+            {/* 10-Step Workflow Strip */}
+            {data.damage_report?.visual_workflow_steps && (
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase text-slate-500">10-Step Visual Damage Workflow</div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {data.damage_report.visual_workflow_steps.map((st) => {
+                    const cls =
+                      st.status === "needs_human"
+                        ? "bg-rose-50 border-rose-300 text-rose-950"
+                        : st.status === "warning"
+                        ? "bg-amber-50 border-amber-300 text-amber-950"
+                        : st.status === "completed"
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-950"
+                        : "bg-slate-50 border-slate-200 text-slate-600";
+                    return (
+                      <div key={st.step_key} className={`p-2.5 rounded-lg border text-xs ${cls}`}>
+                        <div className="flex items-center justify-between font-bold">
+                          <span>Step {st.step_number}</span>
+                          <span className="uppercase text-[10px]">{st.status}</span>
+                        </div>
+                        <div className="font-semibold mt-0.5">{st.title}</div>
+                        <div className="text-[11px] opacity-85 mt-1">{st.summary}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Guardrail / Human Assessor Routing Banner */}
+            {data.damage_report?.human_assessor_routing?.route_to_human_assessor && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-950 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  Uncertain Case Routed to Human Assessor ({data.damage_report.human_assessor_routing.recommended_role})
+                </div>
+                {data.damage_report.human_assessor_routing.confidence_guardrail_triggered && (
+                  <div className="font-semibold text-rose-800">
+                    Component-Confidence Guardrail Triggered: Overall image score is {(data.damage_report.image_quality_confidence * 100).toFixed(0)}%, but one or more components are uncertain (&lt;72% confidence) and withheld from automatic replacement.
+                  </div>
+                )}
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {data.damage_report.human_assessor_routing.trigger_reasons.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Vehicle Detection + Bounding Box Visualizer + Structured 10-Field Table */}
+            {data.damage_report && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Interactive Bounding Box Region Schematic */}
+                <div className="p-4 bg-slate-950 text-slate-100 rounded-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400">Detected Vehicle:</span>{" "}
+                      <strong className="text-white">
+                        {data.damage_report.vehicle?.display_label || "Vehicle"} ({data.damage_report.vehicle?.registration_number})
+                      </strong>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono">
+                      Overall Img: {data.damage_report.overall_image_quality || "good"} ({Math.round(data.damage_report.image_quality_confidence * 100)}%)
+                    </span>
+                  </div>
+
+                  <div className="relative w-full aspect-[16/9] bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
+                    <svg viewBox="0 0 100 100" className="w-full h-full">
+                      {/* Stylized Top-Down / 3/4 Vehicle Wireframe */}
+                      <rect x="14" y="16" width="72" height="68" rx="14" fill="#1e293b" stroke="#475569" strokeWidth="1.2" />
+                      <rect x="24" y="24" width="52" height="18" rx="5" fill="#0f172a" stroke="#64748b" strokeWidth="0.8" />
+                      <rect x="24" y="58" width="52" height="14" rx="4" fill="#0f172a" stroke="#64748b" strokeWidth="0.8" />
+                      <text x="50" y="51" textAnchor="middle" fill="#94a3b8" fontSize="3.4" fontFamily="monospace">
+                        {data.damage_report.vehicle?.make || "VEHICLE"} · {data.damage_report.vehicle?.model || ""}
+                      </text>
+                      {/* Bounding Boxes from Evidence Refs */}
+                      {data.damage_report.observations.map((obs, idx) => {
+                        const bbox = obs.evidence?.[0]?.bbox;
+                        const nx = (bbox?.norm_x ?? 0.22 + (idx % 3) * 0.18) * 100;
+                        const ny = (bbox?.norm_y ?? 0.35 + Math.floor(idx / 3) * 0.22) * 100;
+                        const nw = (bbox?.norm_w ?? 0.22) * 100;
+                        const nh = (bbox?.norm_h ?? 0.18) * 100;
+                        const stroke =
+                          obs.repairability === "uncertain"
+                            ? "#f59e0b"
+                            : obs.repairability === "replace"
+                            ? "#f43f5e"
+                            : "#10b981";
+                        return (
+                          <g key={obs.part_code + idx}>
+                            <rect
+                              x={nx}
+                              y={ny}
+                              width={nw}
+                              height={nh}
+                              fill={stroke}
+                              fillOpacity="0.18"
+                              stroke={stroke}
+                              strokeWidth="1.1"
+                              strokeDasharray={obs.repairability === "uncertain" ? "2 1" : undefined}
+                              rx="1.5"
+                            />
+                            <text x={nx + 1.2} y={Math.max(5, ny - 1.2)} fill={stroke} fontSize="3.2" fontWeight="bold">
+                              {obs.damaged_component} · {Math.round(obs.component_confidence * 100)}% ({obs.repairability})
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-[11px] text-slate-300">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" /> Repair</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" /> Replace</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" /> Uncertain (Human Assessor)</span>
+                  </div>
+                </div>
+
+                {/* Structured 10-Field Assessment Output Table */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Structured Damage Assessment</span>
+                    <span className="font-mono text-[11px] text-slate-500">{data.damage_report.model_version}</span>
+                  </div>
+                  <table className="w-full text-xs text-left border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      {(data.damage_report.structured_assessment_table || []).map((row) => (
+                        <tr key={row.field}>
+                          <th className="p-2 bg-slate-50/70 font-semibold text-slate-700 w-36 align-top">{row.field}</th>
+                          <td className="p-2 text-slate-900">
+                            <div className="font-medium">{row.value}</div>
+                            {row.detail && <div className="text-[11px] text-slate-500">{row.detail}</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Cross-Photo Comparison, Inconsistencies, Parts & Labour, Photo Requests */}
+            {data.damage_report && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
+                <div className="p-3.5 border border-slate-200 rounded-lg space-y-2">
+                  <div className="font-bold text-slate-900">Cross-Photo Comparison &amp; Inconsistencies</div>
+                  {(data.damage_report.cross_photo_comparison || []).map((cp, i) => (
+                    <div key={i} className="p-2 bg-slate-50 rounded border border-slate-200">
+                      <div className="flex items-center justify-between font-semibold">
+                        <span>{cp.damage_location}</span>
+                        <span className={cp.agreement_status === "corroborated" ? "text-emerald-700" : cp.agreement_status === "conflicting" ? "text-rose-700" : "text-amber-700"}>
+                          {cp.agreement_status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">{cp.notes}</div>
+                    </div>
+                  ))}
+                  {(data.damage_report.inconsistencies || []).map((inc) => (
+                    <div key={inc.inconsistency_id} className="p-2 bg-rose-50 border border-rose-200 rounded text-rose-950">
+                      <div className="font-bold">[{inc.type}] ({inc.severity})</div>
+                      <div>{inc.summary}</div>
+                      <div className="text-[11px] mt-0.5 text-rose-800">{inc.resolution_required}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-3.5 border border-slate-200 rounded-lg space-y-2">
+                  <div className="font-bold text-slate-900">
+                    Parts &amp; Labour Pre-Estimate ({data.damage_report.parts_labour_estimate?.rate_card_id})
+                  </div>
+                  {data.damage_report.parts_labour_estimate && (
+                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 rounded border border-slate-200">
+                      <div><span className="text-slate-500">OEM Parts:</span> <strong className="font-mono">&#8377;{data.damage_report.parts_labour_estimate.parts_oem_total_inr}</strong></div>
+                      <div><span className="text-slate-500">OES Alt:</span> <strong className="font-mono">&#8377;{data.damage_report.parts_labour_estimate.parts_oes_total_inr}</strong></div>
+                      <div><span className="text-slate-500">Labour:</span> <strong className="font-mono">&#8377;{data.damage_report.parts_labour_estimate.labour_total_inr}</strong></div>
+                      <div><span className="text-slate-500">Paint:</span> <strong className="font-mono">&#8377;{data.damage_report.parts_labour_estimate.paint_total_inr}</strong></div>
+                      <div className="col-span-2 pt-1 border-t border-slate-200 flex justify-between">
+                        <span className="font-bold">Total Baseline:</span>
+                        <strong className="font-mono text-slate-900">&#8377;{data.damage_report.parts_labour_estimate.total_recommended_inr}</strong>
+                      </div>
+                      {Number(data.damage_report.parts_labour_estimate.uncertain_exposure_max_inr) > 0 && (
+                        <div className="col-span-2 text-[11px] text-amber-800">
+                          Uncertain exposure range: &#8377;{data.damage_report.parts_labour_estimate.uncertain_exposure_min_inr} – &#8377;{data.damage_report.parts_labour_estimate.uncertain_exposure_max_inr}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3.5 border border-slate-200 rounded-lg space-y-2">
+                  <div className="font-bold text-slate-900">
+                    Additional Photo Requests ({(data.damage_report.additional_photo_requests || []).length})
+                  </div>
+                  {(data.damage_report.additional_photo_requests || []).slice(0, 4).map((req, idx) => (
+                    <div key={idx} className="p-2 bg-amber-50/70 border border-amber-200 rounded">
+                      <div className="flex justify-between font-bold text-amber-950">
+                        <span>Angle: {req.angle}</span>
+                        <span className="uppercase text-[10px]">{req.priority}</span>
+                      </div>
+                      <div className="text-slate-700">{req.reason}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">{req.guidance}</div>
+                    </div>
+                  ))}
+                  {(data.damage_report.additional_photo_requests || []).length === 0 && (
+                    <div className="text-emerald-800 bg-emerald-50 p-2 rounded border border-emerald-200">
+                      All 6 angles uploaded with good quality.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Per-Component Damage Observations & Human Assessor Disposition */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">Damage Observations</h2>
+              <h2 className="text-base font-bold text-slate-900">
+                Component-Level Damage Breakdown &amp; Human Assessor Review ({data.damage_assessments.length})
+              </h2>
               <ProvenanceBadge kind="ai_assistive" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {data.damage_assessments.map((d) => (
-                <div key={d.id} className="p-3 border border-slate-200 rounded-lg text-xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900">{d.component_name}</span>
-                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 rounded font-semibold">
-                      {d.observation_type}
-                    </span>
+              {data.damage_assessments.map((d) => {
+                const confPct = Math.round(Number(d.confidence) * 100);
+                const rep = d.repairability || d.recommended_action;
+                const repCls =
+                  rep === "uncertain" || rep === "inspect"
+                    ? "bg-amber-100 text-amber-950 border-amber-300"
+                    : rep === "replace"
+                    ? "bg-rose-100 text-rose-900 border-rose-300"
+                    : "bg-emerald-100 text-emerald-900 border-emerald-300";
+                const factors = (d.confidence_factors || {}) as Record<string, unknown>;
+                return (
+                  <div key={d.id} className="p-3.5 border border-slate-200 rounded-lg text-xs space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm">{d.component_name}</span>
+                        <div className="text-[11px] text-slate-500">
+                          Location: <strong>{d.damage_location || "exterior"}</strong> · Severity: <strong>{d.damage_severity || "moderate"}</strong> · Quality: <strong>{d.image_quality || "good"}</strong>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 border rounded font-bold uppercase text-[10px] ${repCls}`}>
+                          {rep}
+                        </span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 rounded font-semibold">
+                          {d.observation_type}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Per-Component Confidence Meter */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-700">Component Confidence: {confPct}% ({d.confidence})</span>
+                        <span className="text-slate-600">Reviewer: <strong>{d.reviewer_outcome}</strong></span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${confPct >= 80 ? "bg-emerald-600" : confPct >= 65 ? "bg-amber-500" : "bg-rose-600"}`}
+                          style={{ width: `${confPct}%` }}
+                        />
+                      </div>
+                      {typeof factors.rationale === "string" && (
+                        <div className="text-[11px] text-slate-600">{factors.rationale}</div>
+                      )}
+                    </div>
+
+                    {d.visible_damage && (
+                      <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                        <strong>Visible Damage:</strong> {d.visible_damage}
+                      </div>
+                    )}
+                    {d.possible_hidden_damage && (
+                      <div className="p-2 bg-amber-50/60 rounded border border-amber-200 text-amber-950">
+                        <strong>Possible Hidden Damage (Requires Inspection):</strong> {d.possible_hidden_damage}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                      <span>
+                        Est: Parts &#8377;{d.estimated_parts_inr || "0.00"} · Labour &#8377;{d.estimated_labour_inr || "0.00"} · Paint &#8377;{d.estimated_paint_inr || "0.00"}
+                      </span>
+                      {(d.evidence_refs || []).length > 0 && (
+                        <span className="font-mono">
+                          Ref: {d.evidence_refs![0].filename} ({d.evidence_refs![0].angle})
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-slate-500">{d.limitations}</div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => runAction("Accept Damage", `/api/v1/claims/${claimId}/damage-assessments/${d.id}`, "PATCH", { reviewer_outcome: "accepted" })}
+                        className="px-2.5 py-1 bg-emerald-700 text-white rounded font-semibold"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("Reject Damage", `/api/v1/claims/${claimId}/damage-assessments/${d.id}`, "PATCH", { reviewer_outcome: "rejected" })}
+                        className="px-2.5 py-1 border border-slate-300 rounded"
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </div>
-                  <div>Action: <strong>{d.recommended_action.toUpperCase()}</strong> · Conf: {d.confidence} · Outcome: <strong>{d.reviewer_outcome}</strong></div>
-                  <div className="text-slate-500">{d.limitations}</div>
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => runAction("Accept Damage", `/api/v1/claims/${claimId}/damage-assessments/${d.id}`, "PATCH", { reviewer_outcome: "accepted" })}
-                      className="px-2.5 py-1 bg-emerald-700 text-white rounded font-semibold"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => runAction("Reject Damage", `/api/v1/claims/${claimId}/damage-assessments/${d.id}`, "PATCH", { reviewer_outcome: "rejected" })}
-                      className="px-2.5 py-1 border border-slate-300 rounded"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

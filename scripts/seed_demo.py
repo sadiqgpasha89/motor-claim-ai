@@ -32,6 +32,7 @@ from services.claims.models import (
     User,
     Vehicle,
 )
+from services.damage_ai.assessor import assess_damage_from_evidence
 from services.rules_engine.loader import sync_rules_to_db
 from services.workflow.risk_engine import evaluate_and_persist_risk
 
@@ -431,6 +432,7 @@ def seed_all(db: Session) -> None:
     db.add(c1)
     db.flush()
 
+    c1_imgs = []
     for idx, angle in enumerate(["front", "rear", "left", "right", "odometer", "closeup"]):
         ev = Evidence(
             tenant_id=t1.id,
@@ -447,6 +449,39 @@ def seed_all(db: Session) -> None:
             image_quality_status="acceptable",
         )
         db.add(ev)
+        db.flush()
+        c1_imgs.append(
+            {
+                "id": ev.id,
+                "filename": ev.filename,
+                "image_angle": ev.image_angle,
+                "image_quality_status": ev.image_quality_status,
+                "sha256": ev.sha256,
+            }
+        )
+
+    c1_report = assess_damage_from_evidence(
+        claim_description=c1.incident_description,
+        is_ev=veh1.is_ev,
+        ev_battery_impacted=False,
+        image_records=c1_imgs,
+        vehicle_info={
+            "make": veh1.make,
+            "model": veh1.model,
+            "variant": "Alpha AGS",
+            "year": veh1.year,
+            "registration_number": veh1.registration_number,
+            "is_ev": veh1.is_ev,
+            "fuel_type": veh1.fuel_type,
+        },
+    )
+    c1.damage_report = c1_report
+    if isinstance(c1.workflow_state, dict):
+        wf1 = dict(c1.workflow_state)
+        pub1 = dict(wf1.get("published_results", {}))
+        pub1["damage_assessment"] = {"status": "completed", "confidence": 0.88, "data": c1_report}
+        wf1["published_results"] = pub1
+        c1.workflow_state = wf1
 
     for doc_type, fname, text in [
         ("policy_schedule", "policy_schedule_demo.pdf", f"Policy {pol1.policy_number} Vehicle {veh1.registration_number}"),
@@ -481,43 +516,36 @@ def seed_all(db: Session) -> None:
             )
         )
 
-    db.add_all(
-        [
+    for idx_o, obs in enumerate(c1_report["observations"]):
+        cost = obs.get("estimated_cost", {})
+        ev_refs = obs.get("evidence", [])
+        db.add(
             DamageAssessment(
                 tenant_id=t1.id,
                 claim_id=c1.id,
-                component_name="Front Bumper Assembly (Primed)",
-                part_code="PRT-FRT-BMP-01",
-                damage_class="deformation",
-                observation_type="visible_observed",
-                recommended_action="replace",
-                confidence=Decimal("0.890"),
-                reviewer_outcome="accepted",
-            ),
-            DamageAssessment(
-                tenant_id=t1.id,
-                claim_id=c1.id,
-                component_name="Headlamp Assembly LED RH",
-                part_code="PRT-HL-LED-RH",
-                damage_class="crack",
-                observation_type="visible_observed",
-                recommended_action="replace",
-                confidence=Decimal("0.860"),
-                reviewer_outcome="accepted",
-            ),
-            DamageAssessment(
-                tenant_id=t1.id,
-                claim_id=c1.id,
-                component_name="Front Fender Panel RH (Steel)",
-                part_code="PRT-FND-RH-01",
-                damage_class="dent",
-                observation_type="visible_observed",
-                recommended_action="repair",
-                confidence=Decimal("0.810"),
-                reviewer_outcome="pending",
-            ),
-        ]
-    )
+                evidence_id=ev_refs[0]["evidence_id"] if ev_refs else None,
+                component_name=obs["component_name"],
+                part_code=obs.get("part_code"),
+                damage_location=obs["damage_location"],
+                damage_severity=obs["damage_severity"],
+                repairability=obs["repairability"],
+                damage_class=obs["damage_class"],
+                observation_type=obs["observation_type"],
+                recommended_action=obs["recommended_action"],
+                visible_damage=obs["visible_damage"],
+                possible_hidden_damage=obs["possible_hidden_damage"],
+                image_quality=obs["image_quality"],
+                confidence=Decimal(str(obs["component_confidence"])),
+                confidence_factors=obs["confidence_factors"],
+                evidence_refs=ev_refs,
+                estimated_parts_inr=Decimal(str(cost.get("parts_oem_inr", "0.00"))),
+                estimated_labour_inr=Decimal(str(cost.get("labour_inr", "0.00"))),
+                estimated_paint_inr=Decimal(str(cost.get("paint_inr", "0.00"))),
+                limitations=obs["limitations"],
+                reviewer_outcome="accepted" if idx_o < 2 else "pending",
+                model_version=c1_report["model_version"],
+            )
+        )
 
     est1 = Estimate(
         id="est-demo-0001",
@@ -1187,8 +1215,67 @@ def seed_all(db: Session) -> None:
             *(clm8.risk_history or []),
         ]
 
+    # Seed rich Damage AI reports on clm-demo-0004 (recapture), clm-demo-0007 (teardown uncertain), clm-demo-0011 (EV underbody)
+    clm4 = db.query(Claim).filter(Claim.id == "clm-demo-0004").first()
+    if clm4:
+        clm4.damage_report = assess_damage_from_evidence(
+            claim_description="Front bumper shadowed corner impact; uncertain mounting tab condition.",
+            is_ev=False,
+            ev_battery_impacted=False,
+            image_records=[{"id": "ev-0004-blur", "filename": "dark_blurry_front.jpg", "image_angle": "front", "image_quality_status": "recapture_needed", "sha256": "blurry_demo_hash_004"}],
+            vehicle_info={"make": veh1.make, "model": veh1.model, "variant": "Alpha AGS", "year": veh1.year, "registration_number": veh1.registration_number, "is_ev": False},
+        )
+    clm7 = db.query(Claim).filter(Claim.id == "clm-demo-0007").first()
+    if clm7:
+        r7 = assess_damage_from_evidence(
+            claim_description="Front bumper shadow partial occlusion & hidden radiator core support deformation discovered during bonnet teardown.",
+            is_ev=False,
+            ev_battery_impacted=False,
+            image_records=[{"id": "ev-0007-front", "filename": "front_daylight_teardown.jpg", "image_angle": "front", "image_quality_status": "acceptable", "sha256": "demo_hash_0007_front"}],
+            vehicle_info={"make": veh1.make, "model": veh1.model, "variant": "Alpha AGS", "year": veh1.year, "registration_number": veh1.registration_number, "is_ev": False},
+        )
+        clm7.damage_report = r7
+        for obs in r7["observations"]:
+            cost = obs.get("estimated_cost", {})
+            db.add(
+                DamageAssessment(
+                    tenant_id=t1.id,
+                    claim_id=clm7.id,
+                    component_name=obs["component_name"],
+                    part_code=obs.get("part_code"),
+                    damage_location=obs["damage_location"],
+                    damage_severity=obs["damage_severity"],
+                    repairability=obs["repairability"],
+                    damage_class=obs["damage_class"],
+                    observation_type=obs["observation_type"],
+                    recommended_action=obs["recommended_action"],
+                    visible_damage=obs["visible_damage"],
+                    possible_hidden_damage=obs["possible_hidden_damage"],
+                    image_quality=obs["image_quality"],
+                    confidence=Decimal(str(obs["component_confidence"])),
+                    confidence_factors=obs["confidence_factors"],
+                    evidence_refs=obs.get("evidence", []),
+                    estimated_parts_inr=Decimal(str(cost.get("parts_oem_inr", "0.00"))),
+                    estimated_labour_inr=Decimal(str(cost.get("labour_inr", "0.00"))),
+                    estimated_paint_inr=Decimal(str(cost.get("paint_inr", "0.00"))),
+                    limitations=obs["limitations"],
+                    reviewer_outcome="pending",
+                    model_version=r7["model_version"],
+                )
+            )
+
     clm11 = db.query(Claim).filter(Claim.id == "clm-demo-0011").first()
     if clm11:
+        clm11.damage_report = assess_damage_from_evidence(
+            claim_description=clm11.incident_description,
+            is_ev=True,
+            ev_battery_impacted=True,
+            image_records=[
+                {"id": "ev-0011-front", "filename": "ev_front_left.jpg", "image_angle": "front", "image_quality_status": "acceptable", "sha256": "demo_hash_0011_front"},
+                {"id": "ev-0011-under", "filename": "ev_underbody_shadow.jpg", "image_angle": "underbody", "image_quality_status": "poor", "sha256": "demo_hash_0011_under"},
+            ],
+            vehicle_info={"make": veh_ev.make, "model": veh_ev.model, "variant": "Empowered+ LR", "year": veh_ev.year, "registration_number": veh_ev.registration_number, "is_ev": True, "fuel_type": "electric"},
+        )
         clm11.risk_history = [
             {
                 "event_id": "rsk-seed-0011-1",

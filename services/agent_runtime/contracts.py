@@ -301,31 +301,40 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         display_name="Damage Assessment",
         stage="4. Assessment",
         operational_responsibility=(
-            "Performs assistive visual inspection across 6-angle photos to localize damage zones, "
-            "score severity, evaluate repairability, identify OEM parts, and gate image quality."
+            "Executes a 10-step visual damage inspection workflow: validates photo quality (good/poor/recapture), "
+            "detects vehicle make/model/variant and damaged regions with bounding boxes, classifies components with "
+            "per-component confidence (never overclaiming beyond repair from overall image score), compares damage "
+            "across angles, detects inconsistencies, estimates parts & labour, requests missing photos, and routes "
+            "uncertain cases to a human assessor."
         ),
         required_capabilities=[
-            "Anatomical damage localization (zones)",
-            "Component & overall damage severity grading",
-            "Repairability vs replacement rationale",
-            "OEM part code taxonomy identification",
-            "Per-photo & aggregate image quality confidence",
+            "Vehicle detection (make, model, variant) & damaged region bounding-box evidence",
+            "Per-component confidence calibration & repair/replace/uncertain recommendation",
+            "Visible damage vs possible hidden damage separation",
+            "Cross-photo comparison & FNOL-vs-photo inconsistency detection",
+            "Rate-card parts & labour pre-estimation + guided additional photo requests + human assessor routing",
         ],
         input_contract={
-            "assessment_payload": "object from Damage AI service",
-            "image_records": "list[object]",
+            "assessment_payload": "object from Damage AI service (or incident_description + image_records + vehicle_info)",
+            "image_records": "list[object] with filename, image_angle, image_quality_status, sha256",
         },
         output_contract={
-            "observations": "list[object] (visible_observed vs inferred_possible)",
-            "damage_zones": "list[string]",
-            "overall_severity": "string",
-            "image_quality_confidence": "float",
-            "recapture_required_files": "list[string]",
+            "vehicle": "object (make, model, variant, detection_confidence)",
+            "observations": "list[object] (location, component, severity, repairability, visible/hidden damage, component_confidence, bbox evidence)",
+            "cross_photo_comparison": "list[object]",
+            "inconsistencies": "list[object]",
+            "parts_labour_estimate": "object (OEM/OES parts, labour, paint)",
+            "additional_photo_requests": "list[object]",
+            "human_assessor_routing": "object (route_to_human_assessor, trigger_reasons)",
+            "visual_workflow_steps": "list[object] (10-step workflow trace)",
         },
         allowed_tools=[
             "vision_model",
             "image_quality_check",
             "vehicle_taxonomy",
+            "bbox_localizer",
+            "cross_photo_compare",
+            "parts_labour_estimator",
             "request_documents",
             "create_claim_task",
             "request_rework",
@@ -337,11 +346,12 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         prohibited_actions=[
             "confirm_hidden_structural_damage",
             "authorise_ev_battery_replacement",
+            "override_low_component_confidence_with_overall_image_score",
             "mutate_claim_state_directly",
         ],
         depends_on=["claim_triage"],
         can_request_rework_from=["document_intelligence"],
-        human_gate_condition="Blurry/dark images or >3 missing angles trigger guided customer recapture.",
+        human_gate_condition="Poor/recapture photos, component confidence < 0.72, uncertain repairability, inconsistencies, or EV HV impact routes to human assessor.",
         timeout_seconds=20,
         max_retries=2,
     ),
