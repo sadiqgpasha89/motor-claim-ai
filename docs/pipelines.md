@@ -4,24 +4,32 @@ This document details every operational, AI, financial, and engineering pipeline
 
 ---
 
-## 1. End-to-End Claim Processing Pipeline
+## 1. End-to-End Orchestrator-Driven Claim Pipeline
+
+`ClaimOrchestrator` (`services/workflow/orchestrator.py`) owns state progression, Post-FNOL parallel wave fan-out, conditional/parallel assessment gating, exponential-backoff retries, DLQ/Saga compensation, and approval/payment gates.
 
 ```mermaid
 flowchart TD
-    A["1. FNOL Intimation\nPOST /api/v1/claims/intimations\n(Idempotency-Key + FNOLConciergeAgent)"] --> B["2. Evidence Vault & OCR\nPOST /api/v1/claims/{id}/evidence\n(MIME + EICAR + Prompt-Injection + DocumentIntelligenceAgent)"]
-    B --> C["3. Coverage & Policy RAG\nPOST /api/v1/claims/{id}/coverage-checks\n(HybridPolicyRetriever + CoverageIntelligenceAgent)"]
-    C --> D["4. Deterministic Triage & SLA\nPOST /api/v1/claims/{id}/triage\n(IN-IRDAI-MC-2024 ₹50,000 Rule + ClaimTriageAgent)"]
-    D --> E{"Mandatory Survey\nor Special Peril?"}
-    E -->|"Yes (>= ₹50k / EV / TP / Theft / Fire)"| F["5a. Assign Verified Surveyor\nPOST /surveyor-assignments\n(15-day SLA Timer + SMS/Portal Notice)"]
-    E -->|"No (< ₹50k standard OD)"| G["5b. AI-Assisted Assessment\nPOST /damage-assessments"]
-    F --> H["6. Damage AI + Garage Estimate\nPOST /estimates\n(Rate Card RC-IN-2026 + Duplicate Detection)"]
+    A["1. SUBMITTED & REGISTERED\nFNOL Concierge\n(Idempotency-Key + Duplicate-Event Dedup)"] --> B1["2a. Policy Validation\nCoverageIntelligenceAgent\n(Parallel after FNOL)"]
+    A --> B2["2b. Document Extraction\nDocumentIntelligenceAgent\n(Parallel OCR + Injection Quarantine)"]
+    A --> B3["2c. Duplicate Claim Check\nOrchestrator / Fraud Screening\n(Parallel after FNOL)"]
+    A --> B4["2d. Customer Communication\nCustomerCommunicationAgent\n(Parallel after FNOL)"]
+    B1 --> D["3. VALIDATION -> TRIAGE\nClaimTriageAgent (Sequential)\n(IRDAI ₹50k Rule -> FAST_TRACK / SURVEY_REQUIRED / INVESTIGATION_REQUIRED / HUMAN_REVIEW)"]
+    B2 --> D
+    B3 --> D
+    D --> E{"Conditional Branches\n(Photos / Survey / Peril)"}
+    E -->|"Photos & Vehicle Ready"| F["4a. Damage Assessment\nDamageAssessmentAgent\n(Conditional Parallel)"]
+    E -->|"Survey Required"| S["4b. Provider Coordination\nProviderCoordinationAgent\n(Surveyor + Garage + Towing)"]
+    D --> G["4c. Fraud Analysis\nFraudIntelligenceAgent\n(Alert-Only, Parallel with Assessment)"]
+    F --> H["5. ESTIMATE_VALIDATION\nEstimateValidationAgent\n(Rate Card RC-IN-2026 + Sequential Gate)"]
+    S --> H
     G --> H
-    H --> I["7. Surveyor Signed Report & SIU Check\nPOST /survey-reports & POST /fraud-checks\n(Alert-Only FraudIntelligenceAgent)"]
-    I --> J["8. Deterministic Settlement\nPOST /settlement-recommendations\n(Decimal Calculator + Policy Citations)"]
-    J --> K["9. Maker-Checker DoA Approval\nPOST /approvals\n(Forbids Same-User & Bulk Approval)"]
-    K -->|"Approved"| L["10. Idempotent Payment & Recon\nPOST /payments + POST /reconcile"]
-    K -->|"Returned"| B
-    L --> M["11. Repair Milestones & QA Closure\nPOST /repair-status + POST /close\n(QAComplianceAgent + Audit Retention)"]
+    B1 --> J
+    H --> J["6. SETTLEMENT_PENDING_APPROVAL\nSettlementRecommendationAgent\n(Decimal Calculator + Policy Citations)"]
+    J --> K["7. Human Approval Gate (DoA Maker-Checker)\nPOST /approvals\n(Forbids Same-User & Bulk Approval)"]
+    K -->|"Approved -> APPROVED"| L["8. PAYMENT_PENDING & PAYMENT_RECONCILIATION\nPOST /payments + POST /reconcile"]
+    K -->|"Returned / Rework"| B2
+    L --> M["9. CLOSED\nQAComplianceAgent + Audit Retention"]
 ```
 
 ---

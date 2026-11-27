@@ -85,3 +85,24 @@ def test_agent_tool_permission_boundary_enforced():
     )
     with pytest.raises(ToolPermissionError):
         agent.call_tool("execute_payment", req)
+
+
+def test_garage_cannot_leak_siu_decisions_or_tasks_and_payment_requires_finance(client):
+    handler_hdrs = auth_headers(client, "handler@demo.in")
+    garage_hdrs = auth_headers(client, "garage@demo.in")
+
+    r_orch = client.get("/api/v1/claims/clm-demo-0001/orchestration", headers=garage_hdrs)
+    assert r_orch.status_code == 200
+    body = r_orch.json()
+    assert all(t["task_type"] != "siu_investigation" for t in body["tasks"])
+    assert all(d["agent_name"] != "fraud_intelligence" for d in body["decisions"])
+    if "fraud_intelligence" in body["published_results"]:
+        assert body["published_results"]["fraud_intelligence"].get("restricted") is True
+
+    # Handler cannot invoke Finance-gated agent payment release
+    r_pay = client.post(
+        "/api/v1/claims/clm-demo-0009/payments/agent-release",
+        json={"settlement_id": "stl-demo-0009", "idempotency_key": "sec-pay-1", "payee_name": "Apex"},
+        headers=handler_hdrs,
+    )
+    assert r_pay.status_code == 403

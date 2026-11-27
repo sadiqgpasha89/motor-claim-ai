@@ -478,3 +478,164 @@ class OutboxEvent(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ClaimTask(Base):
+    """Actionable workflow task created by bounded action-taking agents or human adjusters."""
+
+    __tablename__ = "claim_tasks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    task_type: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    assigned_role: Mapped[str] = mapped_column(String(40), default="claims_handler")
+    assigned_user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_by_agent: Mapped[str] = mapped_column(String(64), default="orchestrator")
+    priority: Mapped[str] = mapped_column(String(24), default="medium")
+    status: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    reason_code: Mapped[str] = mapped_column(String(64), default="TASK_CREATED")
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentExecutionRecord(Base):
+    """Structured publication & orchestration execution log for every bounded agent run."""
+
+    __tablename__ = "agent_execution_records"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    workflow_run_id: Mapped[str] = mapped_column(String(64), index=True)
+    agent_name: Mapped[str] = mapped_column(String(64), index=True)
+    stage_order: Mapped[int] = mapped_column(Integer, default=1)
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    dependencies_satisfied: Mapped[bool] = mapped_column(Boolean, default=True)
+    depends_on: Mapped[list] = mapped_column(JSON, default=list)
+    published_result: Mapped[dict] = mapped_column(JSON, default=dict)
+    actions_executed: Mapped[list] = mapped_column(JSON, default=list)
+    rework_requests: Mapped[list] = mapped_column(JSON, default=list)
+    decision: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DecisionRecord(Base):
+    """First-class Decision Intelligence ledger recording evidence, rules, codes, and rationale."""
+
+    __tablename__ = "decision_records"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    agent_name: Mapped[str] = mapped_column(String(64), index=True)
+    stage: Mapped[str] = mapped_column(String(64))
+    decision_id: Mapped[str] = mapped_column(String(64), index=True)
+    routing_outcome: Mapped[str] = mapped_column(String(80))
+    reason_codes: Mapped[list] = mapped_column(JSON, default=list)
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    policy_rule_refs: Mapped[list] = mapped_column(JSON, default=list)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), default=Decimal("0.900"))
+    confidence_band: Mapped[str] = mapped_column(String(16), default="high")
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    alternatives_considered: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class OrchestrationTask(Base):
+    """Scheduled DAG work unit owned exclusively by the Claim Orchestration Engine."""
+
+    __tablename__ = "orchestration_tasks"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key", name="uq_orch_task_idempotency"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    workflow_run_id: Mapped[str] = mapped_column(String(64), index=True)
+    task_key: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    agent_or_service: Mapped[str] = mapped_column(String(64), index=True)
+    execution_mode: Mapped[str] = mapped_column(String(24), default="sequential")
+    parallel_group: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    depends_on: Mapped[list] = mapped_column(JSON, default=list)
+    condition_expression: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    target_state: Mapped[str] = mapped_column(String(40), default="VALIDATION")
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, default=2)
+    backoff_delay_ms: Mapped[int] = mapped_column(Integer, default=0)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_history: Mapped[list] = mapped_column(JSON, default=list)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=15)
+    idempotency_key: Mapped[str] = mapped_column(String(120))
+    input_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OrchestrationEventLog(Base):
+    """Inbound workflow event ledger enforcing duplicate-event protection per claim."""
+
+    __tablename__ = "orchestration_events"
+    __table_args__ = (UniqueConstraint("tenant_id", "claim_id", "event_id", name="uq_orch_event_dedup"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    event_id: Mapped[str] = mapped_column(String(100), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(64), default="api")
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    processing_status: Mapped[str] = mapped_column(String(32), default="processed")
+    resulting_state: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    duplicate_hits: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class DeadLetterRecord(Base):
+    """Dead-Letter Queue (DLQ) capturing exhausted tasks or poison workflow events for replay or compensation."""
+
+    __tablename__ = "dead_letter_queue"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    task_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    task_key: Mapped[str] = mapped_column(String(64))
+    agent_or_service: Mapped[str] = mapped_column(String(64))
+    state_at_failure: Mapped[str] = mapped_column(String(40))
+    error_code: Mapped[str] = mapped_column(String(64), default="ORCH_RETRY_EXHAUSTED")
+    failure_reason: Mapped[str] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    retry_history: Mapped[list] = mapped_column(JSON, default=list)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="open", index=True)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CompensationLog(Base):
+    """Saga compensation ledger recording deterministic rollback/release steps on workflow failure or cancellation."""
+
+    __tablename__ = "compensation_workflows"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    trigger_reason: Mapped[str] = mapped_column(String(200))
+    failed_state: Mapped[str] = mapped_column(String(40))
+    compensating_action: Mapped[str] = mapped_column(String(80))
+    target_object_type: Mapped[str] = mapped_column(String(64))
+    target_object_id: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="executed")
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

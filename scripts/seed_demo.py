@@ -10,14 +10,18 @@ from services.claims.db import Base, engine
 from services.claims.models import (
     Claim,
     ClaimParty,
+    ClaimTask,
     Customer,
     DamageAssessment,
+    DeadLetterRecord,
+    DecisionRecord,
     Estimate,
     EstimateLine,
     Evidence,
     ExtractedFact,
     FraudAlert,
     Grievance,
+    OrchestrationEventLog,
     Payment,
     Policy,
     Provider,
@@ -324,7 +328,63 @@ def seed_all(db: Session) -> None:
             },
             "evidence_refs": [{"source_type": "policy_clause", "source_id": "POL-WORDING-PC-2024", "reference": "POL-WORDING-PC-2024 SEC-1-1 p.3"}],
         },
-        workflow_state={"workflow_run_id": "wf-demo-0001", "steps_completed": ["FNOL", "EVIDENCE", "COVERAGE", "TRIAGE", "SURVEY_ASSIGNED"]},
+        workflow_state={
+            "workflow_run_id": "wf-demo-0001",
+            "current_state": "ESTIMATE_REVIEW",
+            "canonical_state": "ESTIMATE_VALIDATION",
+            "triage_track": "SURVEY_REQUIRED",
+            "paused": False,
+            "state_history": [
+                {"from_state": "SUBMITTED", "to_state": "REGISTERED", "canonical_state": "REGISTERED", "reason": "FNOL registered cleanly", "actor": "orchestrator"},
+                {"from_state": "REGISTERED", "to_state": "VALIDATION", "canonical_state": "VALIDATION", "reason": "Post-FNOL parallel validation wave", "actor": "orchestrator"},
+                {"from_state": "VALIDATION", "to_state": "TRIAGE", "canonical_state": "TRIAGE", "reason": "Policy & docs reconciled", "actor": "orchestrator"},
+                {"from_state": "TRIAGE", "to_state": "SURVEY_REQUIRED", "canonical_state": "SURVEY_REQUIRED", "reason": "Estimated loss >= INR 50,000 IRDAI gate", "actor": "orchestrator"},
+                {"from_state": "SURVEY_REQUIRED", "to_state": "ASSESSMENT", "canonical_state": "ASSESSMENT", "reason": "Conditional Damage + Parallel Fraud wave", "actor": "orchestrator"},
+                {"from_state": "ASSESSMENT", "to_state": "ESTIMATE_VALIDATION", "canonical_state": "ESTIMATE_VALIDATION", "reason": "Garage estimate submitted for benchmarking", "actor": "orchestrator"},
+            ],
+            "parallel_waves": [
+                {
+                    "wave_id": "wave-seed-postfnol",
+                    "wave_name": "post_fnol_parallel",
+                    "agents": ["document_intelligence", "coverage_intelligence", "customer_communication"],
+                    "wall_duration_ms": 14,
+                    "outcomes": {"document_intelligence": "completed", "coverage_intelligence": "completed", "customer_communication": "completed"},
+                },
+                {
+                    "wave_id": "wave-seed-assess",
+                    "wave_name": "assessment_and_fraud_parallel",
+                    "agents": ["damage_assessment", "fraud_intelligence"],
+                    "wall_duration_ms": 18,
+                    "outcomes": {"damage_assessment": "completed", "fraud_intelligence": "needs_human"},
+                },
+            ],
+            "steps_completed": [
+                "fnol_concierge",
+                "document_intelligence",
+                "coverage_intelligence",
+                "claim_triage",
+                "provider_coordination",
+                "damage_assessment",
+            ],
+            "stage_statuses": {
+                "fnol_concierge": "completed",
+                "document_intelligence": "completed",
+                "coverage_intelligence": "completed",
+                "claim_triage": "completed",
+                "provider_coordination": "completed",
+                "damage_assessment": "completed",
+                "estimate_validation": "needs_human",
+            },
+            "published_results": {
+                "fnol_concierge": {"status": "completed", "confidence": 0.94, "data": {"normalised_channel": "web"}},
+                "document_intelligence": {"status": "completed", "confidence": 0.91, "data": {"reconciliation_status": "reconciled", "conflicts": []}},
+                "coverage_intelligence": {"status": "completed", "confidence": 0.92, "data": {"ambiguities": []}},
+                "claim_triage": {"status": "completed", "confidence": 0.94, "data": {"recommended_queue": "standard_survey_queue", "routing_priority": "P3_NORMAL"}},
+                "provider_coordination": {"status": "completed", "confidence": 0.92, "data": {"customer_preference_honoured": True}},
+                "damage_assessment": {"status": "completed", "confidence": 0.88, "data": {"overall_severity": "moderate", "damage_zones": ["front_fascia", "front_right_lighting", "front_right_quarter"]}},
+                "estimate_validation": {"status": "needs_human", "confidence": 0.74, "data": {"total_claimed_inr": "64200.00", "total_recommended_inr": "48700.00"}},
+            },
+        },
     )
     db.add(c1)
     db.flush()
@@ -912,6 +972,66 @@ def seed_all(db: Session) -> None:
         object_id=c1.id,
         details={"label": "DEMO / SYNTHETIC"},
     )
+    db.add_all(
+        [
+            ClaimTask(
+                tenant_id=t1.id,
+                claim_id=c1.id,
+                task_type="estimate_review",
+                title="Review duplicated Front Bumper line & +38.5% Fender rate variance",
+                description="EstimateValidationAgent detected duplicate PRT-FRT-BMP-01 and +38.5% OEM variance on PRT-FND-RH-01.",
+                assigned_role="claims_handler",
+                created_by_agent="estimate_validation",
+                priority="high",
+                status="open",
+                reason_code="RC_ESTIMATE_ANOMALIES",
+                due_at=now + timedelta(hours=12),
+            ),
+            ClaimTask(
+                tenant_id=t1.id,
+                claim_id=c1.id,
+                task_type="siu_investigation",
+                title="SIU Review: FRD-EST-ANOMALY (Alert-only lead)",
+                description="Evaluate duplicated bumper entry with benign clerk error context.",
+                assigned_role="siu_investigator",
+                created_by_agent="fraud_intelligence",
+                priority="medium",
+                status="open",
+                reason_code="RC_SIU_INVESTIGATIVE_LEAD",
+                due_at=now + timedelta(hours=24),
+            ),
+            DecisionRecord(
+                tenant_id=t1.id,
+                claim_id=c1.id,
+                agent_name="claim_triage",
+                stage="3. Triage",
+                decision_id="dec-seed-tri-01",
+                routing_outcome="standard_survey_queue:P3_NORMAL",
+                reason_codes=["RC_MANDATORY_SURVEY_TRIGGERED", "RC_PRIORITY_P3_NORMAL"],
+                evidence=["Estimated loss INR 64200.00 >= INR 50000.00 threshold"],
+                policy_rule_refs=["IN-IRDAI-MC-2024:1.0.0"],
+                confidence=Decimal("0.940"),
+                confidence_band="high",
+                explanation="Mandatory IRDAI survey triggered because claimed loss exceeds INR 50,000.",
+                alternatives_considered=["low_risk_od_assisted (excluded >= 50k)"],
+            ),
+            DecisionRecord(
+                tenant_id=t1.id,
+                claim_id=c1.id,
+                agent_name="estimate_validation",
+                stage="4. Assessment",
+                decision_id="dec-seed-est-01",
+                routing_outcome="hold_anomalies_flagged",
+                reason_codes=["RC_RATE_CARD_BENCHMARKED", "RC_DUPLICATE_LINE", "RC_RATE_VARIANCE"],
+                evidence=["Claimed INR 64200.00 vs Recommended INR 48700.00 (2 anomalies)"],
+                policy_rule_refs=["RATE_CARD:RC-IN-2026-DEMO-V1"],
+                confidence=Decimal("0.740"),
+                confidence_band="medium",
+                explanation="Flagged duplicate bumper part and +38.5% fender variance for adjuster sign-off.",
+                alternatives_considered=["silently_overwrite_garage_quote (prohibited)"],
+            ),
+        ]
+    )
     emit_outbox_event(
         db,
         tenant_id=t1.id,
@@ -919,5 +1039,36 @@ def seed_all(db: Session) -> None:
         event_type="ClaimCreated",
         payload={"claim_number": c1.claim_number, "synthetic": True},
         idempotency_key="seed-c1-created",
+    )
+    db.add(
+        OrchestrationEventLog(
+            tenant_id=t1.id,
+            claim_id=c1.id,
+            event_id="evt-seed-fnol-0001",
+            event_type="FNOLSubmitted",
+            source="web",
+            payload={"claim_number": c1.claim_number},
+            processing_status="processed",
+            resulting_state="REGISTERED",
+        )
+    )
+    db.add(
+        DeadLetterRecord(
+            tenant_id=t1.id,
+            claim_id="clm-demo-0006",
+            task_key="provider_coordination",
+            agent_or_service="provider_coordination",
+            state_at_failure="SURVEY_ASSIGNED",
+            error_code="ORCH_SURVEY_SLA_TIMEOUT",
+            failure_reason="Surveyor reminder webhook timed out after 3 exponential-backoff retries (200ms, 400ms, 800ms).",
+            attempt_count=3,
+            retry_history=[
+                {"attempt": 1, "status": "timed_out", "backoff_delay_ms": 200, "backoff_formula": "200 * 2.0^0"},
+                {"attempt": 2, "status": "timed_out", "backoff_delay_ms": 400, "backoff_formula": "200 * 2.0^1"},
+                {"attempt": 3, "status": "timed_out", "backoff_delay_ms": 800, "backoff_formula": "200 * 2.0^2"},
+            ],
+            payload={"claim_number": "CLM-DEMO-2026-0006"},
+            status="open",
+        )
     )
     db.commit()

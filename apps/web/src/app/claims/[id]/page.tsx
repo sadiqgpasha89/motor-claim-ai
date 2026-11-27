@@ -6,8 +6,9 @@ import { AlertTriangle, CheckCircle2, ShieldAlert, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ProvenanceBadge, SlaBadge, StatusPill } from "@/components/Badges";
+import { ClaimExecutionChain } from "@/components/ClaimExecutionChain";
 
-type TabId = "overview" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
+type TabId = "overview" | "orchestration" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
 
 interface Claim360 {
   claim: Record<string, unknown> & {
@@ -147,6 +148,125 @@ interface Claim360 {
   }>;
   sla_timers: Array<{ id: string; stage: string; status: string; due_at: string }>;
   audit_events: Array<{ id: string; action: string; actor_role: string; before_hash: string; after_hash: string; created_at: string }>;
+  tasks: Array<{
+    id: string;
+    task_type: string;
+    title: string;
+    description: string;
+    assigned_role: string;
+    created_by_agent: string;
+    priority: string;
+    status: string;
+    reason_code: string;
+  }>;
+  decisions: Array<{
+    id: string;
+    agent_name: string;
+    stage: string;
+    decision_id: string;
+    routing_outcome: string;
+    reason_codes: string[];
+    evidence: string[];
+    policy_rule_refs: string[];
+    confidence: string;
+    confidence_band: string;
+    explanation: string;
+    alternatives_considered: string[];
+    created_at: string;
+  }>;
+  agent_executions: Array<{
+    id: string;
+    agent_name: string;
+    attempt_number: number;
+    status: string;
+    dependencies_satisfied: boolean;
+    depends_on: string[];
+    actions_executed: Array<{ action_type: string; status: string; summary: string }>;
+    rework_requests: Array<{ from_agent: string; to_agent: string; reason_code: string; instructions: string }>;
+    error_message?: string | null;
+    duration_ms: number;
+    created_at: string;
+  }>;
+  settlement_scenarios: Array<{
+    scenario_code: string;
+    label: string;
+    pathway: string;
+    recommended: boolean;
+    gross_assessed_inr: string;
+    depreciation_deduction_inr: string;
+    addon_waiver_inr: string;
+    deductibles_total_inr: string;
+    salvage_deduction_inr: string;
+    policy_idv_limit_inr: string;
+    net_payable_inr: string;
+    rationale: string;
+  }>;
+  orchestration_summary: {
+    orchestration_order: string[];
+    current_state?: string;
+    canonical_state?: string;
+    triage_track?: string | null;
+    paused?: boolean;
+    pause_reason?: string | null;
+    state_contract?: {
+      state: string;
+      display_name: string;
+      phase: string;
+      description: string;
+      entry_conditions: string[];
+      required_data: string[];
+      allowed_actions: string[];
+      exit_conditions: string[];
+      responsible_agent_or_service: string;
+      sla: { stage: string; target_hours: number; escalation_role: string; daily_penalty_inr: string };
+      retry_strategy: { max_retries: number; base_delay_ms: number; backoff_multiplier: number; max_delay_ms: number };
+      human_escalation_criteria: string[];
+    } | null;
+    state_history?: Array<{ from_state: string; to_state: string; reason: string; actor: string; timestamp?: string }>;
+    parallel_waves?: Array<{ wave_id: string; wave_name: string; agents: string[]; wall_duration_ms: number; outcomes: Record<string, string> }>;
+    scheduled_tasks?: Array<{
+      id: string;
+      task_key: string;
+      title: string;
+      agent_or_service: string;
+      execution_mode: string;
+      parallel_group?: string | null;
+      depends_on: string[];
+      condition_expression?: string | null;
+      target_state: string;
+      status: string;
+      attempt_count: number;
+      max_retries: number;
+      backoff_delay_ms: number;
+      retry_history: Array<{ attempt: number; backoff_delay_ms: number; backoff_formula: string }>;
+      error_message?: string | null;
+    }>;
+    dlq_items?: Array<{
+      id: string;
+      task_key: string;
+      agent_or_service: string;
+      failure_reason: string;
+      attempt_count: number;
+      status: string;
+    }>;
+    compensations?: Array<{
+      id: string;
+      trigger_reason: string;
+      compensating_action: string;
+      target_object_type: string;
+      status: string;
+    }>;
+    events?: Array<{
+      id: string;
+      event_id: string;
+      event_type: string;
+      processing_status: string;
+      duplicate_hits: number;
+    }>;
+    stage_statuses: Record<string, string>;
+    rework_queue: Array<{ id: string; from_agent: string; to_agent: string; reason_code: string; instructions: string; status: string }>;
+    escalations: Array<{ id: string; agent_name: string; reason: string; status: string }>;
+  };
 }
 
 export default function Claim360Page() {
@@ -161,6 +281,10 @@ export default function Claim360Page() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [factEdits, setFactEdits] = useState<Record<string, string>>({});
+  const [reworkFrom, setReworkFrom] = useState("estimate_validation");
+  const [reworkTo, setReworkTo] = useState("damage_assessment");
+  const [reworkInstructions, setReworkInstructions] = useState("Verify repair vs replacement teardown evidence.");
+  const [eventIdInput, setEventIdInput] = useState("evt-ui-advance-001");
 
   const loadClaim = useCallback(async () => {
     if (!token || !claimId) return;
@@ -171,7 +295,7 @@ export default function Claim360Page() {
       if (!res.fraud_alerts_restricted) {
         apiFetch<Record<string, unknown>>(`/api/v1/claims/${claimId}/entity-graph`, {}, token)
           .then(setEntityGraph)
-          .catch(() => {});
+          .catch(() => { });
       } else {
         setEntityGraph(null);
       }
@@ -293,6 +417,8 @@ export default function Claim360Page() {
         {(
           [
             ["overview", "Overview & AI Workflow"],
+            ["orchestration", `Orchestration & Actions (${data.tasks?.length || 0})`],
+            ["decisions", `Decision Intelligence (${data.decisions?.length || 0})`],
             ["evidence", `Evidence & OCR (${data.evidence.length})`],
             ["damage_estimate", `Damage & Estimate (${data.estimates.length})`],
             ["siu", `Fraud / SIU (${data.fraud_alerts_restricted ? "Restricted" : data.fraud_alerts.length})`],
@@ -304,9 +430,8 @@ export default function Claim360Page() {
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 ${
-              tab === id ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-900"
-            }`}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 ${tab === id ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-900"
+              }`}
           >
             {label}
           </button>
@@ -315,103 +440,475 @@ export default function Claim360Page() {
 
       {/* TAB 1: OVERVIEW */}
       {tab === "overview" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-900">Incident & Parties</h2>
-                <ProvenanceBadge kind="verified" />
-              </div>
-              <p className="text-sm text-slate-700">{c.incident_description}</p>
-              <div className="text-xs text-slate-500">Location: {c.incident_location}</div>
-              {c.missing_documents.length > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-950">
-                  <strong>Missing Documents (Follow-up Active):</strong> {c.missing_documents.join(", ")}
+        <div className="space-y-6">
+          <ClaimExecutionChain data={data} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-900">Incident & Parties</h2>
+                  <ProvenanceBadge kind="verified" />
                 </div>
-              )}
-              {data.parties.length > 0 && (
-                <div className="space-y-1 pt-2">
-                  <div className="text-xs font-bold text-slate-700">Claim Parties</div>
-                  {data.parties.map((p) => (
-                    <div key={p.id} className="text-xs p-2 bg-slate-50 rounded border border-slate-200">
-                      <span className="font-semibold uppercase">{p.party_role}:</span> {p.name} — {p.notes}
-                    </div>
-                  ))}
+                <p className="text-sm text-slate-700">{c.incident_description}</p>
+                <div className="text-xs text-slate-500">Location: {c.incident_location}</div>
+                {c.missing_documents.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-950">
+                    <strong>Missing Documents (Follow-up Active):</strong> {c.missing_documents.join(", ")}
+                  </div>
+                )}
+                {data.parties.length > 0 && (
+                  <div className="space-y-1 pt-2">
+                    <div className="text-xs font-bold text-slate-700">Claim Parties</div>
+                    {data.parties.map((p) => (
+                      <div key={p.id} className="text-xs p-2 bg-slate-50 rounded border border-slate-200">
+                        <span className="font-semibold uppercase">{p.party_role}:</span> {p.name} — {p.notes}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {c.coverage_factsheet && (
+                <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-bold text-slate-900">Coverage Intelligence Factsheet</h2>
+                    <ProvenanceBadge kind="ai_assistive" />
+                  </div>
+                  <pre className="text-xs bg-slate-50 p-3 rounded border border-slate-200 overflow-x-auto">
+                    {JSON.stringify(c.coverage_factsheet, null, 2)}
+                  </pre>
                 </div>
               )}
             </div>
 
-            {c.coverage_factsheet && (
-              <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-bold text-slate-900">Coverage Intelligence Factsheet</h2>
-                  <ProvenanceBadge kind="ai_assistive" />
-                </div>
-                <pre className="text-xs bg-slate-50 p-3 rounded border border-slate-200 overflow-x-auto">
-                  {JSON.stringify(c.coverage_factsheet, null, 2)}
-                </pre>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-2.5 h-fit">
+              <h2 className="text-base font-bold text-slate-900">Orchestrator Actions</h2>
+              <p className="text-xs text-slate-500">
+                Dependency-gated agents execute actions safely; human approvals remain mandatory.
+              </p>
+              <button
+                type="button"
+                onClick={() => runAction("Autonomous DAG Orchestrator", `/api/v1/claims/${claimId}/orchestrate`, "POST", { stop_on_human_gate: true })}
+                className="w-full py-2 px-3 text-xs font-semibold bg-blue-700 text-white rounded-lg hover:bg-blue-800 text-left"
+              >
+                0. Run Autonomous DAG Orchestrator
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Coverage Check", `/api/v1/claims/${claimId}/coverage-checks`)}
+                className="w-full py-2 px-3 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-left"
+              >
+                1. Run Coverage Check (Policy RAG + Rules)
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Claim Triage", `/api/v1/claims/${claimId}/triage`)}
+                className="w-full py-2 px-3 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-left"
+              >
+                2. Run Claim Triage & Survey Threshold
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Coordinate Providers", `/api/v1/claims/${claimId}/provider-coordination`, "POST", {})}
+                className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
+              >
+                3. Coordinate Surveyor, Garage &amp; Towing
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Damage Assessment", `/api/v1/claims/${claimId}/damage-assessments`)}
+                className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
+              >
+                4. Run Assistive Damage Vision Check
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Fraud Signals", `/api/v1/claims/${claimId}/fraud-checks`)}
+                className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
+              >
+                5. Evaluate Explainable Fraud Signals
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Submit Survey Report", `/api/v1/claims/${claimId}/survey-reports`, "POST", {
+                  inspection_notes: "Physical inspection completed; visible front panel damage matches incident.",
+                  assessed_gross_inr: c.estimated_loss_inr,
+                  signed: true,
+                })}
+                className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
+              >
+                6. Submit Signed Surveyor Report
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Recover & Resume", `/api/v1/claims/${claimId}/orchestration/recover`, "POST", { resolution_notes: "Manual recovery trigger", resume_pipeline: true })}
+                className="w-full py-2 px-3 text-xs font-semibold bg-amber-50 border border-amber-300 text-amber-950 rounded-lg hover:bg-amber-100 text-left"
+              >
+                7. Recover Rework / Timeout &amp; Resume
+              </button>
+              <button
+                type="button"
+                onClick={() => runAction("Close Claim", `/api/v1/claims/${claimId}/close`)}
+                className="w-full py-2 px-3 text-xs font-semibold bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 text-left"
+              >
+                8. QA Check &amp; Close Claim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: ORCHESTRATION, ACTIONS & TASKS */}
+      {tab === "orchestration" && (
+        <div className="space-y-6">
+          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Claim Orchestration Engine — State Control, DAG Scheduler &amp; Recovery
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Orchestrator owns state transitions, parallel waves, exponential-backoff retries, DLQ, compensation, SLA tracking, and duplicate-event protection.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => runAction("Autonomous Orchestrate", `/api/v1/claims/${claimId}/orchestrate`, "POST", { stop_on_human_gate: true })}
+                  className="px-3 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-lg"
+                >
+                  Run Ready Waves
+                </button>
+                {data.orchestration_summary?.paused ? (
+                  <button
+                    type="button"
+                    onClick={() => runAction("Resume Workflow", `/api/v1/claims/${claimId}/orchestration/resume`, "POST", { resolution_notes: "Resumed from Claim 360", run_ready_stages: true })}
+                    className="px-3 py-1.5 text-xs font-semibold bg-emerald-700 text-white rounded-lg"
+                  >
+                    Resume Workflow
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => runAction("Pause Workflow", `/api/v1/claims/${claimId}/orchestration/pause`, "POST", { reason: "Paused for Claim 360 operational check" })}
+                    className="px-3 py-1.5 text-xs font-semibold bg-amber-600 text-white rounded-lg"
+                  >
+                    Pause Workflow
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => runAction("Compensation Saga", `/api/v1/claims/${claimId}/orchestration/compensate`, "POST", { trigger_reason: "Operator-triggered compensation rollback" })}
+                  className="px-3 py-1.5 text-xs font-semibold bg-rose-700 text-white rounded-lg"
+                >
+                  Run Compensation
+                </button>
+              </div>
+            </div>
+
+            {data.orchestration_summary?.paused && (
+              <div className="p-3 bg-amber-50 border border-amber-300 text-amber-950 rounded-lg text-xs font-semibold">
+                WORKFLOW PAUSED: {data.orchestration_summary.pause_reason || "Manual pause active (SLA timers paused)"}
               </div>
             )}
+
+            {data.orchestration_summary?.state_contract && (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-slate-900">
+                    Active State Contract: {data.orchestration_summary.state_contract.state} ({data.orchestration_summary.state_contract.phase})
+                  </span>
+                  <span className="font-mono text-slate-600">
+                    SLA: {data.orchestration_summary.state_contract.sla.stage} ({data.orchestration_summary.state_contract.sla.target_hours}h) · Retry: {data.orchestration_summary.state_contract.retry_strategy.max_retries}x exp ({data.orchestration_summary.state_contract.retry_strategy.base_delay_ms}ms)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1">
+                  <div>
+                    <div className="font-bold text-slate-600 uppercase text-[10px]">Entry Conditions</div>
+                    <ul className="list-disc pl-4 text-slate-700 mt-0.5">
+                      {data.orchestration_summary.state_contract.entry_conditions.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-600 uppercase text-[10px]">Required Data &amp; Owner</div>
+                    <div className="text-slate-700 mt-0.5">{data.orchestration_summary.state_contract.required_data.join(", ")}</div>
+                    <div className="text-blue-800 font-semibold mt-1">{data.orchestration_summary.state_contract.responsible_agent_or_service}</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-600 uppercase text-[10px]">Allowed Actions &amp; Exit</div>
+                    <div className="text-slate-700 mt-0.5">{data.orchestration_summary.state_contract.allowed_actions.join(", ")}</div>
+                    <div className="text-emerald-800 mt-1">Exit: {data.orchestration_summary.state_contract.exit_conditions.join("; ")}</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-600 uppercase text-[10px]">Human Escalation Criteria</div>
+                    <ul className="list-disc pl-4 text-amber-900 mt-0.5">
+                      {data.orchestration_summary.state_contract.human_escalation_criteria.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-xs font-bold uppercase text-slate-600 mb-2">
+                Scheduled DAG Tasks ({data.orchestration_summary?.scheduled_tasks?.length || 0}) — Parallel, Sequential, Conditional &amp; Approval-Gated
+              </h3>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2">Task</th>
+                      <th className="px-3 py-2">Dependencies</th>
+                      <th className="px-3 py-2">Execution</th>
+                      <th className="px-3 py-2">Owner</th>
+                      <th className="px-3 py-2">Status &amp; Retries</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(data.orchestration_summary?.scheduled_tasks || []).map((t) => (
+                      <tr key={t.id}>
+                        <td className="px-3 py-2 font-semibold text-slate-900">
+                          {t.task_key}
+                          <div className="text-[11px] font-normal text-slate-500">{t.title}</div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600 font-mono">
+                          {t.depends_on.length > 0 ? t.depends_on.join(", ") : "Entry"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-900 font-semibold uppercase">
+                            {t.execution_mode}
+                          </span>
+                          {t.parallel_group && (
+                            <div className="text-[10px] text-slate-500 mt-0.5">{t.parallel_group}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-slate-700">{t.agent_or_service}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold uppercase">{t.status}</span>
+                          {t.attempt_count > 0 && (
+                            <span className="ml-1 text-[11px] text-slate-500">
+                              (attempts: {t.attempt_count}/{t.max_retries + 1}{t.backoff_delay_ms ? `, backoff ${t.backoff_delay_ms}ms` : ""})
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-2">
+              <div className="p-3 border border-slate-200 rounded-lg space-y-2">
+                <div className="font-bold text-slate-900">Duplicate-Event Protection Test</div>
+                <div className="flex gap-2">
+                  <input
+                    value={eventIdInput}
+                    onChange={(e) => setEventIdInput(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-slate-300 rounded font-mono"
+                    placeholder="event_id"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => runAction("Dispatch Event", `/api/v1/claims/${claimId}/orchestration/events`, "POST", { event_id: eventIdInput, event_type: "ManualAdvance", auto_advance: true })}
+                    className="px-2.5 py-1 bg-blue-700 text-white rounded font-semibold"
+                  >
+                    Send Event
+                  </button>
+                </div>
+                {(data.orchestration_summary?.events || []).slice(0, 3).map((ev) => (
+                  <div key={ev.id} className="text-[11px] text-slate-600">
+                    <code>{ev.event_id}</code> ({ev.event_type}) · hits={ev.duplicate_hits}
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 border border-slate-200 rounded-lg space-y-1">
+                <div className="font-bold text-slate-900">
+                  Dead-Letter Queue ({data.orchestration_summary?.dlq_items?.length || 0})
+                </div>
+                {(data.orchestration_summary?.dlq_items || []).map((d) => (
+                  <div key={d.id} className="text-[11px] text-rose-800">
+                    <code>{d.task_key}</code> [{d.status}]: {d.failure_reason}
+                  </div>
+                ))}
+                {(data.orchestration_summary?.dlq_items?.length || 0) === 0 && (
+                  <div className="text-[11px] text-slate-500">Zero exhausted tasks in DLQ.</div>
+                )}
+              </div>
+              <div className="p-3 border border-slate-200 rounded-lg space-y-1">
+                <div className="font-bold text-slate-900">
+                  Compensation Saga Logs ({data.orchestration_summary?.compensations?.length || 0})
+                </div>
+                {(data.orchestration_summary?.compensations || []).map((cp) => (
+                  <div key={cp.id} className="text-[11px] text-slate-700">
+                    <code>{cp.compensating_action}</code> [{cp.status}]
+                  </div>
+                ))}
+                {(data.orchestration_summary?.compensations?.length || 0) === 0 && (
+                  <div className="text-[11px] text-slate-500">No compensation rollbacks triggered.</div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-2.5 h-fit">
-            <h2 className="text-base font-bold text-slate-900">Orchestrator Actions</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+              <h3 className="text-base font-bold text-slate-900">Action-Taking Agent Tasks ({data.tasks?.length || 0})</h3>
+              {(data.tasks || []).map((t) => (
+                <div key={t.id} className="p-3 border border-slate-200 rounded-lg text-xs space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-900">{t.title}</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold uppercase">{t.status}</span>
+                  </div>
+                  <div className="text-slate-600">{t.description}</div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span>
+                      Agent: <code>{t.created_by_agent}</code> · Role: <strong>{t.assigned_role}</strong> · Priority: {t.priority}
+                    </span>
+                    {t.status !== "completed" && (
+                      <button
+                        type="button"
+                        onClick={() => runAction("Complete Task", `/api/v1/claims/${claimId}/tasks/${t.id}`, "PATCH", { status: "completed" })}
+                        className="px-2.5 py-1 bg-slate-900 text-white rounded font-semibold"
+                      >
+                        Mark Complete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {(!data.tasks || data.tasks.length === 0) && (
+                <p className="text-xs text-slate-500">No claim tasks created yet.</p>
+              )}
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Request Rework / Recover Escalation</h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">From Stage</label>
+                  <select value={reworkFrom} onChange={(e) => setReworkFrom(e.target.value)} className="w-full p-2 border border-slate-300 rounded bg-white">
+                    <option value="estimate_validation">estimate_validation</option>
+                    <option value="coverage_intelligence">coverage_intelligence</option>
+                    <option value="qa_compliance">qa_compliance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">To Earlier Stage</label>
+                  <select value={reworkTo} onChange={(e) => setReworkTo(e.target.value)} className="w-full p-2 border border-slate-300 rounded bg-white">
+                    <option value="damage_assessment">damage_assessment</option>
+                    <option value="document_intelligence">document_intelligence</option>
+                    <option value="provider_coordination">provider_coordination</option>
+                  </select>
+                </div>
+              </div>
+              <input
+                value={reworkInstructions}
+                onChange={(e) => setReworkInstructions(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                placeholder="Rework instructions..."
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    runAction("Request Rework", `/api/v1/claims/${claimId}/rework`, "POST", {
+                      from_agent: reworkFrom,
+                      to_agent: reworkTo,
+                      reason_code: "RC_MANUAL_STAGE_REWORK",
+                      instructions: reworkInstructions,
+                      blocking: true,
+                    })
+                  }
+                  className="px-3 py-1.5 text-xs font-semibold bg-amber-700 text-white rounded"
+                >
+                  Send Blocking Rework Request
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    runAction("Recover Orchestration", `/api/v1/claims/${claimId}/orchestration/recover`, "POST", {
+                      resolution_notes: "Resolved and recovered via Claim 360",
+                      resume_pipeline: true,
+                    })
+                  }
+                  className="px-3 py-1.5 text-xs font-semibold bg-emerald-700 text-white rounded"
+                >
+                  Recover &amp; Resume
+                </button>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="text-xs font-bold text-slate-700">Recent Controlled Agent Actions</div>
+                {(data.agent_executions || []).slice(0, 6).map((ex) => (
+                  <div key={ex.id} className="p-2.5 bg-slate-50 rounded border border-slate-200 text-xs space-y-1">
+                    <div className="flex justify-between font-semibold">
+                      <span>
+                        <code>{ex.agent_name}</code> (attempt #{ex.attempt_number})
+                      </span>
+                      <span className="uppercase">{ex.status}</span>
+                    </div>
+                    {ex.actions_executed.map((act, idx) => (
+                      <div key={idx} className="text-slate-600">
+                        • <code>{act.action_type}</code> [{act.status}]: {act.summary}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DECISION INTELLIGENCE */}
+      {tab === "decisions" && (
+        <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Decision Intelligence Ledger</h2>
             <p className="text-xs text-slate-500">
-              Bounded agents execute within workflow rules; human approvals remain mandatory.
+              Every decision records evidence, policy/rule references, reason codes, confidence, routing outcome, and explanation.
             </p>
-            <button
-              type="button"
-              onClick={() => runAction("Coverage Check", `/api/v1/claims/${claimId}/coverage-checks`)}
-              className="w-full py-2 px-3 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-left"
-            >
-              1. Run Coverage Check (Policy RAG + Rules)
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Claim Triage", `/api/v1/claims/${claimId}/triage`)}
-              className="w-full py-2 px-3 text-xs font-semibold bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-left"
-            >
-              2. Run Claim Triage & Survey Threshold
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Assign Surveyor", `/api/v1/claims/${claimId}/surveyor-assignments`, "POST", {})}
-              className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
-            >
-              3. Auto-Assign Verified Surveyor
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Damage Assessment", `/api/v1/claims/${claimId}/damage-assessments`)}
-              className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
-            >
-              4. Run Assistive Damage Vision Check
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Fraud Signals", `/api/v1/claims/${claimId}/fraud-checks`)}
-              className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
-            >
-              5. Evaluate Explainable Fraud Signals
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Submit Survey Report", `/api/v1/claims/${claimId}/survey-reports`, "POST", {
-                inspection_notes: "Physical inspection completed; visible front panel damage matches incident.",
-                assessed_gross_inr: c.estimated_loss_inr,
-                signed: true,
-              })}
-              className="w-full py-2 px-3 text-xs font-semibold bg-white border border-slate-300 text-slate-900 rounded-lg hover:bg-slate-50 text-left"
-            >
-              6. Submit Signed Surveyor Report
-            </button>
-            <button
-              type="button"
-              onClick={() => runAction("Close Claim", `/api/v1/claims/${claimId}/close`)}
-              className="w-full py-2 px-3 text-xs font-semibold bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 text-left"
-            >
-              7. QA Check & Close Claim
-            </button>
+          </div>
+          <div className="space-y-3">
+            {(data.decisions || []).map((d) => (
+              <div key={d.id} className="p-4 border border-slate-200 rounded-xl text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="font-mono font-bold text-blue-800">{d.agent_name}</span> ·{" "}
+                    <span className="font-bold text-slate-900">Routing: {d.routing_outcome}</span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-slate-100 rounded font-semibold">
+                    Conf: {d.confidence} ({d.confidence_band.toUpperCase()})
+                  </span>
+                </div>
+                <div className="text-slate-800 font-medium">{d.explanation}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {d.reason_codes.map((rc) => (
+                    <span key={rc} className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded font-mono">
+                      {rc}
+                    </span>
+                  ))}
+                  {d.policy_rule_refs.map((pr) => (
+                    <span key={pr} className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded font-mono">
+                      {pr}
+                    </span>
+                  ))}
+                </div>
+                {d.evidence.length > 0 && (
+                  <div className="text-slate-600">
+                    <strong>Evidence:</strong> {d.evidence.join(" | ")}
+                  </div>
+                )}
+              </div>
+            ))}
+            {(!data.decisions || data.decisions.length === 0) && (
+              <p className="text-xs text-slate-500">Run any agent or orchestrator step to emit Decision Intelligence traces.</p>
+            )}
           </div>
         </div>
       )}
@@ -686,6 +1183,21 @@ export default function Claim360Page() {
                   <button
                     type="button"
                     onClick={() =>
+                      runAction("Finance Agent Controlled Release", `/api/v1/claims/${claimId}/payments/agent-release`, "POST", {
+                        settlement_id: s.id,
+                        idempotency_key: `agent-ui-pay-${s.id}`,
+                        payee_type: "garage",
+                        payee_name: "Apex Motors Cashless Hub",
+                        simulate_timeout: false,
+                      })
+                    }
+                    className="px-3 py-1.5 text-xs font-semibold bg-blue-700 text-white rounded"
+                  >
+                    Agent-Controlled Approved Payout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
                       runAction("Simulate Timeout Payment", `/api/v1/claims/${claimId}/payments`, "POST", {
                         settlement_id: s.id,
                         idempotency_key: `ui-pay-to-${s.id}`,
@@ -702,6 +1214,47 @@ export default function Claim360Page() {
               )}
             </div>
           ))}
+
+          {data.settlement_scenarios && data.settlement_scenarios.length > 0 && (
+            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+              <h3 className="text-base font-bold text-slate-900">
+                Multi-Scenario Settlement Comparison (Depreciation, Deductibles, Salvage &amp; IDV Limits)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="p-2">Scenario</th>
+                      <th className="p-2">Pathway</th>
+                      <th className="p-2">Gross</th>
+                      <th className="p-2">Dep</th>
+                      <th className="p-2">Waiver</th>
+                      <th className="p-2">Deductibles</th>
+                      <th className="p-2">Salvage</th>
+                      <th className="p-2">Net Payable</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.settlement_scenarios.map((sc) => (
+                      <tr key={sc.scenario_code} className={sc.recommended ? "bg-emerald-50/50 font-semibold" : ""}>
+                        <td className="p-2">
+                          <div>{sc.label}</div>
+                          <div className="text-[11px] text-slate-500 font-normal">{sc.rationale}</div>
+                        </td>
+                        <td className="p-2">{sc.pathway}</td>
+                        <td className="p-2 font-mono">&#8377;{sc.gross_assessed_inr}</td>
+                        <td className="p-2 font-mono">&#8377;{sc.depreciation_deduction_inr}</td>
+                        <td className="p-2 font-mono text-emerald-700">&#8377;{sc.addon_waiver_inr}</td>
+                        <td className="p-2 font-mono">&#8377;{sc.deductibles_total_inr}</td>
+                        <td className="p-2 font-mono">&#8377;{sc.salvage_deduction_inr}</td>
+                        <td className="p-2 font-mono font-bold">&#8377;{sc.net_payable_inr}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {data.approvals.length > 0 && (
             <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">

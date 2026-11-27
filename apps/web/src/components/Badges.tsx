@@ -47,10 +47,15 @@ export function SlaBadge({ status }: { status: string }) {
 
 export function StatusPill({ status }: { status: string }) {
   const cls =
-    status === "CLOSED" || status === "APPROVED"
+    status === "CLOSED" || status === "APPROVED" || status === "FAST_TRACK"
       ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-      : status === "CLARIFICATION_REQUESTED" || status === "DECLINED_PARTIAL"
+      : status === "CLARIFICATION_REQUESTED" ||
+        status === "DECLINED_PARTIAL" ||
+        status === "HUMAN_REVIEW" ||
+        status === "INVESTIGATION_REQUIRED"
       ? "bg-rose-50 text-rose-800 border-rose-300"
+      : status === "SETTLEMENT_PENDING_APPROVAL" || status === "SURVEY_REQUIRED" || status === "PAYMENT_RECONCILIATION"
+      ? "bg-amber-50 text-amber-900 border-amber-300"
       : "bg-blue-50 text-blue-900 border-blue-200";
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-semibold rounded-full border ${cls}`}>

@@ -1,17 +1,24 @@
-# Specialised Agents & Tool Permissions (`agents/specialists.py`)
+# Specialised Agents, Capability Matrix & Orchestration Contracts (`agents/specialists.py`)
 
-All 11 agents inherit from `BoundedAgent` (`services/agent_runtime/base.py`), accept `AgentInvocationRequest` with PII-masked `minimised_facts`, and return `AgentInvocationResponse` with `status` (`completed | needs_human | insufficient_evidence | failed`), `confidence_band`, `evidence_refs`, `limitations`, `model_id`, `prompt_version`, and `rule_versions`.
+All 11 bounded agents are upgraded **in-place** (zero agent duplication), inherit from `BoundedAgent` (`services/agent_runtime/base.py`), declare formal `AgentContractSpec` definitions (`services/agent_runtime/contracts.py`), accept PII-masked `minimised_facts` + `upstream_results`, publish structured `published_result` payloads, execute safe actions through `ControlledActionExecutor` (`services/agent_runtime/actions.py`), emit `ReworkRequest`s to earlier stages, and record structured `DecisionIntelligence` traces (`DecisionRecord`). **Direct state mutation (`mutate_claim_state_directly`) is explicitly prohibited across all 11 contracts**—`ClaimOrchestrator` exclusively owns workflow state progression (`update_claim_status` rejects `actor="agent"` with `blocked_policy`).
 
-| Agent | Allowed Tools | Hard Guardrail |
-|---|---|---|
-| `fnol_concierge` | `create_intimation`, `policy_lookup`, `faq_retrieval`, `request_upload` | Cannot decide coverage or close claim |
-| `document_intelligence` | `evidence_read`, `ocr_extract`, `schema_validate`, `duplicate_check` | Quarantines prompt injection; marks OCR unverified |
-| `coverage_intelligence` | `policy_read`, `policy_rag`, `deterministic_coverage_rules` | Cannot repudiate; routes ambiguity to human |
-| `claim_triage` | `claim_facts_read`, `triage_rules_read`, `queue_recommend` | Uses operational risk signals only |
-| `damage_assessment` | `vision_model`, `image_quality_check`, `vehicle_taxonomy` | Distinguishes `visible_observed` vs `inferred_possible` |
-| `estimate_validation` | `parts_catalogue`, `rate_card_read`, `estimate_parser`, `duplicate_line_rules` | Cannot silently alter garage estimate |
-| `fraud_intelligence` | `fraud_feature_service`, `fraud_rules`, `entity_graph_query` | Alert-only; never auto-rejects or holds payout |
-| `provider_coordination` | `verified_roster_read`, `provider_scorecard`, `schedule_notify` | Rejects unlicensed surveyors |
-| `settlement_recommendation` | `deterministic_calculator`, `policy_facts_read`, `survey_report_read` | Always returns `needs_human` for DoA approval |
-| `customer_communication` | `approved_templates`, `communication_preference`, `claim_status_read` | Adverse messages gated on human review |
-| `qa_compliance` | `readonly_audit`, `workflow_read`, `rules_read`, `evidence_read` | Read-only verifier; cannot self-override |
+## 1. Upgraded 11-Agent Capability Matrix
+
+| Agent | Upgraded Operational Capabilities | Authorised Controlled Actions | DAG Dependencies & Rework |
+|---|---|---|---|
+| `fnol_concierge` | Voice, WhatsApp, mobile/web intake; multilingual (`en-IN`, `hi-IN`, `mr-IN`, `ta-IN`, `kn-IN`); accident location & geo; structured incident capture | `request_documents`, `dispatch_towing`, `create_claim_task`, `send_customer_update` | Entry stage (no upstream deps) |
+| `document_intelligence` | Multi-document reconciliation (`reconcile_claim_documents`), confidence per field, conflicting data detection, SHA-256/bbox provenance | `create_claim_task`, `request_documents` | Depends on `fnol_concierge` (Post-FNOL parallel wave); rework -> `fnol_concierge` |
+| `coverage_intelligence` | 6-row Policy Coverage Matrix, exclusions checklist, add-ons, deductibles, Hybrid RAG clause citations, ambiguity detection | `create_claim_task` | Depends on `fnol_concierge` (Post-FNOL parallel wave); rework -> `document_intelligence`, `fnol_concierge` |
+| `claim_triage` | Severity, complexity tier, injury status, liability indicator, drivable status, P1–P4 routing priority, `recommended_triage_track` & IRDAI ₹50k threshold | `create_claim_task`, `dispatch_towing` | Depends on `document_intelligence`, `coverage_intelligence`; rework -> `coverage_intelligence` |
+| `provider_coordination` | Unified surveyor, garage & towing coordination; availability, capacity headroom, 24h/15d SLA, customer preference (with EV safety override) | `schedule_inspection`, `notify_garage`, `dispatch_towing`, `create_claim_task` | Depends on `claim_triage` |
+| `damage_assessment` | Damage localization (anatomical zones), severity, repairability vs replacement rationale, OEM part IDs, per-angle image quality confidence | `request_documents`, `create_claim_task` | Depends on `claim_triage` (Conditional parallel); rework -> `document_intelligence` |
+| `estimate_validation` | OEM/OES parts, labour & paint pricing benchmarks, inflated estimates (>12%), duplicate parts, repair-vs-replacement justification | `create_claim_task` | Depends on `damage_assessment`; rework -> `damage_assessment`, `provider_coordination` |
+| `fraud_intelligence` | Network-based fraud patterns (SHA-256 reuse, garage anomaly networks, entity clusters), anomaly detection, suspicious connections, explainable signals + benign explanations | `create_claim_task` | Depends on `claim_triage`, `document_intelligence` (Parallel with assessment); rework -> `document_intelligence`, `estimate_validation` |
+| `settlement_recommendation` | 4-scenario Decimal settlement comparison (Cashless, Reimbursement, No-Addons, CTL + Salvage), depreciation, deductibles, coverage, salvage & IDV limits | `generate_approval_request`, `initiate_approved_payment`, `create_claim_task` | Depends on `coverage_intelligence`, `damage_assessment`, `estimate_validation`, `fraud_intelligence`, `provider_coordination`; rework -> upstream stages |
+| `customer_communication` | Proactive status updates, document reminders, SLA delay advisories, next steps, multilingual templates (`en/hi/mr/ta/kn`); adverse gating | `send_customer_update`, `create_claim_task` | Depends on `fnol_concierge` (Post-FNOL parallel wave) |
+| `qa_compliance` | Checklist-driven QA verification, evidence verification, audit readiness score, closure validation & automatic upstream rework | `create_claim_task` | Depends on `settlement_recommendation`; rework -> upstream stages |
+
+## 2. Three Core Strengthened Capabilities
+- **A. Claim Orchestration Engine (`services/workflow/orchestrator.py`, `services/workflow/state_specs.py`):** Owns canonical 15-state transitions (`SUBMITTED -> CLOSED`), 8-property state contracts, Post-FNOL `ThreadPoolExecutor` parallel waves, strict `depends_on` & conditional gating (`409 BLOCKED_DEPENDENCY`), blocking/non-blocking `ReworkRequest` loops, exponential-backoff retries with Dead-Letter Queue (`DeadLetterRecord`), Saga compensation (`CompensationLog`), duplicate-event dedup (`OrchestrationEventLog`), pause/resume, SLA breach sweeps, and checkpoint recovery (`/orchestration/recover`).
+- **B. Action-Taking Agents (`services/agent_runtime/actions.py`):** Agents create persisted `ClaimTask` rows, request missing/recapture documents, schedule verified surveyors, notify garages, dispatch towing, generate Maker-Checker `Approval` tasks, and execute Finance-gated `initiate_approved_payment` payouts—while direct status mutations (`update_claim_status` from `actor="agent"`) are policy-blocked (`blocked_policy`).
+- **C. Decision Intelligence (`packages/contracts/agents.py`, `DecisionRecord`):** Every decision records `decision_id`, `routing_outcome`, `reason_codes`, `evidence`, `policy_rule_refs`, `confidence`, `confidence_band`, `alternatives_considered`, and `explanation`.

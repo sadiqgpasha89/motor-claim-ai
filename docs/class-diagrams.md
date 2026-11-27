@@ -219,6 +219,46 @@ classDiagram
         +String correlation_id
     }
 
+    class OrchestrationTask {
+        +String id
+        +String claim_id
+        +String task_key
+        +String agent_name
+        +String status
+        +Integer attempt_count
+        +Integer max_retries
+        +String execution_mode
+        +JSON depends_on
+    }
+
+    class OrchestrationEventLog {
+        +String id
+        +String claim_id
+        +String event_key
+        +String event_type
+        +String status
+        +JSON payload_json
+    }
+
+    class DeadLetterRecord {
+        +String id
+        +String claim_id
+        +String task_key
+        +String agent_name
+        +String error_code
+        +String status
+        +Integer retry_count
+    }
+
+    class CompensationLog {
+        +String id
+        +String claim_id
+        +String dlq_id
+        +String trigger_reason
+        +JSON executed_steps
+        +String status
+    }
+
     Tenant "1" --> "*" User
     Tenant "1" --> "*" Customer
     Tenant "1" --> "*" Policy
@@ -239,6 +279,10 @@ classDiagram
     Settlement "1" --> "*" Payment
     Claim "1" --> "*" SLATimer
     Claim "1" --> "*" AuditEvent
+    Claim "1" --> "*" OrchestrationTask
+    Claim "1" --> "*" OrchestrationEventLog
+    Claim "1" --> "*" DeadLetterRecord
+    Claim "1" --> "*" CompensationLog
 ```
 
 ---
