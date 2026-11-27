@@ -25,6 +25,7 @@
       <nav class="nav-links" aria-label="Site navigation">
         <a href="#workflow">Live Claim Workflow</a>
         <a href="#orchestrator">Orchestration Engine</a>
+        <a href="#risk-processing">Risk-Based Paths</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
         <a href="#visitors">Q&amp;A &amp; Failures</a>
@@ -238,6 +239,135 @@ flowchart TD
           </div>
         </div>
         <div id="orch-lab-output" class="orch-lab-output"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 2B: RISK-BASED CLAIM PROCESSING -->
+    <section id="risk-processing">
+      <h2>2B. Risk-Based Claim Processing &amp; Dynamic Re-Tiering (IN-RISK-PROCESSING-2026)</h2>
+      <p class="section-sub">
+        Not every motor claim belongs in the same workflow. Deterministic, explainable risk classification routes claims
+        into <strong>3 operational paths</strong>, recalculates whenever new evidence arrives (so a claim starting as
+        <code>LOW RISK</code> can escalate to <code>HIGH RISK</code> later), automatically preserves evidence on high
+        risk, and guarantees that <strong><code>fraud_signal_score</code> itself NEVER determines claim rejection</strong>.
+      </p>
+
+      <div class="risk-grid-3">
+        <div class="risk-card low" id="risk-card-LOW">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="badge badge-green">LOW RISK · Fast-Track</span>
+            <code>path: fast_track</code>
+          </div>
+          <h3 style="margin:4px 0;">Fast-Track Claims</h3>
+          <div class="section-sub" style="margin:0;"><strong>Handling:</strong> Straight-through assisted processing</div>
+          <ul class="lane-list" style="margin:0;">
+            <li>Minor damage (non-EV HV, non-injury, drivable)</li>
+            <li>Complete documents attached &amp; verified</li>
+            <li>Valid active policy &amp; incident within period</li>
+            <li>Low estimate (&lt; &#8377;50,000 IRDAI gate)</li>
+            <li>No material anomalies or open alerts</li>
+            <li>Automated processing &amp; auto-approval limit &le; &#8377;25,000 (L1 assisted up to &#8377;49,999.99)</li>
+          </ul>
+          <div class="risk-goal-box"><strong>Goal:</strong> Minimize human touchpoints &amp; bypass physical survey delay.</div>
+        </div>
+
+        <div class="risk-card medium" id="risk-card-MEDIUM">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="badge badge-amber">MEDIUM RISK · Standard</span>
+            <code>path: standard</code>
+          </div>
+          <h3 style="margin:4px 0;">Standard Claims</h3>
+          <div class="section-sub" style="margin:0;"><strong>Handling:</strong> AI-assisted claims handling</div>
+          <ul class="lane-list" style="margin:0;">
+            <li>Damage requires inspection (&#8377;50k+, recapture, teardown hidden damage)</li>
+            <li>Estimate discrepancies (&gt;12% variance, duplicates, supplement quotes)</li>
+            <li>Missing documents follow-up checklist</li>
+            <li>Coverage clarification &amp; deductible verification</li>
+            <li>Repair coordination (IIISLA surveyor, garage, towing)</li>
+          </ul>
+          <div class="risk-goal-box"><strong>Goal:</strong> Reduce handler effort and waiting time with AI assistance &amp; Maker-Checker DoA.</div>
+        </div>
+
+        <div class="risk-card high" id="risk-card-HIGH">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="badge badge-red">HIGH RISK · Complex / SIU</span>
+            <code>path: complex_investigation</code>
+          </div>
+          <h3 style="margin:4px 0;">Complex / Investigation Claims</h3>
+          <div class="section-sub" style="margin:0;"><strong>Handling:</strong> Specialist and human-led handling</div>
+          <ul class="lane-list" style="margin:0;">
+            <li>Injury or third-party liability (including multiple vehicles involved)</li>
+            <li>Suspected fraud (advisory score escalates to SIU — <strong>never auto-rejects</strong>)</li>
+            <li>Significant loss (&ge; &#8377;2,50,000, CTL &ge; 75% IDV, fire/flood/theft, airbags)</li>
+            <li>Conflicting evidence (RC/Policy mismatch, prompt injection)</li>
+            <li>EV battery damage (traction battery / HV isolation impact)</li>
+            <li>Legal or coverage disputes (inactive policy, open dispute grievance)</li>
+          </ul>
+          <div class="risk-goal-box"><strong>Goal:</strong> Improve investigative quality, preserve evidence (<code>legal_hold=true</code>), and ensure controlled decisions.</div>
+        </div>
+      </div>
+
+      <div class="risk-sim-panel">
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+          <div>
+            <h3 style="margin:0;">Interactive Risk Classifier &amp; Dynamic Escalation Lab</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Mirrors <code>services/workflow/risk_engine.py</code>: adjust claim facts or simulate new late evidence
+              arriving mid-claim to see explainable driver scoring and <code>LOW &rarr; HIGH</code> re-tiering.
+            </p>
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-outline btn-sm" onclick="applyRiskPreset('low_fast_track')">Preset: Low-Risk (&#8377;18k)</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="applyRiskPreset('medium_standard')">Preset: Medium Standard</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="applyRiskPreset('high_multi_ev')">Preset: High Multi-Vehicle + EV</button>
+            <button type="button" class="btn btn-accent btn-sm" onclick="applyRiskPreset('escalate_late_evidence')">Simulate Late Evidence (LOW &rarr; HIGH)</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="loadScenarioIntoWorkflow('risk-escalation')">Inspect in Workflow Explorer</button>
+          </div>
+        </div>
+
+        <div class="risk-controls-grid">
+          <div class="calc-field" style="margin:0;">
+            <label for="risk-loss-inr">Estimated Loss (INR)</label>
+            <input id="risk-loss-inr" type="number" value="18500" step="500" oninput="updateRiskSimulation()" />
+          </div>
+          <div class="calc-field" style="margin:0;">
+            <label for="risk-fraud-score">Advisory Fraud Score (0.00–1.00)</label>
+            <input id="risk-fraud-score" type="number" value="0.05" min="0" max="1" step="0.05" oninput="updateRiskSimulation()" />
+          </div>
+          <label class="risk-check-label"><input type="checkbox" id="risk-missing-docs" onchange="updateRiskSimulation()" /> Missing documents pending</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-est-discrepancy" onchange="updateRiskSimulation()" /> Estimate discrepancy / variance</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-policy-invalid" onchange="updateRiskSimulation()" /> Policy inactive / period gap</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-injury" onchange="updateRiskSimulation()" /> Injury / Third-party liability</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-multi-veh" onchange="updateRiskSimulation()" /> Multiple vehicles involved</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-ev-battery" onchange="updateRiskSimulation()" /> EV traction battery damage</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-conflict" onchange="updateRiskSimulation()" /> Conflicting evidence / mismatch</label>
+          <label class="risk-check-label"><input type="checkbox" id="risk-dispute" onchange="updateRiskSimulation()" /> Legal or coverage dispute</label>
+        </div>
+
+        <div id="risk-sim-output" class="orch-lab-output" style="margin-top:8px;"></div>
+
+        <div class="risk-guardrail-banner">
+          <span>
+            <strong>Non-Rejection Compliance Guardrail:</strong> <code>fraud_score_never_auto_rejects = true</code> · Even
+            with a high advisory fraud score (e.g., <code>0.920</code>), automated rejection is blocked (<code>409
+              HUMAN_REVIEW_REQUIRED</code>) and the claim is escalated to a human SIU specialist with preserved evidence.
+          </span>
+          <span class="badge badge-green">Auditable · Explainable</span>
+        </div>
+      </div>
+
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart LR
+    IN["New Evidence / Facts Arrive"] --> RE["Deterministic Risk Engine<br/><small>IN-RISK-PROCESSING-2026</small>"]
+    RE --> LOW["LOW RISK: fast_track<br/><small>Straight-through · Auto-limit &le; &#8377;25k</small>"]
+    RE --> MED["MEDIUM RISK: standard<br/><small>AI-assisted handling · Survey/Docs/Repair</small>"]
+    RE --> HIGH["HIGH RISK: complex_investigation<br/><small>Specialist human-led · Legal Hold Active</small>"]
+    LOW -.->|"Late EV Battery / Injury / Conflict / Fraud Lead"| RE
+    MED -.->|"Escalates on New Evidence"| RE
+    HIGH --> HOLD["Preserve Evidence (legal_hold=true)<br/>+ Assign SIU / Legal TP / EV Specialist"]
+    FRD["Advisory fraud_signal_score"] -.->|"NEVER Auto-Rejects Claim"| HIGH
+        </pre>
       </div>
     </section>
 
@@ -838,6 +968,11 @@ classDiagram
               <span><code>CLM-ORCH-ENGINE-2026</code> — Claim Orchestration Engine (Parallel Waves, Backoff, DLQ &amp; Saga)</span>
               <button type="button" class="btn btn-outline btn-sm"
                 onclick="loadScenarioIntoWorkflow('orch-engine')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-RISK-2026</code> — Dynamic Risk Processing (LOW Fast-Track &rarr; HIGH Multi-Vehicle / SIU, Non-Rejecting Fraud Score)</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('risk-escalation')">Inspect Flow</button>
             </li>
             <li class="scenario-jump-item">
               <span><code>CLM-DEMO-2026-0001</code> — E2E Cashless OD + Duplicate &amp; Variance Anomaly</span>

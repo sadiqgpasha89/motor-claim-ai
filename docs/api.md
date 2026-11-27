@@ -4,8 +4,8 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
 
 ## Representative Endpoints (`/api/v1`)
 - `POST /api/v1/auth/login` · `GET /api/v1/auth/users` · `GET /api/v1/auth/me`
-- `GET /api/v1/claims` · `POST /api/v1/claims/intimations` (supports `Idempotency-Key`)
-- `GET /api/v1/claims/{claim_id}` · `GET /api/v1/claims/{claim_id}/timeline`
+- `GET /api/v1/claims` (supports `risk_tier`, `operational_path`, `status`, `queue_name`, `claim_type`, `search` filters) · `POST /api/v1/claims/intimations` (supports `Idempotency-Key`, `multiple_vehicles_involved`, `legal_dispute`, `documents_complete_at_fnol`)
+- `GET /api/v1/claims/{claim_id}` · `GET /api/v1/claims/{claim_id}/risk` · `POST /api/v1/claims/{claim_id}/risk/recalculate` · `GET /api/v1/claims/{claim_id}/timeline`
 - `POST /api/v1/claims/{claim_id}/evidence` · `PATCH /api/v1/claims/{claim_id}/evidence/{ev_id}/facts/{fact_id}`
 - `POST /api/v1/claims/{claim_id}/coverage-checks` · `POST /api/v1/claims/{claim_id}/triage`
 - `POST /api/v1/claims/{claim_id}/damage-assessments` · `PATCH .../damage-assessments/{id}`

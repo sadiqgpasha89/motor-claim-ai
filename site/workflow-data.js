@@ -59,6 +59,141 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
   ],
 
   scenarios: {
+    "risk-escalation": {
+      id: "risk-escalation",
+      claimNumber: "CLM-RISK-2026",
+      tag: "Dynamic 3-Tier Risk Processing",
+      title: "LOW Risk Fast-Track -> Dynamic HIGH Risk Escalation + Non-Rejecting Fraud Score",
+      vehicle: "Maruti Suzuki Baleno / Tata Nexon EV (Dynamic Evidence Scenario)",
+      policy: "POL-IN-DEMO-2026-1001 (Active · Zero Dep + Consumables · IDV ₹7,80,000)",
+      claimedAmount: "₹18,500.00 -> Escalated",
+      outcomeAmount: "Evidence Preserved + Specialist Controlled Decision",
+      automationSplit: "Recalculates on Every Evidence Event · fraud_score_can_reject = false",
+      summary:
+        "Demonstrates explainable 3-tier risk processing (IN-RISK-PROCESSING-2026): starts as LOW RISK Fast-Track (complete docs, ₹18,500 minor scuff <= ₹25k automated limit, physical survey bypassed), then dynamically recalculates to HIGH RISK Complex Investigation when late EV battery / multi-vehicle / fraud evidence arrives—activating Evidence.legal_hold = true and blocking fraud-score auto-rejection.",
+      steps: [
+        {
+          opKey: "FNOL",
+          stepCode: "01",
+          nodeTitle: "FNOL Intake: Initial LOW RISK Fast-Track",
+          codeRef: "evaluate_and_persist_risk('fnol_intake')",
+          actorType: "deterministic_service",
+          wakeTrigger: "POST /api/v1/claims/intimations (documents_complete_at_fnol=true, loss=₹18,500)",
+          executionStatus: "COMPLETED · LOW RISK (fast_track)",
+          statusKind: "green",
+          evidence: [
+            "All 5 Low-Risk criteria satisfied: minor damage, complete docs, valid policy, ₹18,500 < ₹50k, zero anomalies",
+            "Straight-through auto-approval limit <= ₹25,000 eligible"
+          ],
+          dataRetrieved: ["IN-RISK-PROCESSING-2026:1.0.0", "POL-IN-DEMO-2026-1001"],
+          toolsInvoked: ["classify_claim_risk_from_facts"],
+          allowedDecisions: "Assign initial explainable risk tier (LOW, score=12) and operational path (fast_track).",
+          agentOutput: "Initial tier LOW (fast_track) recorded in claim.risk_history; Goal: minimize human touchpoints.",
+          confidence: 0.96,
+          confidenceBand: "HIGH",
+          businessRules: ["IN-RISK-PROCESSING-2026 (LOW <= ₹25k limit)", "IRDAI Non-Blocking Intake"],
+          failureBehavior: "If any core doc were missing or policy expired, deterministically routes to MEDIUM or HIGH instead.",
+          humanReviewRequired: false,
+          nextAction: "Run Triage & Fast-Track Assessment (bypass physical surveyor)"
+        },
+        {
+          opKey: "Triage",
+          stepCode: "02",
+          nodeTitle: "Claim Triage + Physical Survey Bypassed",
+          codeRef: "ClaimTriageAgent + ClaimOrchestrator",
+          actorType: "agent",
+          wakeTrigger: "ClaimOrchestrator scheduled claim_triage -> checked provider_coordination condition",
+          executionStatus: "COMPLETED · provider_coordination=skipped_fast_track",
+          statusKind: "green",
+          evidence: [
+            "LOW RISK criteria confirmed; requires_mandatory_survey = false",
+            "provider_coordination marked skipped_fast_track to minimize wait time"
+          ],
+          dataRetrieved: ["claim.risk_assessment", "claim.coverage_factsheet"],
+          toolsInvoked: ["claim_facts_read", "triage_rules_read", "queue_recommend"],
+          allowedDecisions: "Routes to FAST_TRACK / low_risk_od_assisted queue with P4_FAST_TRACK priority.",
+          agentOutput: "Straight-through assisted processing active (physical surveyor & towing skipped).",
+          confidence: 0.95,
+          confidenceBand: "HIGH",
+          businessRules: ["IN-RISK-PROCESSING-2026", "IN-IRDAI-MC-2024 < ₹50,000 Gate"],
+          failureBehavior: "Never allows ClaimTriage to mutate state outside orchestrator guards.",
+          humanReviewRequired: false,
+          nextAction: "New late evidence arrives (multi-vehicle spot report & fraud lead)"
+        },
+        {
+          opKey: "Assessment",
+          stepCode: "03",
+          nodeTitle: "Late Evidence Arrives -> Dynamic Recalculation",
+          codeRef: "POST /claims/{id}/risk/recalculate -> evaluate_and_persist_risk()",
+          actorType: "deterministic_service",
+          wakeTrigger: "Late evidence uploaded: spot FIR cites multi-vehicle collision + underbody EV pack scrape",
+          executionStatus: "ESCALATED · LOW -> HIGH RISK",
+          statusKind: "red",
+          evidence: [
+            "Driver 1: Injury or third-party liability (3 vehicles involved, +45 pts)",
+            "Driver 2: EV battery damage (+35 pts) -> Risk Score jumped 12 -> 100"
+          ],
+          dataRetrieved: ["new_evidence_summary", "Evidence rows in claim vault"],
+          toolsInvoked: ["gather_claim_risk_facts", "classify_claim_risk_from_facts"],
+          allowedDecisions: "Deterministically transitions claim FAST_TRACK -> INVESTIGATION_REQUIRED and appends risk_history entry.",
+          agentOutput: "Risk tier dynamically recalculated: LOW (fast_track) -> HIGH (complex_investigation); all evidence locked on Legal Hold (legal_hold=true).",
+          confidence: 0.97,
+          confidenceBand: "HIGH",
+          businessRules: ["IN-RISK-PROCESSING-2026 Dynamic Recalculation", "Automatic Evidence Preservation (legal_hold)"],
+          failureBehavior: "Any prior fast_track_auto_approval is automatically superseded for specialist review.",
+          humanReviewRequired: true,
+          nextAction: "Parallel Fraud Signal Evaluation (Advisory Score Never Rejects)"
+        },
+        {
+          opKey: "Investigation",
+          stepCode: "04",
+          nodeTitle: "Fraud Signal Score (Advisory Only — Never Auto-Rejects)",
+          codeRef: "FraudIntelligenceAgent + assert_fraud_score_never_rejects()",
+          actorType: "agent",
+          wakeTrigger: "SIU/Entity Graph flags high fraud_signal_score = 0.860",
+          executionStatus: "NEEDS_HUMAN · Rejection Blocked (409 Guardrail)",
+          statusKind: "amber",
+          evidence: [
+            "fraud_signal_score = 0.860, fraud_score_can_reject = false",
+            "Attempt to reject purely on fraud_signal_score rejected with 409 HUMAN_REVIEW_REQUIRED"
+          ],
+          dataRetrieved: ["FraudAlert rows", "Entity Graph connections"],
+          toolsInvoked: ["fraud_feature_service", "fraud_rules", "entity_graph_query", "create_claim_task"],
+          allowedDecisions: "Escalates to SIU Investigator & Legal/TP Specialist; strictly forbidden from rejecting claims.",
+          agentOutput: "Created critical specialist ClaimTask, preserved evidence, and blocked L1 claims_handler approval via DoA condition high_risk_complex.",
+          confidence: 0.91,
+          confidenceBand: "HIGH",
+          businessRules: ["IRDAI Fraud Due Process", "IN-RISK-PROCESSING-2026:fraud_score_never_auto_rejects", "IN-DOA-MATRIX-2026:high_risk_complex"],
+          failureBehavior: "Non-SIU personas (GARAGE/POLICYHOLDER) receive redacted risk_assessment without fraud scores.",
+          humanReviewRequired: true,
+          nextAction: "Controlled L2 Claims Manager / SIU Specialist Review"
+        },
+        {
+          opKey: "Settlement",
+          stepCode: "05",
+          nodeTitle: "Specialist Controlled Decision & Audit Trail",
+          codeRef: "validate_approval_authority(high_risk_complex)",
+          actorType: "human",
+          wakeTrigger: "SIU + Claims Manager review preserved evidence & disposition alert",
+          executionStatus: "COMPLETED · Controlled Maker-Checker Sign-Off",
+          statusKind: "green",
+          evidence: [
+            "L1 Handler blocked (403 HUMAN_REVIEW_REQUIRED: high_risk_complex)",
+            "Claims Manager recorded reasoned approval & DecisionRecord audit trail"
+          ],
+          dataRetrieved: ["risk_history (LOW -> HIGH)", "Legal Hold Evidence Vault"],
+          toolsInvoked: ["validate_approval_authority", "record_audit_event"],
+          allowedDecisions: "Only L2 Claims Manager / L3 Legal TP or Admin can approve HIGH risk claims.",
+          agentOutput: "Controlled human-led decision completed with immutable SHA-256 audit & Decision Intelligence.",
+          confidence: 1.0,
+          confidenceBand: "DETERMINISTIC",
+          businessRules: ["IN-DOA-MATRIX-2026 Maker-Checker", "IN-RISK-PROCESSING-2026 Controlled Decisions"],
+          failureBehavior: "Rejection cannot cite fraud_signal_score alone without documented substantiated evidence.",
+          humanReviewRequired: true,
+          nextAction: "Proceed to Finance Payout & QA Closure"
+        }
+      ]
+    },
     "orch-engine": {
       id: "orch-engine",
       claimNumber: "CLM-ORCH-ENGINE-2026",
@@ -1631,14 +1766,14 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       agentName: "claim_triage",
       displayName: "Claim Triage",
       stage: "3. Triage",
-      enhancement: "Severity, complexity, injury, liability, vehicle drivable status, routing priority",
-      responsibility: "Classifies severity, complexity tier, injury, TP liability, drivable status, P1–P4 routing priority, and IRDAI ₹50k mandatory survey flag.",
-      inputContract: "estimated_loss_inr, injury_or_fatality, ev_battery_impacted, vehicle_immobile, airbags_deployed, peril_cause",
-      outputContract: "severity_band, complexity_tier, injury_status, liability_indicator, vehicle_drivable, routing_priority, recommended_queue",
+      enhancement: "3-Tier Risk-Based Processing (LOW / MEDIUM / HIGH), multi-vehicle & explainable operational path routing",
+      responsibility: "Classifies claim into LOW (fast_track), MEDIUM (standard), or HIGH (complex_investigation) with explainable drivers, auto-limit eligibility, P1–P4 priority, and IRDAI ₹50k gate.",
+      inputContract: "estimated_loss_inr, injury_or_fatality, multiple_vehicles_involved, ev_battery_impacted, missing_documents, legal_dispute, fraud_alerts",
+      outputContract: "risk_tier, operational_path, risk_score, risk_drivers[], low_risk_criteria_check{}, automation_eligibility{}, severity_band, recommended_queue",
       authorisedActions: ["update_claim_status", "create_claim_task", "dispatch_towing"],
       dependsOn: ["coverage_intelligence"],
       reworkTargets: ["coverage_intelligence", "fnol_concierge"],
-      humanGate: "TP injury routes to legal_tp_specialist; EV HV routes to ev_specialist."
+      humanGate: "HIGH risk (injury/TP, multi-vehicle, EV HV, SIU fraud, significant loss, disputes) routes to specialist investigation; fraud score never rejects."
     },
     {
       agentName: "provider_coordination",
@@ -1683,27 +1818,27 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       agentName: "fraud_intelligence",
       displayName: "Fraud Intelligence",
       stage: "5. Investigation",
-      enhancement: "Network-based fraud patterns, anomaly detection, suspicious connections, explainable signals",
-      responsibility: "Detects cross-claim SHA-256 reuse, garage anomaly networks, entity ring clusters, and early-inception patterns with weighted factors & benign explanations.",
+      enhancement: "Network-based fraud patterns, anomaly detection, suspicious connections, non-rejecting advisory fraud_signal_score",
+      responsibility: "Detects cross-claim SHA-256 reuse, garage anomaly networks, entity ring clusters, and computes advisory fraud_signal_score with benign explanations. NEVER auto-rejects claims.",
       inputContract: "indicators[], entity_graph (nodes, edges, suspicious_connections)",
-      outputContract: "alert_count, network_patterns_detected[], suspicious_connections[], entity_graph_summary",
+      outputContract: "alert_count, fraud_signal_score (0.000-1.000 advisory), fraud_score_can_reject=false, network_patterns_detected[], indicators[]",
       authorisedActions: ["create_claim_task"],
       dependsOn: ["estimate_validation"],
       reworkTargets: ["document_intelligence", "estimate_validation"],
-      humanGate: "Alert-only leads route to SIU Investigator and block L1 approval via DoA."
+      humanGate: "Alert-only leads escalate to HIGH risk SIU Investigator and block L1 approval via DoA (fraud score never auto-rejects)."
     },
     {
       agentName: "settlement_recommendation",
       displayName: "Settlement Recommendation",
       stage: "6. Settlement & Release",
-      enhancement: "Multiple settlement scenarios, depreciation, deductible, coverage, salvage and policy limits",
-      responsibility: "Computes 4 Decimal scenarios (Cashless, Reimbursement, No-Addons, CTL + Salvage) within IDV limits, creates DoA approval requests, and executes Finance-approved payouts.",
-      inputContract: "calculation, scenarios[], active_conditions[], settlement_id, idempotency_key",
-      outputContract: "scenarios[], net_payable_inr, required_doa_tier, is_total_loss",
+      enhancement: "Multiple settlement scenarios, depreciation, deductible, salvage, policy limits & LOW-risk <= ₹25k fast-track auto-limit",
+      responsibility: "Computes 4 Decimal scenarios within IDV limits; supports rule-governed LOW-risk auto-approval limit (<= ₹25,000) when zero anomalies exist, and Maker-Checker DoA otherwise.",
+      inputContract: "calculation, scenarios[], active_conditions[], risk_tier, straight_through_eligible, settlement_id, idempotency_key",
+      outputContract: "scenarios[], net_payable_inr, required_doa_tier, auto_approved, is_total_loss",
       authorisedActions: ["generate_approval_request", "initiate_approved_payment", "create_claim_task"],
       dependsOn: ["coverage_intelligence", "estimate_validation", "fraud_intelligence", "provider_coordination"],
       reworkTargets: ["estimate_validation", "coverage_intelligence", "provider_coordination"],
-      humanGate: "Always requires Maker-Checker DoA; payout execution requires Finance Approver + approved settlement."
+      humanGate: "MEDIUM/HIGH or > ₹25k always requires independent Maker-Checker DoA; Finance role still gates payout execution."
     },
     {
       agentName: "customer_communication",
@@ -1765,6 +1900,10 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
     {
       q: "8. What does the human actually need to review?",
       a: "Humans handle only high-judgment gates: document conflicts/injections, low-quality photo recaptures, flagged estimate anomalies or rework escalations, SIU dispositions, independent Maker-Checker DoA approvals, Finance payout verification, and adverse notices."
+    },
+    {
+      q: "9. How does Risk-Based Claim Processing adjust workflows dynamically?",
+      a: "IN-RISK-PROCESSING-2026 classifies claims into LOW RISK (Fast-track straight-through with <= ₹25k auto-limit and surveyor bypass), MEDIUM RISK (Standard AI-assisted inspection/docs/estimate coordination), and HIGH RISK (Complex specialist-led investigation for injury/TP/multi-vehicle, suspected fraud, significant loss, conflicting evidence, EV battery damage, or legal disputes). Every new evidence upload, fact verification, estimate update, or fraud check recalculates the explainable risk tier, locks Evidence.legal_hold = true on HIGH risk, and strictly guarantees fraud_signal_score never auto-rejects a claim."
     }
   ],
 
@@ -1841,52 +1980,52 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       phase: "3. Triage",
       isBranch: false,
       entryConditions: ["Policy validation, document extraction & duplicate checks passed"],
-      requiredData: ["coverage_factsheet", "estimated_loss_inr", "peril_cause", "injury_or_fatality", "ev_battery_impacted"],
-      allowedActions: ["classify_severity_and_queue", "evaluate_irdai_50k_threshold", "branch_triage_pathway"],
-      exitConditions: ["ClaimTriageAgent published routing outcome", "Orchestrator transitions to FAST_TRACK, SURVEY_REQUIRED, INVESTIGATION_REQUIRED, or HUMAN_REVIEW"],
-      responsible: "ClaimTriageAgent + ClaimOrchestrator",
+      requiredData: ["coverage_factsheet", "estimated_loss_inr", "peril_cause", "injury_or_fatality", "multiple_vehicles_involved", "ev_battery_impacted"],
+      allowedActions: ["classify_risk_tier_and_path", "evaluate_irdai_50k_threshold", "branch_triage_pathway"],
+      exitConditions: ["ClaimTriageAgent published explainable risk_tier & operational_path", "Orchestrator transitions to FAST_TRACK, SURVEY_REQUIRED, INVESTIGATION_REQUIRED, or HUMAN_REVIEW"],
+      responsible: "ClaimTriageAgent + RiskEngine + ClaimOrchestrator",
       sla: "triage_routing · 4h target (30m internal)",
       retryStrategy: "2 retries · 200ms base · 2.0x exp backoff (max 2000ms) -> DLQ",
-      humanEscalation: ["TP bodily injury/fatality (Legal/TP track)", "EV high-voltage battery impact", "Coverage ambiguity"]
+      humanEscalation: ["Injury/TP liability or multi-vehicle collision", "EV high-voltage battery damage or significant loss (>= ₹2,50,000)", "Suspected fraud alerts, conflicting evidence, or legal/coverage disputes"]
     },
     {
       state: "FAST_TRACK",
       phase: "3. Triage Branch",
       isBranch: true,
-      entryConditions: ["estimated_loss_inr < 50000", "injury_or_fatality == false", "ev_battery_impacted == false"],
-      requiredData: ["triage_summary", "coverage_factsheet"],
-      allowedActions: ["notify_network_garage", "schedule_conditional_damage_assessment", "schedule_parallel_fraud_analysis"],
-      exitConditions: ["Assessment wave ready (or escalated to SURVEY_REQUIRED if supplement >= ₹50k)"],
+      entryConditions: ["risk_tier == 'LOW'", "minor damage", "complete_documents", "valid_policy", "estimated_loss_inr < 50000", "no_material_anomalies"],
+      requiredData: ["triage_summary", "coverage_factsheet", "risk_assessment"],
+      allowedActions: ["bypass_physical_survey", "schedule_conditional_damage_assessment", "apply_fast_track_auto_approval_limit"],
+      exitConditions: ["Assessment wave completed (or dynamically re-tiered to MEDIUM/HIGH when new evidence arrives)"],
       responsible: "ClaimOrchestrator + DamageAssessmentAgent",
       sla: "fast_track_assessment · 12h target (2h internal)",
       retryStrategy: "2 retries · 200ms base · 2.0x exp backoff -> DLQ",
-      humanEscalation: ["Supplement quote crosses ₹50,000 IRDAI threshold", "Fraud signal detected"]
+      humanEscalation: ["Supplement crosses ₹50,000 IRDAI threshold", "Late EV/injury/conflict/fraud evidence dynamically escalates LOW -> HIGH"]
     },
     {
       state: "SURVEY_REQUIRED",
       phase: "3. Triage Branch",
       isBranch: true,
-      entryConditions: ["requires_mandatory_survey == true (>= ₹50k, EV HV, fire/flood/theft, total loss)"],
-      requiredData: ["triage_summary", "verified_provider_roster", "incident_location"],
-      allowedActions: ["schedule_licensed_surveyor", "notify_ev_safe_garage", "dispatch_towing", "start_15d_survey_sla"],
+      entryConditions: ["risk_tier == 'MEDIUM' OR requires_mandatory_survey == true"],
+      requiredData: ["triage_summary", "verified_provider_roster", "incident_location", "risk_assessment"],
+      allowedActions: ["schedule_licensed_surveyor", "coordinate_repair_garage", "dispatch_towing", "start_15d_survey_sla"],
       exitConditions: ["Verified IIISLA surveyor assigned", "Assessment & Fraud parallel wave ready"],
       responsible: "ProviderCoordinationAgent + ClaimOrchestrator",
       sla: "survey_report_submission · 360h (15d) IRDAI SLA · ₹500/day penalty",
       retryStrategy: "2 retries · 250ms base · 2.0x exp backoff (max 3000ms) -> DLQ",
-      humanEscalation: ["Zero verified surveyors in city", "15-day IRDAI SLA breached", "No EV-certified garage available"]
+      humanEscalation: ["Zero verified surveyors in city", "15-day IRDAI SLA breached", "Dynamic escalation to HIGH RISK on new evidence"]
     },
     {
       state: "INVESTIGATION_REQUIRED",
       phase: "3. Triage Branch",
       isBranch: true,
-      entryConditions: ["Open SIU fraud alert OR TP bodily injury/fatality OR duplicate collision"],
-      requiredData: ["fraud_alerts (with benign explanations)", "entity_graph", "police_fir / medical_records"],
-      allowedActions: ["assign_siu_investigator", "assign_legal_tp_specialist", "restrict_l1_approval", "disposition_fraud_alert"],
-      exitConditions: ["All open fraud alerts dispositioned OR Legal/TP review recorded"],
-      responsible: "FraudIntelligenceAgent + SIU / Legal TP Specialist",
+      entryConditions: ["risk_tier == 'HIGH' (Injury/TP/Multi-Vehicle OR Suspected Fraud OR Significant Loss OR Conflicting Evidence OR EV Battery OR Legal/Coverage Dispute)"],
+      requiredData: ["risk_assessment", "legal_hold_preserved_evidence", "fraud_alerts (advisory only)", "entity_graph", "police_fir / medical_records"],
+      allowedActions: ["preserve_evidence_legal_hold", "assign_siu_investigator", "assign_legal_tp_or_ev_specialist", "restrict_l1_approval", "disposition_fraud_alert"],
+      exitConditions: ["All open fraud alerts dispositioned OR specialist human-led review recorded"],
+      responsible: "FraudIntelligenceAgent + SIU / Legal TP / EV Specialist",
       sla: "siu_or_legal_investigation · 120h target (48h internal)",
       retryStrategy: "1 retry · 300ms base · 2.0x exp backoff -> DLQ",
-      humanEscalation: ["All fraud indicators require SIU human disposition", "Substantiated fraud triggers compensation review"]
+      humanEscalation: ["Any fraud alert requires human SIU disposition (fraud_signal_score NEVER auto-rejects)", "Evidence preservation (legal_hold=true) enforced automatically"]
     },
     {
       state: "HUMAN_REVIEW",

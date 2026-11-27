@@ -67,7 +67,7 @@ In the top-right header of the web portal (`Active Persona` dropdown), you can i
 
 ---
 
-## 4. Seeded Edge-Case Scenarios (`CLM-DEMO-2026-0002` to `0011`)
+## 4. Seeded Edge-Case Scenarios (`CLM-DEMO-2026-0002` to `0012`)
 
 | Claim Number | Scenario Demonstrated | Where to Inspect |
 |---|---|---|
@@ -80,7 +80,8 @@ In the top-right header of the web portal (`Active Persona` dropdown), you can i
 | `CLM-DEMO-2026-0008` | **Fraud Alert Cleared (`not_substantiated`):** Early inception alert cleared after dashcam/NCB verification; claim approved. | SIU Desk (`/siu`) |
 | `CLM-DEMO-2026-0009` | **Payment Timeout Awaiting Safe Reconciliation:** `timeout_reconcile_pending`; Finance reconciles safely without double payout. | Claim 360 → Settlement |
 | `CLM-DEMO-2026-0010` | **Third-Party Bodily Injury:** Routed to `legal_tp_specialist`; medical/FIR party record masked unless logged in as `legal@demo.in` / authorised handler. | Claim 360 → Overview |
-| `CLM-DEMO-2026-0011` | **EV Traction Battery Impact:** Tata Nexon EV routed to `ev_specialist` & EV-certified garage (`VoltCare`), HV isolation warning triggered. | Claim 360 → Damage |
+| `CLM-DEMO-2026-0011` | **EV Traction Battery Impact:** Tata Nexon EV routed to `ev_specialist` & EV-certified garage (`VoltCare`), HV isolation warning triggered; showcases `LOW -> HIGH` risk transition in `risk_history`. | Claim 360 → Damage & Risk |
+| `CLM-DEMO-2026-0012` | **LOW RISK Fast-Track Auto-Approved (`₹16,500`):** Minor scuff, complete docs, valid policy, zero anomalies; straight-through auto-approved within `<= ₹25,000` limit (`IN-RISK-PROCESSING-2026`). | Claim 360 → Overview & Settlement |
 | `CLM-OTH-2026-0001` | **Cross-Tenant Isolation:** Lives in `tenant-other-demo`; invisible and returns `403` to all `tenant-in-demo` users. | API / Security Tests |
 
 ---

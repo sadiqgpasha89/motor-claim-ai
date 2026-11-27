@@ -269,9 +269,15 @@ def get_analytics(
     settlements = db.query(Settlement).filter(Settlement.tenant_id == user.tenant_id).all()
     by_status: dict[str, int] = {}
     by_type: dict[str, int] = {}
+    by_risk_tier: dict[str, int] = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+    by_operational_path: dict[str, int] = {"fast_track": 0, "standard": 0, "complex_investigation": 0}
     for c in claims:
         by_status[c.status] = by_status.get(c.status, 0) + 1
         by_type[c.claim_type] = by_type.get(c.claim_type, 0) + 1
+        rt = (c.risk_tier or "MEDIUM").upper()
+        by_risk_tier[rt] = by_risk_tier.get(rt, 0) + 1
+        op = c.operational_path or "standard"
+        by_operational_path[op] = by_operational_path.get(op, 0) + 1
 
     total_net_inr = sum((Decimal(str(s.net_payable_inr)) for s in settlements), Decimal("0.00"))
     false_positives = sum(1 for a in alerts if a.status == "not_substantiated")
@@ -280,6 +286,8 @@ def get_analytics(
         "total_claims": len(claims),
         "by_status": by_status,
         "by_claim_type": by_type,
+        "by_risk_tier": by_risk_tier,
+        "by_operational_path": by_operational_path,
         "total_fraud_alerts": len(alerts),
         "fraud_substantiated": substantiated,
         "fraud_not_substantiated": false_positives,

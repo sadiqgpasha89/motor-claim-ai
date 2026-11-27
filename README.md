@@ -11,9 +11,9 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 - `apps/api/` — FastAPI backend REST API (`/api/v1/...`), OpenAPI docs at `/docs`, correlation ID middleware, domain error handler.
 - `apps/web/` — Next.js 14 + TypeScript + Tailwind enterprise Command Centre, Claim 360, Guided FNOL, Customer Portal, SIU Workbench, Surveyor/Garage Portal, Rules & Policy KB, and Operations/SLA console.
 - `agents/` — 11 bounded, tool-permissioned specialised agents upgraded in-place (`fnol_concierge`, `document_intelligence`, `coverage_intelligence`, `claim_triage`, `damage_assessment`, `estimate_validation`, `fraud_intelligence`, `provider_coordination`, `settlement_recommendation`, `customer_communication`, `qa_compliance`) with formal I/O contracts, prohibited state mutations, controlled actions, rework requests, and Decision Intelligence traces.
-- `services/` — Modular domain services (`claims`, `workflow` including first-class DAG `ClaimOrchestrator` and 8-part `StateContractSpec` in `state_specs.py`, `agent_runtime` including `ControlledActionExecutor` & contracts, `document_ai`, `damage_ai`, `fraud_intelligence`, `rules_engine`, `settlement`, `integrations`).
+- `services/` — Modular domain services (`claims`, `workflow` including first-class DAG `ClaimOrchestrator`, 8-part `StateContractSpec` in `state_specs.py`, and explainable dynamic 3-tier `risk_engine.py`, `agent_runtime` including `ControlledActionExecutor` & contracts, `document_ai`, `damage_ai`, `fraud_intelligence`, `rules_engine`, `settlement`, `integrations`).
 - `packages/` — Shared `contracts`, `security` (JWT, tenant/ABAC isolation, PII masking, prompt-injection & malware upload checks), `observability`, and `config`.
-- `rules/` — Effective-dated, versioned JSON rule catalogues (`IN-IRDAI-MC-2024`, `IN-MOTOR-DEPRECIATION-2024`, `IN-DOA-MATRIX-2026`, `COMMON-SLA-CATALOGUE-V1`).
+- `rules/` — Effective-dated, versioned JSON rule catalogues (`IN-IRDAI-MC-2024`, `IN-RISK-PROCESSING-2026`, `IN-MOTOR-DEPRECIATION-2024`, `IN-DOA-MATRIX-2026`, `COMMON-SLA-CATALOGUE-V1`).
 - `knowledge/` — Synthetic Indian motor policy wordings (`POL-WORDING-PC-2024`, `POL-WORDING-EV-2025`) & OEM/OES parts rate card (`RC-IN-2026-DEMO-V1`).
 - `migrations/` — Alembic database migrations (`alembic upgrade head` / `alembic downgrade -1`).
 - `tests/` — Unit, E2E integration, security/IDOR/prompt-injection, and model-eval/outage-fallback suites.
@@ -22,7 +22,7 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 
 | Deliverable | Document | Description |
 |---|---|---|
-| **GitHub Pages Showcase** | [sadiqgpasha89.github.io/motor-claim-ai](https://sadiqgpasha89.github.io/motor-claim-ai/) | First-class Claim Orchestration Engine showcase: 15-state deterministic workflow with 8-part state contracts, Post-FNOL parallel/conditional DAG scheduler, DLQ/Saga/Pause-Resume Resilience Lab, 11-agent capability matrix, and multi-scenario simulator |
+| **GitHub Pages Showcase** | [sadiqgpasha89.github.io/motor-claim-ai](https://sadiqgpasha89.github.io/motor-claim-ai/) | First-class Claim Orchestration Engine showcase: 15-state deterministic workflow, 3-tier Risk-Based Claim Processing (Fast-Track / Standard / Complex-SIU) & Dynamic Escalation Lab, Post-FNOL parallel/conditional DAG scheduler, DLQ/Saga/Pause-Resume Resilience Lab, 11-agent capability matrix, and multi-scenario simulator |
 | **System Design** | [docs/architecture.md](docs/architecture.md) | Layered system design, C4/deployment Mermaid diagrams, invariants, and ADRs |
 | **Solution Engineering** | [docs/solution-engineering.md](docs/solution-engineering.md) | Two-plane architecture, `Decimal` math, RBAC/ABAC, prompt-injection defense, idempotency |
 | **Class Diagrams** | [docs/class-diagrams.md](docs/class-diagrams.md) | Mermaid UML class diagrams for domain models, 11 agents, settlement, and security |
@@ -43,7 +43,7 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 .venv/bin/uvicorn apps.api.main:app --reload --port 8000
 ```
 
-The API automatically initializes the schema and seeds the `DEMO / SYNTHETIC` dataset (including `CLM-DEMO-2026-0001` and 11 edge-case scenarios) on startup. Interactive OpenAPI docs are available at `http://localhost:8000/docs`.
+The API automatically initializes the schema and seeds the `DEMO / SYNTHETIC` dataset (including `CLM-DEMO-2026-0001` and 12 edge-case scenarios covering LOW fast-track <= ₹25k auto-limit, MEDIUM standard, HIGH complex/EV/TP/SIU) on startup. Interactive OpenAPI docs are available at `http://localhost:8000/docs`.
 
 ### 2. Frontend Web Portal (Next.js)
 

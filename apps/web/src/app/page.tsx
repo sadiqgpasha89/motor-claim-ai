@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Search, PlusCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { SlaBadge, StatusPill } from "@/components/Badges";
+import { RiskTierBadge, SlaBadge, StatusPill } from "@/components/Badges";
 
 interface ClaimRow {
   id: string;
@@ -13,6 +13,11 @@ interface ClaimRow {
   claim_type: string;
   peril_cause: string;
   status: string;
+  risk_tier?: string;
+  operational_path?: string;
+  risk_score?: number;
+  multiple_vehicles_involved?: boolean;
+  legal_dispute?: boolean;
   severity_band: string;
   queue_name: string;
   policy_number_input: string;
@@ -30,6 +35,7 @@ export default function CommandCentrePage() {
   const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [riskFilter, setRiskFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -42,6 +48,7 @@ export default function CommandCentrePage() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter) params.set("status", statusFilter);
+      if (riskFilter) params.set("risk_tier", riskFilter);
       if (typeFilter) params.set("claim_type", typeFilter);
       const q = params.toString() ? `?${params.toString()}` : "";
       const res = await apiFetch<{ items: ClaimRow[]; total: number }>(
@@ -55,18 +62,17 @@ export default function CommandCentrePage() {
     } finally {
       setBusy(false);
     }
-  }, [token, search, statusFilter, typeFilter]);
+  }, [token, search, statusFilter, riskFilter, typeFilter]);
 
   useEffect(() => {
     if (!authLoading && token) loadClaims();
   }, [authLoading, token, loadClaims]);
 
   const breachedCount = claims.filter((c) => c.sla_health === "breached").length;
-  const surveyPendingCount = claims.filter(
-    (c) => c.requires_mandatory_survey && c.status !== "CLOSED"
-  ).length;
+  const lowRiskCount = claims.filter((c) => (c.risk_tier || "MEDIUM") === "LOW").length;
+  const highRiskCount = claims.filter((c) => (c.risk_tier || "MEDIUM") === "HIGH").length;
   const evOrTpCount = claims.filter(
-    (c) => c.injury_or_fatality || c.ev_battery_impacted
+    (c) => c.injury_or_fatality || c.ev_battery_impacted || c.multiple_vehicles_involved
   ).length;
 
   return (
@@ -113,14 +119,16 @@ export default function CommandCentrePage() {
           <p className="text-xs text-slate-500 mt-1">IRDAI 24h alloc / 15d survey / 7d decision</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Mandatory Survey Active</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{surveyPendingCount}</p>
-          <p className="text-xs text-slate-500 mt-1">Loss &ge; &#8377;50,000 or special peril</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase">Low Risk (Fast-Track)</p>
+          <p className="text-2xl font-bold text-emerald-700 mt-1">{lowRiskCount}</p>
+          <p className="text-xs text-slate-500 mt-1">Straight-through &le; &#8377;25k auto-limit</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Specialist Queues (TP / EV)</p>
-          <p className="text-2xl font-bold text-indigo-800 mt-1">{evOrTpCount}</p>
-          <p className="text-xs text-slate-500 mt-1">Mandatory specialist review required</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase">High Risk / Complex</p>
+          <p className="text-2xl font-bold text-rose-700 mt-1">{highRiskCount}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {evOrTpCount} TP / Multi-Veh / EV · {breachedCount} SLA breached
+          </p>
         </div>
       </div>
 
@@ -167,6 +175,17 @@ export default function CommandCentrePage() {
           <option value="CLOSED">CLOSED</option>
         </select>
         <select
+          aria-label="Filter by risk tier"
+          value={riskFilter}
+          onChange={(e) => setRiskFilter(e.target.value)}
+          className="text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white"
+        >
+          <option value="">All Risk Tiers</option>
+          <option value="LOW">LOW RISK — Fast-Track</option>
+          <option value="MEDIUM">MEDIUM RISK — Standard</option>
+          <option value="HIGH">HIGH RISK — Complex / SIU</option>
+        </select>
+        <select
           aria-label="Filter by claim type"
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
@@ -193,7 +212,7 @@ export default function CommandCentrePage() {
             <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600">
               <tr>
                 <th className="px-4 py-3">Claim # / Vehicle</th>
-                <th className="px-4 py-3">Type & Queue</th>
+                <th className="px-4 py-3">Risk Path &amp; Type</th>
                 <th className="px-4 py-3">Status & SLA</th>
                 <th className="px-4 py-3">Est. Loss (INR)</th>
                 <th className="px-4 py-3">Next Expected Action</th>
@@ -209,14 +228,16 @@ export default function CommandCentrePage() {
                       {c.vehicle_reg_input} · {c.policy_number_input}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800 capitalize">
-                      {c.claim_type.replace("_", " ")}
+                  <td className="px-4 py-3 space-y-1">
+                    <div>
+                      <RiskTierBadge tier={c.risk_tier} path={c.operational_path} score={c.risk_score} />
                     </div>
-                    <div className="text-xs text-slate-500">{c.queue_name}</div>
-                    {(c.injury_or_fatality || c.ev_battery_impacted) && (
-                      <span className="inline-block mt-1 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-900 rounded">
-                        {c.injury_or_fatality ? "TP INJURY" : "EV HV BATTERY"}
+                    <div className="text-xs font-medium text-slate-700 capitalize">
+                      {c.claim_type.replace("_", " ")} · <span className="text-slate-500 font-normal">{c.queue_name}</span>
+                    </div>
+                    {(c.injury_or_fatality || c.ev_battery_impacted || c.multiple_vehicles_involved) && (
+                      <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-900 rounded">
+                        {c.injury_or_fatality ? "TP INJURY" : c.ev_battery_impacted ? "EV HV BATTERY" : "MULTI-VEHICLE"}
                       </span>
                     )}
                   </td>

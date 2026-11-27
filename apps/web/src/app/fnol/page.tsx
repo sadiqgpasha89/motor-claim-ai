@@ -88,11 +88,30 @@ export default function FNOLPage() {
   const [towingNeeded, setTowingNeeded] = useState(false);
   const [airbags, setAirbags] = useState(false);
   const [policeInvolved, setPoliceInvolved] = useState(false);
+  const [multiVehicle, setMultiVehicle] = useState(false);
+  const [involvedVehicles, setInvolvedVehicles] = useState(1);
+  const [legalDispute, setLegalDispute] = useState(false);
+  const [docsComplete, setDocsComplete] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
-    claim: { id: string; claim_number: string; requires_mandatory_survey: boolean };
+    claim: {
+      id: string;
+      claim_number: string;
+      requires_mandatory_survey: boolean;
+      risk_tier?: string;
+      operational_path?: string;
+      risk_score?: number;
+    };
+    risk_assessment?: {
+      risk_tier: string;
+      operational_path: string;
+      operational_path_label: string;
+      handling_mode: string;
+      goal: string;
+      explanation: string;
+    };
     acknowledgement: string;
     duplicate_review_alert?: string | null;
     agent_response?: {
@@ -139,6 +158,10 @@ export default function FNOLPage() {
             estimated_loss_inr: estimatedLoss,
             injury_or_fatality: injury,
             ev_battery_impacted: evBattery,
+            multiple_vehicles_involved: multiVehicle,
+            involved_vehicles_count: multiVehicle ? Math.max(2, involvedVehicles) : 1,
+            legal_dispute: legalDispute,
+            documents_complete_at_fnol: docsComplete,
             vehicle_immobile: immobile,
             towing_needed: towingNeeded || immobile,
             airbags_deployed: airbags,
@@ -217,14 +240,43 @@ export default function FNOLPage() {
           <button
             type="button"
             onClick={() => {
+              setPolicyNumber("POL-IN-DEMO-2026-FT01");
+              setVehicleReg("MH12FT2026");
+              setClaimType("cashless");
+              setPerilCause("road_accident");
+              setIntakeChannel("web");
+              setLang("en-IN");
+              setEstimatedLoss("18500.00");
+              setDocsComplete(true);
+              setEvBattery(false);
+              setInjury(false);
+              setMultiVehicle(false);
+              setInvolvedVehicles(1);
+              setImmobile(false);
+              setTowingNeeded(false);
+              setAirbags(false);
+              setLegalDispute(false);
+              setDescription("Minor parking scrape on front bumper & ORVM cap; RC, DL & daylight photos complete.");
+            }}
+            className="px-2.5 py-1 bg-emerald-50 border border-emerald-300 text-emerald-950 font-semibold rounded hover:bg-emerald-100"
+          >
+            Low-Risk Fast-Track (&le; ₹25k)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setPolicyNumber("POL-IN-DEMO-2026-1001");
               setVehicleReg("MH02DEMO1042");
               setEvBattery(false);
               setClaimType("cashless");
               setIntakeChannel("whatsapp");
               setLang("hi-IN");
+              setDocsComplete(false);
+              setMultiVehicle(false);
+              setInvolvedVehicles(1);
               setImmobile(true);
               setTowingNeeded(true);
+              setEstimatedLoss("45000.00");
               setDescription("मेरी कार बंपर से टकराई है और आगे नहीं चल रही, कृपया टोइंग भेजें।");
             }}
             className="px-2.5 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50"
@@ -249,15 +301,50 @@ export default function FNOLPage() {
           >
             Voice EV High-Voltage
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPolicyNumber("POL-IN-DEMO-2026-1001");
+              setVehicleReg("MH02DEMO1042");
+              setClaimType("cashless");
+              setPerilCause("road_accident");
+              setIntakeChannel("web");
+              setLang("en-IN");
+              setEstimatedLoss("310000.00");
+              setMultiVehicle(true);
+              setInvolvedVehicles(3);
+              setAirbags(true);
+              setPoliceInvolved(true);
+              setDescription("Three-vehicle chain collision on Western Express Highway; airbag deployed, multi-vehicle liability.");
+            }}
+            className="px-2.5 py-1 bg-rose-50 border border-rose-300 text-rose-950 font-semibold rounded hover:bg-rose-100"
+          >
+            High-Risk Multi-Vehicle Pile-up
+          </button>
         </div>
       </div>
 
       {result && (
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-5 space-y-3">
-          <div className="flex items-center gap-2 text-emerald-900 font-bold text-lg">
-            <CheckCircle2 className="w-5 h-5" />
-            Claim Registered: {result.claim.claim_number}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-emerald-900 font-bold text-lg">
+              <CheckCircle2 className="w-5 h-5" />
+              Claim Registered: {result.claim.claim_number}
+            </div>
+            {result.claim.risk_tier && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-white border border-emerald-400 text-slate-900">
+                {result.claim.risk_tier} RISK · {result.claim.operational_path} (score {result.claim.risk_score ?? 0})
+              </span>
+            )}
           </div>
+          {result.risk_assessment && (
+            <div className="p-3 bg-white border border-emerald-200 rounded-lg text-xs text-slate-700 space-y-1">
+              <div className="font-bold text-slate-900">
+                Operational Path: {result.risk_assessment.operational_path_label} ({result.risk_assessment.handling_mode})
+              </div>
+              <div>{result.risk_assessment.explanation}</div>
+            </div>
+          )}
           <p className="text-sm text-emerald-900">
             {result.agent_response?.result?.localized_acknowledgement || result.acknowledgement}
           </p>
@@ -406,6 +493,25 @@ export default function FNOLPage() {
           <label className="flex items-center gap-2 p-2.5 border border-slate-200 rounded-lg cursor-pointer">
             <input type="checkbox" checked={evBattery} onChange={(e) => setEvBattery(e.target.checked)} />
             <span>EV Battery / HV Warning</span>
+          </label>
+          <label className="flex items-center gap-2 p-2.5 border border-slate-200 rounded-lg cursor-pointer">
+            <input
+              type="checkbox"
+              checked={multiVehicle}
+              onChange={(e) => {
+                setMultiVehicle(e.target.checked);
+                if (e.target.checked && involvedVehicles < 2) setInvolvedVehicles(2);
+              }}
+            />
+            <span>Multiple Vehicles Involved</span>
+          </label>
+          <label className="flex items-center gap-2 p-2.5 border border-slate-200 rounded-lg cursor-pointer">
+            <input type="checkbox" checked={legalDispute} onChange={(e) => setLegalDispute(e.target.checked)} />
+            <span>Legal / Coverage Dispute</span>
+          </label>
+          <label className="flex items-center gap-2 p-2.5 border border-emerald-200 bg-emerald-50/40 rounded-lg cursor-pointer">
+            <input type="checkbox" checked={docsComplete} onChange={(e) => setDocsComplete(e.target.checked)} />
+            <span>Complete Documents Ready (Fast-Track)</span>
           </label>
         </div>
 

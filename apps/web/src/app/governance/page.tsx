@@ -125,6 +125,16 @@ export default function GovernancePage() {
             </pre>
           )}
 
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-950 space-y-1">
+            <div className="font-bold">Risk-Based Claim Processing Guardrails (IN-RISK-PROCESSING-2026)</div>
+            <div>
+              <strong>LOW RISK (Fast-Track):</strong> Complete docs, valid policy, minor damage &lt; &#8377;50k, auto-approval limit &le; &#8377;25,000.{" "}
+              <strong>MEDIUM RISK (Standard):</strong> Inspection, doc follow-up, estimate/coverage coordination.{" "}
+              <strong>HIGH RISK (Complex/SIU):</strong> Specialist human-led handling + automatic evidence preservation (<code>legal_hold</code>).{" "}
+              <em>Advisory <code>fraud_signal_score</code> NEVER determines claim rejection.</em>
+            </div>
+          </div>
+
           <div className="space-y-3">
             {rules.map((r) => (
               <div key={r.id} className="p-3 border border-slate-200 rounded-lg text-xs space-y-1">

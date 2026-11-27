@@ -58,7 +58,9 @@ from services.claims.state_machine import (
 )
 from services.damage_ai.assessor import assess_damage_from_evidence, validate_estimate_lines
 from services.fraud_intelligence.detector import build_entity_relationship_graph, run_fraud_and_anomaly_checks
+from services.rules_engine.loader import get_active_rule, load_rule_files
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
+from services.workflow.risk_engine import evaluate_and_persist_risk, gather_claim_risk_facts
 from services.workflow.sla_engine import (
     compute_timer_status,
     pause_active_sla_timers,
@@ -408,8 +410,17 @@ class ClaimOrchestrator:
 
     def _task_condition_satisfied(self, claim: Claim, task_key: str) -> tuple[bool, str]:
         if task_key == "provider_coordination":
-            ok = bool(claim.requires_mandatory_survey or claim.towing_needed or claim.ev_battery_impacted)
-            return ok, "Mandatory survey / EV / towing condition met" if ok else "Fast-track OD without mandatory survey"
+            ok = bool(
+                claim.requires_mandatory_survey
+                or claim.towing_needed
+                or claim.ev_battery_impacted
+                or (claim.risk_tier or "MEDIUM") in {"MEDIUM", "HIGH"}
+            )
+            return ok, (
+                "Mandatory survey / EV / towing / standard-or-complex risk coordination required"
+                if ok
+                else "LOW RISK fast-track straight-through path: physical survey/towing bypassed"
+            )
         if task_key == "damage_assessment":
             has_vehicle = bool(claim.vehicle_id or claim.vehicle_reg_input)
             photos_cnt = (
@@ -514,6 +525,17 @@ class ClaimOrchestrator:
             "duplicate_candidate_claim_id": duplicate_candidate.id if duplicate_candidate else None,
             "duplicate_claim_number": duplicate_candidate.claim_number if duplicate_candidate else None,
         }
+        claim.duplicate_candidate_claim_id = duplicate_candidate.id if duplicate_candidate else claim.duplicate_candidate_claim_id
+
+        evaluate_and_persist_risk(
+            self.db,
+            claim,
+            trigger_event="fnol_intake",
+            actor_id=self.user.user_id,
+            actor_role=self.user.role.value,
+            record_decision=True,
+            escalate_state=False,
+        )
 
         self.db.flush()
         return resp
@@ -638,6 +660,9 @@ class ClaimOrchestrator:
                     missing.append(f"open_rework:{to_agent} ({req_rework.get('reason_code')})")
 
         for dep in spec.depends_on:
+            dep_status = statuses.get(dep)
+            if dep == "provider_coordination" and dep_status == "skipped_fast_track":
+                continue
             if dep not in published:
                 missing.append(f"{dep} (not published)")
                 continue
@@ -1365,6 +1390,7 @@ class ClaimOrchestrator:
                             status="new",
                         )
                     )
+            self.db.flush()
 
         record_agent_publication(
             self.db,
@@ -1445,9 +1471,9 @@ class ClaimOrchestrator:
             )
             track = str(resp.result.get("recommended_triage_track", ""))
             if track not in {t.value for t in TriageTrack}:
-                if claim.injury_or_fatality or claim.claim_type == "third_party":
+                if claim.injury_or_fatality or claim.claim_type == "third_party" or claim.multiple_vehicles_involved:
                     track = TriageTrack.INVESTIGATION_REQUIRED.value
-                elif claim.requires_mandatory_survey:
+                elif claim.requires_mandatory_survey or (claim.risk_tier or "MEDIUM") == "MEDIUM":
                     track = TriageTrack.SURVEY_REQUIRED.value
                 else:
                     track = TriageTrack.FAST_TRACK.value
@@ -1458,7 +1484,7 @@ class ClaimOrchestrator:
             self._safe_transition(
                 claim,
                 track,
-                reason=f"ClaimTriage routed claim to deterministic branch {track}",
+                reason=f"ClaimTriage routed claim ({resp.result.get('risk_tier', claim.risk_tier)} RISK -> {resp.result.get('operational_path', claim.operational_path)}) to branch {track}",
                 trigger_event="ClaimTriaged",
                 next_expected_action=f"Triage track: {track} ({resp.result.get('recommended_queue', '')})",
             )
@@ -1510,13 +1536,22 @@ class ClaimOrchestrator:
             )
 
         elif agent_name == "settlement_recommendation":
-            self._safe_transition(
-                claim,
-                ClaimStatus.SETTLEMENT_PENDING_APPROVAL.value,
-                reason="Deterministic Decimal settlement queued at Maker-Checker DoA human approval gate",
-                trigger_event="SettlementCalculated",
-                next_expected_action="Independent Maker-Checker DoA approval required before payment",
-            )
+            if resp.status == AgentStatus.COMPLETED and resp.result.get("auto_approved"):
+                self._safe_transition(
+                    claim,
+                    ClaimStatus.APPROVED.value,
+                    reason="LOW RISK straight-through settlement auto-approved within IN-RISK-PROCESSING-2026 limit",
+                    trigger_event="FastTrackAutoApproved",
+                    next_expected_action="Ready for Finance payout execution",
+                )
+            else:
+                self._safe_transition(
+                    claim,
+                    ClaimStatus.SETTLEMENT_PENDING_APPROVAL.value,
+                    reason="Deterministic Decimal settlement queued at Maker-Checker DoA human approval gate",
+                    trigger_event="SettlementCalculated",
+                    next_expected_action="Independent Maker-Checker DoA approval required before payment",
+                )
 
     def _run_agent_attempts(
         self,
@@ -1693,6 +1728,28 @@ class ClaimOrchestrator:
 
         if apply_state_progression:
             self._apply_post_agent_state_transition(claim, agent_name, final_resp)
+
+        if agent_name in {
+            "document_intelligence",
+            "coverage_intelligence",
+            "claim_triage",
+            "damage_assessment",
+            "estimate_validation",
+            "fraud_intelligence",
+        } and final_resp.status not in {
+            AgentStatus.TIMED_OUT,
+            AgentStatus.FAILED,
+            AgentStatus.BLOCKED_DEPENDENCY,
+        }:
+            evaluate_and_persist_risk(
+                self.db,
+                claim,
+                trigger_event=f"agent_{agent_name}",
+                actor_id=self.user.user_id,
+                actor_role=self.user.role.value,
+                record_decision=(agent_name in {"damage_assessment", "estimate_validation", "fraud_intelligence"}),
+                escalate_state=(agent_name in {"damage_assessment", "estimate_validation", "fraud_intelligence"}),
+            )
 
         return final_resp
 
@@ -1980,12 +2037,13 @@ class ClaimOrchestrator:
                         "workflow_state": claim.workflow_state,
                     }
 
-        # 3. Conditional Provider Coordination (if survey / towing / EV needed)
+        # 3. Conditional Provider Coordination (MEDIUM/HIGH or survey / towing / EV needed; bypassed on LOW fast-track)
         if len(executed) < max_steps:
             st_prov = (claim.workflow_state or {}).get("stage_statuses", {}).get("provider_coordination")
-            if st_prov != AgentStatus.COMPLETED.value:
+            if st_prov not in {AgentStatus.COMPLETED.value, "skipped_fast_track"}:
                 deps_ok, missing = self.check_dependencies(claim, "provider_coordination")
-                if deps_ok:
+                cond_prov, cond_reason = self._task_condition_satisfied(claim, "provider_coordination")
+                if deps_ok and cond_prov:
                     prov_resp = self.run_agent(
                         claim,
                         "provider_coordination",
@@ -2004,6 +2062,22 @@ class ClaimOrchestrator:
                             "paused_reason": paused_reason,
                             "workflow_state": claim.workflow_state,
                         }
+                elif deps_ok and not cond_prov:
+                    prov_task = self._get_or_create_task(claim, "provider_coordination")
+                    prov_task.status = "skipped_fast_track"
+                    prov_task.started_at = prov_task.started_at or datetime.now(timezone.utc)
+                    prov_task.completed_at = datetime.now(timezone.utc)
+                    prov_task.output_payload = {
+                        "skipped": True,
+                        "risk_tier": claim.risk_tier,
+                        "operational_path": claim.operational_path,
+                        "reason": cond_reason,
+                    }
+                    wf_prov = dict(claim.workflow_state or {})
+                    st_map = dict(wf_prov.get("stage_statuses", {}))
+                    st_map["provider_coordination"] = "skipped_fast_track"
+                    wf_prov["stage_statuses"] = st_map
+                    claim.workflow_state = _json_safe(wf_prov)
 
         # 4. Wave 2: Conditional Damage Assessment + Parallel Fraud Analysis
         if len(executed) < max_steps:
@@ -2038,6 +2112,15 @@ class ClaimOrchestrator:
                         resp = wave2_res[ag]
                         _append_step(ag, resp, "parallel" if ag == "fraud_intelligence" else "conditional", "assessment_and_fraud_parallel")
                         self._apply_post_agent_state_transition(claim, ag, resp)
+                    evaluate_and_persist_risk(
+                        self.db,
+                        claim,
+                        trigger_event="wave2_assessment_and_fraud",
+                        actor_id=self.user.user_id,
+                        actor_role=self.user.role.value,
+                        record_decision=True,
+                        escalate_state=True,
+                    )
                 else:
                     ag = wave2_agents[0]
                     resp = self.run_agent(
@@ -2280,6 +2363,33 @@ class ClaimOrchestrator:
             addons=policy.addons or {},
         )
         calc = scen["primary"]
+        try:
+            risk_ctrl = get_active_rule(self.db, "IN-RISK-PROCESSING-2026")["controls"]
+        except KeyError:
+            risk_ctrl = load_rule_files()["IN-RISK-PROCESSING-2026"]["controls"]
+        auto_limit = Decimal(str(risk_ctrl.get("fast_track_auto_approval_limit_inr", "25000.00")))
+        latest_risk = evaluate_and_persist_risk(
+            self.db,
+            claim,
+            trigger_event="settlement_calculation",
+            actor_id=self.user.user_id,
+            actor_role=self.user.role.value,
+            record_decision=False,
+            escalate_state=True,
+        )
+        open_alerts_cnt = (
+            self.db.query(FraudAlert)
+            .filter(FraudAlert.claim_id == claim.id, FraudAlert.status.in_(["new", "assigned", "investigating"]))
+            .count()
+        )
+        fast_track_auto_ok = (
+            latest_risk["risk_tier"] == "LOW"
+            and bool(latest_risk["automation_eligibility"]["straight_through_eligible"])
+            and open_alerts_cnt == 0
+            and not calc.is_total_loss
+            and Decimal("0.00") < calc.net_payable_inr <= auto_limit
+        )
+
         stl = Settlement(
             tenant_id=claim.tenant_id,
             claim_id=claim.id,
@@ -2296,17 +2406,54 @@ class ClaimOrchestrator:
             calculation_trace=calc.calculation_trace,
             rule_versions=calc.rule_versions,
             policy_citations=calc.policy_citations,
-            approval_status="pending_checker",
+            approval_status="approved" if fast_track_auto_ok else "pending_checker",
             created_by=self.user.user_id,
         )
         self.db.add(stl)
         self.db.flush()
+
         self._safe_transition(
             claim,
             ClaimStatus.SETTLEMENT_PENDING_APPROVAL.value,
-            reason="Deterministic settlement computed; pending DoA Checker approval",
+            reason="Deterministic settlement computed",
             trigger_event="SettlementCalculated",
         )
+        if fast_track_auto_ok:
+            self.db.add(
+                Approval(
+                    tenant_id=claim.tenant_id,
+                    claim_id=claim.id,
+                    settlement_id=stl.id,
+                    action_type="fast_track_auto_approval",
+                    amount_inr=calc.net_payable_inr,
+                    maker_user_id="system:fast_track_engine",
+                    checker_user_id="rule:IN-RISK-PROCESSING-2026",
+                    authority_rule_version="IN-RISK-PROCESSING-2026:1.0.0",
+                    decision="approved",
+                    rationale=(
+                        f"LOW RISK straight-through auto-approval within INR {auto_limit} limit "
+                        f"(net payable INR {calc.net_payable_inr}); zero anomalies."
+                    ),
+                    decided_at=datetime.now(timezone.utc),
+                )
+            )
+            gate_task = self._get_or_create_task(claim, "human_approval_gate")
+            gate_task.status = "completed"
+            gate_task.started_at = gate_task.started_at or datetime.now(timezone.utc)
+            gate_task.completed_at = datetime.now(timezone.utc)
+            gate_task.output_payload = {
+                "mode": "fast_track_auto_approval",
+                "limit_inr": str(auto_limit),
+                "net_payable_inr": str(calc.net_payable_inr),
+            }
+            self.db.flush()
+            self._safe_transition(
+                claim,
+                ClaimStatus.APPROVED.value,
+                reason=f"LOW RISK straight-through auto-approved within INR {auto_limit} limit",
+                trigger_event="FastTrackAutoApproved",
+                next_expected_action="Ready for Finance payout execution",
+            )
 
     def _build_stage_facts(self, claim: Claim, agent_name: str) -> dict[str, Any]:
         policy = self.db.query(Policy).filter(Policy.id == claim.policy_id).first() if claim.policy_id else None
@@ -2383,17 +2530,14 @@ class ClaimOrchestrator:
             }
 
         if agent_name == "claim_triage":
-            return {
-                "estimated_loss_inr": str(claim.estimated_loss_inr),
-                "injury_or_fatality": claim.injury_or_fatality,
-                "ev_battery_impacted": claim.ev_battery_impacted,
-                "is_ev": vehicle.is_ev if vehicle else False,
-                "vehicle_immobile": claim.vehicle_immobile,
-                "airbags_deployed": claim.airbags_deployed,
-                "police_involved": claim.police_involved,
-                "claim_type": claim.claim_type,
-                "peril_cause": claim.peril_cause,
-            }
+            risk_facts = gather_claim_risk_facts(self.db, claim)
+            risk_facts.update(
+                {
+                    "is_ev": vehicle.is_ev if vehicle else claim.ev_battery_impacted,
+                    "police_involved": claim.police_involved,
+                }
+            )
+            return risk_facts
 
         if agent_name == "provider_coordination":
             return {
@@ -2481,9 +2625,16 @@ class ClaimOrchestrator:
                 active_conditions.append("ev_battery")
             if stl and stl.is_total_loss:
                 active_conditions.append("total_loss")
+            if (claim.risk_tier or "MEDIUM") == "HIGH":
+                active_conditions.append("high_risk_complex")
+            elig = (claim.risk_assessment or {}).get("automation_eligibility", {}) if isinstance(claim.risk_assessment, dict) else {}
             return {
                 "settlement_id": stl.id if stl else None,
                 "active_conditions": active_conditions,
+                "risk_tier": claim.risk_tier or "MEDIUM",
+                "straight_through_eligible": bool(elig.get("straight_through_eligible", False)),
+                "auto_approval_limit_inr": str(elig.get("auto_approval_limit_inr", "25000.00")),
+                "allow_fast_track_auto_approve": True,
                 "calculation": {
                     "gross": str(stl.gross_assessed_inr) if stl else "0.00",
                     "net": str(stl.net_payable_inr) if stl else "0.00",

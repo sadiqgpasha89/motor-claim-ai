@@ -1063,9 +1063,110 @@
     box.textContent = logs[mode] || logs.parallel_wave;
   };
 
+  window.applyRiskPreset = function (preset) {
+    var lossEl = el("risk-loss-inr");
+    if (!lossEl) return;
+    var sets = {
+      low_fast_track: { loss: 18500, fraud: 0.05, missing: false, est: false, invPol: false, inj: false, multi: false, ev: false, conflict: false, dispute: false, label: "LOW RISK Straight-Through Intake" },
+      medium_standard: { loss: 64200, fraud: 0.25, missing: true, est: true, invPol: false, inj: false, multi: false, ev: false, conflict: false, dispute: false, label: "MEDIUM RISK Standard Assisted" },
+      high_multi_ev: { loss: 310000, fraud: 0.45, missing: false, est: false, invPol: false, inj: true, multi: true, ev: true, conflict: false, dispute: false, label: "HIGH RISK Multi-Vehicle & EV Complex" },
+      escalate_late_evidence: { loss: 18500, fraud: 0.86, missing: false, est: false, invPol: false, inj: false, multi: true, ev: true, conflict: true, dispute: false, label: "DYNAMIC ESCALATION: Started LOW (₹18.5k), Late Evidence Pushed to HIGH" }
+    };
+    var cfg = sets[preset] || sets.low_fast_track;
+    el("risk-loss-inr").value = cfg.loss;
+    el("risk-fraud-score").value = cfg.fraud;
+    el("risk-missing-docs").checked = cfg.missing;
+    el("risk-est-discrepancy").checked = cfg.est;
+    el("risk-policy-invalid").checked = cfg.invPol;
+    el("risk-injury").checked = cfg.inj;
+    el("risk-multi-veh").checked = cfg.multi;
+    el("risk-ev-battery").checked = cfg.ev;
+    el("risk-conflict").checked = cfg.conflict;
+    el("risk-dispute").checked = cfg.dispute;
+    window.updateRiskSimulation(cfg.label);
+  };
+
+  window.updateRiskSimulation = function (presetNote) {
+    var outEl = el("risk-sim-output");
+    if (!outEl) return;
+    var loss = parseFloat((el("risk-loss-inr") || {}).value) || 0;
+    var fraud = parseFloat((el("risk-fraud-score") || {}).value) || 0;
+    var missingDocs = !!(el("risk-missing-docs") || {}).checked;
+    var estDisc = !!(el("risk-est-discrepancy") || {}).checked;
+    var polInvalid = !!(el("risk-policy-invalid") || {}).checked;
+    var injury = !!(el("risk-injury") || {}).checked;
+    var multiVeh = !!(el("risk-multi-veh") || {}).checked;
+    var evBattery = !!(el("risk-ev-battery") || {}).checked;
+    var conflict = !!(el("risk-conflict") || {}).checked;
+    var dispute = !!(el("risk-dispute") || {}).checked;
+
+    var highDrivers = [];
+    if (injury || multiVeh) highDrivers.push("Injury or third-party liability / Multiple vehicles (+45)");
+    if (fraud >= 0.65) highDrivers.push("Suspected fraud signal score=" + fraud.toFixed(3) + " -> SIU escalation, NEVER auto-rejects (+40)");
+    if (loss >= 250000) highDrivers.push("Significant loss >= ₹2,50,000 (+35)");
+    if (conflict) highDrivers.push("Conflicting evidence / document mismatch (+35)");
+    if (evBattery) highDrivers.push("EV traction battery / HV damage (+35)");
+    if (polInvalid || dispute) highDrivers.push("Legal or coverage dispute / invalid policy (+35)");
+
+    var medDrivers = [];
+    if (loss >= 50000 && loss < 250000) medDrivers.push("Damage requires IRDAI physical inspection (>= ₹50,000) (+22)");
+    if (estDisc) medDrivers.push("Estimate discrepancies / variance (+20)");
+    if (missingDocs) medDrivers.push("Missing documents follow-up (+18)");
+
+    var tier = "LOW";
+    var path = "fast_track";
+    var handling = "Straight-through assisted processing";
+    var goal = "Minimize human touchpoints";
+    var score = 12;
+    if (highDrivers.length > 0) {
+      tier = "HIGH";
+      path = "complex_investigation";
+      handling = "Specialist and human-led handling";
+      goal = "Improve investigative quality, preserve evidence (legal_hold=true) and ensure controlled decisions";
+      score = Math.min(100, 65 + highDrivers.length * 15);
+    } else if (medDrivers.length > 0) {
+      tier = "MEDIUM";
+      path = "standard";
+      handling = "AI-assisted claims handling";
+      goal = "Reduce handler effort and waiting time";
+      score = Math.min(64, 25 + medDrivers.length * 14);
+    }
+
+    ["LOW", "MEDIUM", "HIGH"].forEach(function (t) {
+      var card = el("risk-card-" + t);
+      if (card) {
+        if (t === tier) card.classList.add("active-tier");
+        else card.classList.remove("active-tier");
+      }
+    });
+
+    var autoEligible = tier === "LOW" && loss <= 25000;
+    var header = presetNote ? "[Scenario] " + presetNote + "\n" : "";
+    var driverLines = highDrivers.length
+      ? highDrivers.concat(medDrivers)
+      : medDrivers.length
+      ? medDrivers
+      : ["All 5 Low-Risk Criteria Met: Minor damage, Complete docs, Valid policy, Low estimate (₹" + loss.toLocaleString("en-IN") + "), Zero material anomalies"];
+
+    outEl.textContent =
+      header +
+      "[RiskEngine IN-RISK-PROCESSING-2026] Tier: " + tier + " RISK | Path: " + path + " | Score: " + score + "/100\n" +
+      "  • Handling Mode: " + handling + " | Goal: " + goal + "\n" +
+      "  • Active Drivers (" + driverLines.length + "): " + driverLines.join(" ; ") + "\n" +
+      "  • Automation & Limits: " + (tier === "LOW"
+        ? (autoEligible
+            ? "ELIGIBLE FOR STRAIGHT-THROUGH AUTO-APPROVAL (<= ₹25,000 limit; physical survey BYPASSED)"
+            : "L1 Fast-Track Assisted (₹25,000–₹49,999.99; physical survey BYPASSED)")
+        : (tier === "MEDIUM"
+            ? "AI-Assisted Surveyor/Repair Coordination + Maker-Checker DoA Required"
+            : "SPECIALIST HUMAN-LED ONLY · Evidence Legal Hold ACTIVE (legal_hold=true) · L1 Handler Blocked")) + "\n" +
+      "  • Fraud Score Guardrail: fraud_signal_score=" + fraud.toFixed(3) + " | fraud_score_can_reject=false (NEVER auto-rejects claim!)";
+  };
+
   document.addEventListener("DOMContentLoaded", function () {
     renderOrchestratorEngine();
     if (window.runOrchLab) window.runOrchLab("parallel_wave");
+    if (window.applyRiskPreset) window.applyRiskPreset("low_fast_track");
     renderActiveWorkflow();
     renderQuestions();
     renderCapabilityMatrix();

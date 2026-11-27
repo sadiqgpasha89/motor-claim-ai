@@ -33,6 +33,7 @@ from services.claims.models import (
     Vehicle,
 )
 from services.rules_engine.loader import sync_rules_to_db
+from services.workflow.risk_engine import evaluate_and_persist_risk
 
 
 def ensure_seeded(db: Session) -> None:
@@ -146,7 +147,16 @@ def seed_all(db: Session) -> None:
         phone_masked="******9999",
         email_masked="ot***@other.in",
     )
-    db.add_all([cust1, cust2, cust_other])
+    cust_ft = Customer(
+        id="cust-demo-ft01",
+        tenant_id=t1.id,
+        name="Meera Nair (DEMO)",
+        phone_token="TOK-PH-98555",
+        phone_masked="******8811",
+        email_masked="me***@demo.in",
+        preferred_language="en-IN",
+    )
+    db.add_all([cust1, cust2, cust_other, cust_ft])
 
     users = [
         User(id="usr-policyholder", tenant_id=t1.id, email="policyholder@demo.in", name="Aarav Deshmukh (Customer)", role="policyholder", partner_id=cust1.id),
@@ -221,7 +231,22 @@ def seed_all(db: Session) -> None:
         year=2024,
         first_registration_date=now - timedelta(days=400),
     )
-    db.add_all([veh1, veh_ev, veh2, veh_other])
+    veh_ft = Vehicle(
+        id="veh-demo-ft01",
+        tenant_id=t1.id,
+        registration_number="MH12FT2026",
+        vin_chassis="MA3FHEB1S00991122",
+        engine_number="K12N991122",
+        make="Maruti Suzuki",
+        model="Swift ZXi+",
+        year=2024,
+        vehicle_category="private_car",
+        fuel_type="petrol",
+        is_ev=False,
+        cc_class="private_car_1000_to_1500cc",
+        first_registration_date=now - timedelta(days=500),
+    )
+    db.add_all([veh1, veh_ev, veh2, veh_other, veh_ft])
 
     pol1 = Policy(
         id="pol-demo-01",
@@ -287,7 +312,24 @@ def seed_all(db: Session) -> None:
         status="active",
         idv_inr=Decimal("900000.00"),
     )
-    db.add_all([pol1, pol_ev, pol2, pol_other])
+    pol_ft = Policy(
+        id="pol-demo-ft01",
+        tenant_id=t1.id,
+        customer_id=cust_ft.id,
+        vehicle_id=veh_ft.id,
+        policy_number="POL-IN-DEMO-2026-FT01",
+        product_code="PRIVATE_CAR_PACKAGE",
+        uin="DEMO-IRDAI-PC-2024-V1",
+        period_start=now - timedelta(days=120),
+        period_end=now + timedelta(days=245),
+        status="active",
+        idv_inr=Decimal("680000.00"),
+        compulsory_deductible_inr=Decimal("1000.00"),
+        voluntary_deductible_inr=Decimal("0.00"),
+        addons={"zero_depreciation": True, "consumables": True},
+        endorsements=["IMT-22 Compulsory Deductible", "Zero Depreciation Add-on"],
+    )
+    db.add_all([pol1, pol_ev, pol2, pol_other, pol_ft])
     db.flush()
 
     c1 = Claim(
@@ -809,6 +851,8 @@ def seed_all(db: Session) -> None:
             injury_or_fatality=True,
             police_involved=True,
             estimated_loss_inr=Decimal("350000.00"),
+            multiple_vehicles_involved=True,
+            involved_vehicles_count=2,
             requires_mandatory_survey=True,
             next_expected_action="Legal/TP Specialist to review FIR, medical records, and MACT liability notice",
         ),
@@ -837,6 +881,29 @@ def seed_all(db: Session) -> None:
             assigned_surveyor_id=surv1.id,
             assigned_garage_id=gar_ev.id,
             next_expected_action="EV Specialist inspection + OEM BMS diagnostic scan at VoltCare EV Hub",
+        ),
+        Claim(
+            id="clm-demo-0012",
+            tenant_id=t1.id,
+            claim_number="CLM-DEMO-2026-0012",
+            policy_id=pol1.id,
+            customer_id=cust1.id,
+            vehicle_id=veh1.id,
+            claim_type="cashless",
+            peril_cause="road_accident",
+            status="APPROVED",
+            severity_band="low",
+            queue_name="low_risk_od_assisted",
+            incident_at=now - timedelta(hours=8),
+            incident_location="Juhu Tara Road, Mumbai",
+            incident_description="Minor left ORVM housing & bumper corner scuff in society parking; all documents uploaded & verified.",
+            policy_number_input=pol1.policy_number,
+            vehicle_reg_input=veh1.registration_number,
+            estimated_loss_inr=Decimal("16500.00"),
+            requires_mandatory_survey=False,
+            assigned_garage_id=gar1.id,
+            missing_documents=[],
+            next_expected_action="LOW RISK Fast-Track auto-approved within INR 25,000 limit; ready for Finance payout",
         ),
         Claim(
             id="clm-other-0001",
@@ -1071,4 +1138,73 @@ def seed_all(db: Session) -> None:
             status="open",
         )
     )
+
+    stl12 = Settlement(
+        id="stl-demo-0012",
+        tenant_id=t1.id,
+        claim_id="clm-demo-0012",
+        pathway="cashless",
+        gross_assessed_inr=Decimal("16500.00"),
+        depreciation_deduction_inr=Decimal("0.00"),
+        compulsory_excess_inr=Decimal("1000.00"),
+        addon_waiver_inr=Decimal("2100.00"),
+        net_payable_inr=Decimal("15500.00"),
+        approval_status="approved",
+        created_by="system:fast_track_engine",
+    )
+    db.add(stl12)
+    db.flush()
+
+    for clm_obj in db.query(Claim).all():
+        evaluate_and_persist_risk(
+            db,
+            clm_obj,
+            trigger_event="initial_seed_classification",
+            actor_id="system-seed",
+            actor_role="system",
+            record_decision=False,
+            escalate_state=False,
+        )
+
+    # Seed realistic dynamic transition histories for clm-demo-0008 (HIGH -> LOW after SIU cleared) and clm-demo-0011 (LOW -> HIGH on EV BMS evidence)
+    clm8 = db.query(Claim).filter(Claim.id == "clm-demo-0008").first()
+    if clm8:
+        clm8.risk_history = [
+            {
+                "event_id": "rsk-seed-0008-1",
+                "trigger_event": "fraud_checks_evaluated",
+                "previous_tier": "MEDIUM",
+                "new_tier": "HIGH",
+                "previous_path": "standard",
+                "new_path": "complex_investigation",
+                "previous_score": 40,
+                "new_score": 90,
+                "fraud_signal_score": "0.648",
+                "driver_codes": ["HIGH_SUSPECTED_FRAUD"],
+                "explanation": "Early policy inception (6 days) escalated claim to HIGH risk SIU investigation; fraud score NEVER auto-rejects.",
+                "timestamp": (now - timedelta(days=2)).isoformat(),
+            },
+            *(clm8.risk_history or []),
+        ]
+
+    clm11 = db.query(Claim).filter(Claim.id == "clm-demo-0011").first()
+    if clm11:
+        clm11.risk_history = [
+            {
+                "event_id": "rsk-seed-0011-1",
+                "trigger_event": "fnol_intake",
+                "previous_tier": None,
+                "new_tier": "LOW",
+                "previous_path": None,
+                "new_path": "fast_track",
+                "previous_score": 0,
+                "new_score": 12,
+                "fraud_signal_score": "0.000",
+                "driver_codes": ["LOW_FAST_TRACK_ELIGIBLE"],
+                "explanation": "Initial pothole scrape report started as LOW RISK before underbody EV traction battery HV isolation alert arrived.",
+                "timestamp": (now - timedelta(days=1, hours=4)).isoformat(),
+            },
+            *(clm11.risk_history or []),
+        ]
+
     db.commit()

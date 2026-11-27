@@ -5,16 +5,75 @@ import { useParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, ShieldAlert, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { ProvenanceBadge, SlaBadge, StatusPill } from "@/components/Badges";
+import { ProvenanceBadge, RiskTierBadge, SlaBadge, StatusPill } from "@/components/Badges";
 import { ClaimExecutionChain } from "@/components/ClaimExecutionChain";
 
 type TabId = "overview" | "orchestration" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
+
+interface RiskDriver {
+  code: string;
+  tier: string;
+  category: string;
+  points: number;
+  summary: string;
+}
+
+interface RiskAssessment {
+  risk_tier: string;
+  operational_path: string;
+  operational_path_label: string;
+  handling_mode: string;
+  goal: string;
+  risk_score: number;
+  fraud_signal_score?: string | null;
+  fraud_score_can_reject: boolean;
+  fraud_guardrail_note?: string;
+  rule_version: string;
+  trigger_event: string;
+  recalculated_at: string;
+  drivers: RiskDriver[];
+  low_risk_criteria_check: Record<string, boolean>;
+  automation_eligibility: {
+    straight_through_eligible: boolean;
+    auto_approval_limit_inr: string;
+    within_auto_approval_limit: boolean;
+    fast_track_assisted_limit_inr: string;
+    requires_mandatory_survey: boolean;
+    evidence_preservation_active: boolean;
+    recommended_queue: string;
+    recommended_triage_track: string;
+    routing_priority: string;
+  };
+  explanation: string;
+}
+
+interface RiskHistoryEntry {
+  event_id: string;
+  trigger_event: string;
+  previous_tier?: string | null;
+  new_tier: string;
+  previous_path?: string | null;
+  new_path: string;
+  previous_score?: number | null;
+  new_score: number;
+  fraud_signal_score?: string | null;
+  driver_codes: string[];
+  explanation: string;
+  timestamp: string;
+}
 
 interface Claim360 {
   claim: Record<string, unknown> & {
     id: string;
     claim_number: string;
     status: string;
+    risk_tier?: string;
+    operational_path?: string;
+    risk_score?: number;
+    fraud_signal_score?: string | null;
+    multiple_vehicles_involved?: boolean;
+    involved_vehicles_count?: number;
+    legal_dispute?: boolean;
     claim_type: string;
     peril_cause: string;
     severity_band: string;
@@ -27,9 +86,13 @@ interface Claim360 {
     missing_documents: string[];
     coverage_factsheet?: Record<string, unknown> | null;
     triage_summary?: Record<string, unknown> | null;
+    risk_assessment?: RiskAssessment | null;
+    risk_history?: RiskHistoryEntry[];
     ev_battery_impacted: boolean;
     injury_or_fatality: boolean;
   };
+  risk_assessment?: RiskAssessment | null;
+  risk_history?: RiskHistoryEntry[];
   policy: {
     policy_number: string;
     product_code: string;
@@ -57,6 +120,7 @@ interface Claim360 {
     sha256: string;
     prompt_injection_flagged: boolean;
     ocr_text: string;
+    legal_hold?: boolean;
     image_quality_status?: string;
   }>;
   extracted_facts: Array<{
@@ -368,10 +432,21 @@ export default function Claim360Page() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900">{c.claim_number}</h1>
               <StatusPill status={c.status} />
+              <RiskTierBadge tier={c.risk_tier} path={c.operational_path} score={c.risk_score} />
               {data.sla_timers[0] && <SlaBadge status={data.sla_timers[0].status} />}
               {c.ev_battery_impacted && (
                 <span className="px-2 py-0.5 text-xs font-bold bg-purple-100 text-purple-900 rounded">
                   EV HIGH-VOLTAGE SAFETY
+                </span>
+              )}
+              {c.multiple_vehicles_involved && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-rose-100 text-rose-900 rounded">
+                  MULTI-VEHICLE ({c.involved_vehicles_count || 2})
+                </span>
+              )}
+              {c.legal_dispute && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-rose-100 text-rose-900 rounded">
+                  LEGAL / COVERAGE DISPUTE
                 </span>
               )}
             </div>
@@ -442,6 +517,167 @@ export default function Claim360Page() {
       {tab === "overview" && (
         <div className="space-y-6">
           <ClaimExecutionChain data={data} />
+
+          {/* Risk-Based Claim Processing & Dynamic Recalculation */}
+          {(data.risk_assessment || c.risk_assessment) && (
+            <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+              {(() => {
+                const risk = (data.risk_assessment || c.risk_assessment)!;
+                const hist = data.risk_history || c.risk_history || [];
+                const tierCls =
+                  risk.risk_tier === "LOW"
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-950"
+                    : risk.risk_tier === "HIGH"
+                    ? "bg-rose-50 border-rose-300 text-rose-950"
+                    : "bg-amber-50 border-amber-300 text-amber-950";
+                return (
+                  <>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-base font-bold text-slate-900">
+                            Risk-Based Claim Processing &amp; Operational Path
+                          </h2>
+                          <RiskTierBadge tier={risk.risk_tier} path={risk.operational_path} score={risk.risk_score} />
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          <strong>{risk.operational_path_label}</strong> ({risk.handling_mode}) ·{" "}
+                          <strong>Goal:</strong> {risk.goal} · Rule <code>{risk.rule_version}</code>
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {risk.fraud_signal_score !== null && risk.fraud_signal_score !== undefined && (
+                          <span className="px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-slate-50 font-mono">
+                            Advisory Fraud Score: <strong>{risk.fraud_signal_score}</strong> · Never auto-rejects
+                          </span>
+                        )}
+                        {risk.automation_eligibility.evidence_preservation_active && (
+                          <span className="px-2.5 py-1 text-xs font-bold rounded-lg border border-rose-300 bg-rose-100 text-rose-950">
+                            Evidence Legal Hold Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={`p-3 rounded-lg border text-xs ${tierCls}`}>
+                      {risk.explanation}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold uppercase text-slate-500">Explainable Risk Drivers</div>
+                        {risk.drivers.map((d) => (
+                          <div key={d.code} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                            <div className="flex items-center justify-between font-bold text-slate-900">
+                              <span>{d.category}</span>
+                              <span className="font-mono text-[11px]">{d.tier} (+{d.points})</span>
+                            </div>
+                            <div className="text-slate-600 mt-0.5">{d.summary}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="text-xs font-bold uppercase text-slate-500">Low-Risk Fast-Track Criteria</div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {Object.entries(risk.low_risk_criteria_check || {}).map(([k, ok]) => (
+                            <div
+                              key={k}
+                              className={`px-2.5 py-1.5 rounded border ${
+                                ok ? "bg-emerald-50 border-emerald-200 text-emerald-950" : "bg-slate-50 border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {ok ? "✓" : "✕"} {k.replace(/_/g, " ")}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                          <div className="text-xs font-bold text-slate-900">
+                            Dynamic Evidence &amp; Risk Recalculation Lab
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                runAction("Recalculate Risk", `/api/v1/claims/${claimId}/risk/recalculate`, "POST", {
+                                  trigger_event: "manual_recalculation",
+                                })
+                              }
+                              className="px-2.5 py-1 text-xs font-semibold bg-slate-900 text-white rounded hover:bg-slate-800"
+                            >
+                              Recalculate Now
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                runAction("Simulate Late EV Battery Evidence", `/api/v1/claims/${claimId}/risk/recalculate`, "POST", {
+                                  trigger_event: "late_ev_bms_evidence",
+                                  ev_battery_impacted: true,
+                                  new_evidence_summary: "Late undercarriage photo & BMS diagnostic detected EV HV cell deformation.",
+                                })
+                              }
+                              className="px-2.5 py-1 text-xs font-semibold bg-rose-50 border border-rose-300 text-rose-950 rounded hover:bg-rose-100"
+                            >
+                              + Late EV Battery Evidence
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                runAction("Report Multi-Vehicle Collision", `/api/v1/claims/${claimId}/risk/recalculate`, "POST", {
+                                  trigger_event: "late_multi_vehicle_report",
+                                  multiple_vehicles_involved: true,
+                                  involved_vehicles_count: 3,
+                                  new_evidence_summary: "Police spot panchanama identifies 3 vehicles involved in chain impact.",
+                                })
+                              }
+                              className="px-2.5 py-1 text-xs font-semibold bg-rose-50 border border-rose-300 text-rose-950 rounded hover:bg-rose-100"
+                            >
+                              + Multi-Vehicle Evidence
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                runAction("Raise High Fraud Lead (Non-Rejecting)", `/api/v1/claims/${claimId}/risk/recalculate`, "POST", {
+                                  trigger_event: "high_fraud_signal_lead",
+                                  fraud_signal_score_override_attempt: "0.860",
+                                  new_evidence_summary: "Entity graph detected cross-claim workshop phone overlap (escalate to SIU; do not auto-reject).",
+                                })
+                              }
+                              className="px-2.5 py-1 text-xs font-semibold bg-amber-50 border border-amber-300 text-amber-950 rounded hover:bg-amber-100"
+                            >
+                              + Fraud Signal (Escalates, Never Rejects)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {hist.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="text-xs font-bold uppercase text-slate-500">Risk Transition History ({hist.length})</div>
+                        <div className="space-y-1.5">
+                          {hist.map((h) => (
+                            <div key={h.event_id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <span className="font-bold text-slate-900">
+                                  {h.previous_tier ? `${h.previous_tier} → ${h.new_tier}` : `INITIAL ${h.new_tier}`}
+                                </span>{" "}
+                                <span className="text-slate-600">({h.trigger_event})</span>
+                                <div className="text-slate-600 mt-0.5">{h.explanation}</div>
+                              </div>
+                              <span className="font-mono text-[11px] text-slate-500">{h.timestamp.slice(0, 19).replace("T", " ")}Z</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
               <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
@@ -939,7 +1175,14 @@ export default function Claim360Page() {
                 <div key={ev.id} className="p-3 border border-slate-200 rounded-lg text-xs space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-900">{ev.filename}</span>
-                    <span className="px-2 py-0.5 bg-slate-100 rounded">{ev.doc_type}</span>
+                    <div className="flex items-center gap-1.5">
+                      {ev.legal_hold && (
+                        <span className="px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300 rounded">
+                          LEGAL HOLD PRESERVED
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 bg-slate-100 rounded">{ev.doc_type}</span>
+                    </div>
                   </div>
                   <div className="text-slate-500">SHA-256: {ev.sha256.slice(0, 20)}... · Status: {ev.doc_status}</div>
                   {ev.image_quality_status === "recapture_needed" && (

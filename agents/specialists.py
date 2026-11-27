@@ -19,6 +19,7 @@ from services.agent_runtime.gateway import ModelGateway
 from services.document_ai.processor import reconcile_claim_documents
 from services.rules_engine.knowledge import HybridPolicyRetriever
 from services.rules_engine.loader import load_rule_files
+from services.workflow.risk_engine import classify_claim_risk_from_facts, compute_fraud_signal_score
 
 _LOCALIZED_FNOL_ACK: dict[str, str] = {
     "en-IN": "Claim registered safely. Missing documents will never block intake (IRDAI 2024).",
@@ -649,7 +650,7 @@ class CoverageIntelligenceAgent(BoundedAgent):
 
 class ClaimTriageAgent(BoundedAgent):
     agent_name = "claim_triage"
-    prompt_version = "triage-v2.0"
+    prompt_version = "triage-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["claim_triage"].allowed_tools)
 
     def _run(
@@ -663,97 +664,109 @@ class ClaimTriageAgent(BoundedAgent):
         ModelGateway.generate_structured_summary(task="claim_triage", facts=request.minimised_facts)
         rules = load_rule_files()["IN-IRDAI-MC-2024"]["controls"]
         threshold = Decimal(str(rules["mandatory_survey_threshold_inr"]))
-        facts = request.minimised_facts
+        facts = dict(request.minimised_facts)
+        facts.setdefault("claim_type", request.claim_type)
 
-        est_loss = Decimal(str(facts.get("estimated_loss_inr", "0.00")))
+        risk = classify_claim_risk_from_facts(facts, trigger_event="claim_triage_agent")
+        risk_tier = str(risk["risk_tier"])
+        auto_elig = risk["automation_eligibility"]
+
+        est_loss = Decimal(str(facts.get("effective_loss_inr") or facts.get("estimated_loss_inr") or "0.00"))
         injury = bool(facts.get("injury_or_fatality", False))
-        ev_impact = bool(facts.get("ev_battery_impacted", False)) or bool(facts.get("is_ev", False))
+        multi_vehicle = bool(risk["evaluated_dimensions"]["multiple_vehicles_involved"])
+        ev_impact = bool(risk["evaluated_dimensions"]["ev_battery_impacted"])
         immobile = bool(facts.get("vehicle_immobile", False))
         airbags = bool(facts.get("airbags_deployed", False))
         police = bool(facts.get("police_involved", False))
         claim_type = str(facts.get("claim_type", request.claim_type))
         peril = str(facts.get("peril_cause", "road_accident"))
 
-        requires_survey = (
-            est_loss >= threshold
-            or peril in {"theft", "fire", "flood", "total_loss", "ev_high_voltage", "tp_bodily_injury"}
-            or injury
-            or ev_impact
-        )
+        requires_survey = bool(auto_elig["requires_mandatory_survey"])
+        queue = str(auto_elig["recommended_queue"])
+        priority = str(auto_elig["routing_priority"])
+        recommended_triage_track = str(auto_elig["recommended_triage_track"])
 
         if injury or claim_type == "third_party":
-            queue = "legal_tp_specialist"
             severity = "critical"
             complexity = "specialist_critical"
-            priority = "P1_URGENT"
             liability_indicator = "statutory_tp_mact"
             injury_status = "tp_bodily_injury_or_fatality"
+        elif multi_vehicle:
+            severity = "high"
+            complexity = "multi_vehicle_liability"
+            liability_indicator = "multi_vehicle_collision"
+            injury_status = "none"
         elif ev_impact:
-            queue = "ev_specialist"
             severity = "high"
             complexity = "specialist_ev"
-            priority = "P1_URGENT"
             liability_indicator = "first_party_od_ev_hv"
             injury_status = "none"
-        elif peril in {"theft", "fire", "flood"} or est_loss >= Decimal("250000") or airbags:
-            queue = "complex_od_survey"
+        elif risk_tier == "HIGH":
             severity = "high"
-            complexity = "complex"
-            priority = "P2_HIGH"
+            complexity = "complex_investigation"
             liability_indicator = "first_party_od"
             injury_status = "none"
-        elif requires_survey:
-            queue = "standard_survey_queue"
+        elif risk_tier == "MEDIUM":
             severity = "medium"
             complexity = "standard"
-            priority = "P2_HIGH" if immobile else "P3_NORMAL"
             liability_indicator = "first_party_od"
             injury_status = "none"
         else:
-            queue = "low_risk_od_assisted"
             severity = "low"
             complexity = "straight_through_eligible"
-            priority = "P4_FAST_TRACK"
             liability_indicator = "first_party_od"
             injury_status = "none"
 
         drivable_status = "unsafe_ev_hv" if (ev_impact and immobile) else ("immobile_towing_required" if immobile else "drivable")
-        if injury or claim_type == "third_party" or ev_impact:
-            recommended_triage_track = "INVESTIGATION_REQUIRED" if (injury or claim_type == "third_party") else "SURVEY_REQUIRED"
-        elif requires_survey:
-            recommended_triage_track = "SURVEY_REQUIRED"
-        else:
-            recommended_triage_track = "FAST_TRACK"
 
         actions: list[AgentActionExecution] = []
         tools_used = ["claim_facts_read", "triage_rules_read", "queue_recommend"]
         if immobile:
             actions.append(executor.dispatch_towing(agent_name=self.agent_name, ev_flatbed=ev_impact))
             tools_used.append("dispatch_towing")
-        if injury or claim_type == "third_party":
+        if injury or claim_type == "third_party" or multi_vehicle:
             actions.append(
                 executor.create_claim_task(
                     agent_name=self.agent_name,
                     task_type="legal_tp_review",
-                    title="TP Injury / Police FIR Legal Review",
-                    description="Mandatory Legal/TP specialist review for bodily injury / FIR claim.",
+                    title="TP Injury / Multi-Vehicle / Police FIR Legal Review",
+                    description="Mandatory Legal/TP specialist review for bodily injury, multi-vehicle liability, or FIR claim.",
                     assigned_role="legal_tp",
                     priority="critical",
-                    reason_code="RC_TP_INJURY_PRIORITY",
+                    reason_code="RC_TP_INJURY_OR_MULTI_VEHICLE_PRIORITY",
                     due_hours=6,
                 )
             )
             tools_used.append("create_claim_task")
 
-        reason_codes = [f"RC_PRIORITY_{priority}", f"RC_QUEUE_{queue.upper()}"]
+        reason_codes = [
+            f"RC_RISK_TIER_{risk_tier}",
+            f"RC_PATH_{str(risk['operational_path']).upper()}",
+            f"RC_PRIORITY_{priority}",
+            f"RC_QUEUE_{queue.upper()}",
+        ]
+        for drv in risk["drivers"][:3]:
+            reason_codes.append(f"RC_{drv['code']}")
         if requires_survey:
             reason_codes.append("RC_MANDATORY_SURVEY_TRIGGERED")
-        else:
+        elif auto_elig["straight_through_eligible"]:
             reason_codes.append("RC_FAST_TRACK_ELIGIBLE")
         if immobile:
             reason_codes.append("RC_VEHICLE_IMMOBILE")
 
         result = {
+            "risk_tier": risk_tier,
+            "operational_path": risk["operational_path"],
+            "operational_path_label": risk["operational_path_label"],
+            "handling_mode": risk["handling_mode"],
+            "risk_goal": risk["goal"],
+            "risk_score": risk["risk_score"],
+            "fraud_signal_score": risk["fraud_signal_score"],
+            "fraud_score_can_reject": False,
+            "risk_drivers": risk["drivers"],
+            "low_risk_criteria_check": risk["low_risk_criteria_check"],
+            "automation_eligibility": auto_elig,
+            "risk_explanation": risk["explanation"],
             "severity_band": severity,
             "complexity_tier": complexity,
             "injury_status": injury_status,
@@ -767,6 +780,7 @@ class ClaimTriageAgent(BoundedAgent):
             "signals_used": {
                 "estimated_loss_inr": str(est_loss),
                 "injury_or_fatality": injury,
+                "multiple_vehicles_involved": multi_vehicle,
                 "ev_battery_impacted": ev_impact,
                 "vehicle_immobile": immobile,
                 "airbags_deployed": airbags,
@@ -776,20 +790,20 @@ class ClaimTriageAgent(BoundedAgent):
         }
         decision = DecisionIntelligence(
             decision_id=self._decision_id(self.agent_name),
-            reason_codes=reason_codes,
+            reason_codes=list(dict.fromkeys(reason_codes)),
             evidence=[
+                f"Risk Tier={risk_tier} (score={risk['risk_score']}, path={risk['operational_path']})",
                 f"Estimated loss INR {est_loss} vs IRDAI survey threshold INR {threshold}",
-                f"Drivable={drivable_status}, Injury={injury}, EV={ev_impact}",
+                f"Drivable={drivable_status}, Injury={injury}, MultiVehicle={multi_vehicle}, EV={ev_impact}",
             ],
-            policy_rule_refs=["IN-IRDAI-MC-2024:1.0.0", "COMMON-SLA-CATALOGUE-V1:1.0.0"],
-            confidence=0.94,
+            policy_rule_refs=["IN-RISK-PROCESSING-2026:1.0.0", "IN-IRDAI-MC-2024:1.0.0", "COMMON-SLA-CATALOGUE-V1:1.0.0"],
+            confidence=0.95,
             confidence_band=ConfidenceBand.HIGH,
-            routing_outcome=f"{queue}:{priority}",
-            explanation=(
-                f"Assigned severity={severity}, complexity={complexity}, priority={priority}, queue={queue}. "
-                f"Mandatory survey={'YES' if requires_survey else 'NO'}."
-            ),
-            alternatives_considered=["low_risk_od_assisted (rejected if loss >= 50k, EV, injury, or special peril)"],
+            routing_outcome=f"{risk_tier}:{risk['operational_path']}:{queue}",
+            explanation=risk["explanation"],
+            alternatives_considered=[
+                "standard_claims (rejected if LOW straight-through eligible or HIGH specialist escalation required)"
+            ],
         )
 
         return AgentInvocationResponse(
@@ -797,24 +811,34 @@ class ClaimTriageAgent(BoundedAgent):
             status=AgentStatus.COMPLETED,
             result=result,
             published_result=result,
-            confidence=0.94,
+            confidence=0.95,
             confidence_band=ConfidenceBand.HIGH,
             evidence_refs=[
+                EvidenceCitation(
+                    source_type="rule",
+                    source_id="IN-RISK-PROCESSING-2026",
+                    reference=f"3-Tier Risk Processing ({risk_tier} -> {risk['operational_path']})",
+                    excerpt=risk["explanation"],
+                ),
                 EvidenceCitation(
                     source_type="rule",
                     source_id="IN-IRDAI-MC-2024",
                     reference="Mandatory survey >= INR 50,000",
                     excerpt=f"Estimated loss INR {est_loss} vs threshold INR {threshold}.",
-                )
+                ),
             ],
-            limitations=["Triage uses operational risk/complexity signals only; never protected traits."],
+            limitations=["Triage uses operational risk/complexity signals only; never protected traits. Fraud score never rejects claims."],
             actions_executed=actions,
             decision=decision,
             model_id=model_id,
             model_version=model_version,
             prompt_version=self.prompt_version,
             rule_versions=request.rule_versions,
-            suggested_next_action="assign_surveyor" if requires_survey else "ai_damage_assessment",
+            suggested_next_action=(
+                "siu_or_specialist_investigation"
+                if risk_tier == "HIGH"
+                else ("assign_surveyor" if requires_survey else "ai_damage_assessment")
+            ),
             tools_invoked=list(dict.fromkeys(tools_used)),
         )
 
@@ -1028,7 +1052,7 @@ class EstimateValidationAgent(BoundedAgent):
 
 class FraudIntelligenceAgent(BoundedAgent):
     agent_name = "fraud_intelligence"
-    prompt_version = "fraud-v2.0"
+    prompt_version = "fraud-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["fraud_intelligence"].allowed_tools)
 
     def _run(
@@ -1048,6 +1072,7 @@ class FraudIntelligenceAgent(BoundedAgent):
             for i in indicators
             if i.get("indicator_code") in {"FRD-IMG-HASH-REUSE", "FRD-GARAGE-ANOMALY-NETWORK", "FRD-ENTITY-RING-CLUSTER", "FRD-REPEAT-VEHICLE"}
         ]
+        fraud_signal_score = compute_fraud_signal_score(indicators)
 
         actions: list[AgentActionExecution] = []
         tools_used = ["fraud_feature_service", "fraud_rules", "entity_graph_query"]
@@ -1071,9 +1096,13 @@ class FraudIntelligenceAgent(BoundedAgent):
         reason_codes = [str(i.get("indicator_code", "FRD_SIGNAL")) for i in indicators] or ["RC_NO_FRAUD_SIGNALS"]
         if network_patterns:
             reason_codes.append("RC_NETWORK_PATTERN_DETECTED")
+        reason_codes.append("RC_FRAUD_SCORE_NON_REJECTION_GUARD")
 
         result = {
             "alert_count": len(indicators),
+            "fraud_signal_score": str(fraud_signal_score),
+            "fraud_score_can_reject": False,
+            "fraud_guardrail_note": "Fraud score is an investigative risk signal only and NEVER determines claim rejection.",
             "network_patterns_detected": network_patterns,
             "suspicious_connections": suspicious_connections,
             "indicators": indicators,
@@ -1083,19 +1112,20 @@ class FraudIntelligenceAgent(BoundedAgent):
             decision_id=self._decision_id(self.agent_name),
             reason_codes=reason_codes,
             evidence=[
-                f"Indicators={len(indicators)}, Network patterns={network_patterns}",
+                f"Indicators={len(indicators)}, fraud_signal_score={fraud_signal_score} (non-rejecting advisory signal), Network patterns={network_patterns}",
                 f"Suspicious entity connections={len(suspicious_connections)}",
             ],
-            policy_rule_refs=["IRDAI-FRAUD-DUE-PROCESS", "IN-DOA-MATRIX-2026:fraud_alert_open"],
+            policy_rule_refs=["IRDAI-FRAUD-DUE-PROCESS", "IN-RISK-PROCESSING-2026:1.0.0", "IN-DOA-MATRIX-2026:fraud_alert_open"],
             confidence=conf,
             confidence_band=self._band(conf),
             routing_outcome=routing,
             explanation=(
-                f"Raised {len(indicators)} explainable alert-only lead(s) with benign explanations for SIU review; L1 approval restricted until dispositioned."
+                f"Raised {len(indicators)} explainable alert-only lead(s) (fraud_signal_score={fraud_signal_score}) for SIU review; "
+                "escalated to HIGH risk human investigation — fraud score NEVER auto-rejects the claim."
                 if indicators
-                else "Evaluated entity network, checksum reuse, policy timing, and estimate anomalies; zero fraud signals detected."
+                else f"Evaluated entity network, checksum reuse, policy timing, and estimate anomalies; zero fraud signals detected (score={fraud_signal_score})."
             ),
-            alternatives_considered=["auto_reject_claim_on_alert (strictly prohibited by IRDAI Fraud Due Process)"],
+            alternatives_considered=["auto_reject_claim_on_alert (strictly prohibited by IRDAI Fraud Due Process & IN-RISK-PROCESSING-2026)"],
         )
 
         return AgentInvocationResponse(
@@ -1106,7 +1136,7 @@ class FraudIntelligenceAgent(BoundedAgent):
             confidence=conf,
             confidence_band=self._band(conf),
             limitations=[
-                "Indicators are investigative leads only. Alert alone NEVER establishes fraud or blocks/rejects a claim."
+                "Indicators and fraud_signal_score are investigative leads only. Fraud score NEVER determines claim rejection or blocks intake."
             ],
             actions_executed=actions,
             decision=decision,
@@ -1243,7 +1273,7 @@ class ProviderCoordinationAgent(BoundedAgent):
 
 class SettlementRecommendationAgent(BoundedAgent):
     agent_name = "settlement_recommendation"
-    prompt_version = "settlement-v2.0"
+    prompt_version = "settlement-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["settlement_recommendation"].allowed_tools)
 
     def _run(
@@ -1261,10 +1291,29 @@ class SettlementRecommendationAgent(BoundedAgent):
         net_str = str(calc.get("net") or calc.get("net_payable_inr") or "0.00")
         net_amt = Decimal(net_str)
         active_conditions = list(facts.get("active_conditions", []))
+        risk_tier = str(facts.get("risk_tier", "MEDIUM"))
+        auto_limit = Decimal(str(facts.get("auto_approval_limit_inr", "25000.00")))
+        fast_track_auto = (
+            risk_tier == "LOW"
+            and bool(facts.get("straight_through_eligible", False))
+            and bool(facts.get("allow_fast_track_auto_approve", False))
+            and not active_conditions
+            and Decimal("0.00") < net_amt <= auto_limit
+            and not facts.get("initiate_approved_payment")
+        )
 
-        if "tp_injury" in active_conditions or "tp_fatality" in active_conditions:
+        if fast_track_auto:
+            required_tier = "fast_track_auto_limit"
+        elif "tp_injury" in active_conditions or "tp_fatality" in active_conditions:
             required_tier = "legal_tp"
-        elif "fraud_alert_open" in active_conditions or "ev_battery" in active_conditions or "total_loss" in active_conditions or net_amt > Decimal("75000.00"):
+        elif (
+            "fraud_alert_open" in active_conditions
+            or "ev_battery" in active_conditions
+            or "total_loss" in active_conditions
+            or "high_risk_complex" in active_conditions
+            or risk_tier == "HIGH"
+            or net_amt > Decimal("75000.00")
+        ):
             required_tier = "claims_manager"
         else:
             required_tier = "claims_handler"
@@ -1284,7 +1333,7 @@ class SettlementRecommendationAgent(BoundedAgent):
             )
             actions.append(pay_exec)
             tools_used.append("initiate_approved_payment")
-        else:
+        elif not fast_track_auto:
             actions.append(
                 executor.generate_approval_request(
                     agent_name=self.agent_name,
@@ -1298,11 +1347,13 @@ class SettlementRecommendationAgent(BoundedAgent):
 
         is_ctl = bool(calc.get("is_total_loss", False)) or "total_loss" in active_conditions
         routing = (
-            "ctl_total_loss_escalate_manager"
-            if is_ctl
-            else f"route_to_{required_tier}_checker"
+            "fast_track_auto_approved_within_limit"
+            if fast_track_auto
+            else ("ctl_total_loss_escalate_manager" if is_ctl else f"route_to_{required_tier}_checker")
         )
         reason_codes = ["RC_DECIMAL_CALCULATION_VERIFIED", f"RC_DOA_TIER_{required_tier.upper()}"]
+        if fast_track_auto:
+            reason_codes.append("RC_FAST_TRACK_AUTO_APPROVED")
         if is_ctl:
             reason_codes.append("RC_CTL_EXCEEDS_75PCT_IDV")
         for cond in active_conditions:
@@ -1313,21 +1364,30 @@ class SettlementRecommendationAgent(BoundedAgent):
             "scenarios": scenarios,
             "required_doa_tier": required_tier,
             "active_conditions": active_conditions,
+            "risk_tier": risk_tier,
+            "auto_approved": fast_track_auto,
+            "approval_mode": "straight_through_automated" if fast_track_auto else "maker_checker_doa",
+            "auto_approval_limit_inr": str(auto_limit),
         }
         decision = DecisionIntelligence(
             decision_id=self._decision_id(self.agent_name),
             reason_codes=reason_codes,
             evidence=[
-                f"Net payable INR {net_amt}, Scenarios evaluated={len(scenarios)}",
-                f"Active DoA conditions={active_conditions}, Required checker tier={required_tier}",
+                f"Net payable INR {net_amt}, Risk Tier={risk_tier}, Scenarios evaluated={len(scenarios)}",
+                (
+                    f"LOW risk straight-through limit <= INR {auto_limit} satisfied with zero anomalies"
+                    if fast_track_auto
+                    else f"Active DoA conditions={active_conditions}, Required checker tier={required_tier}"
+                ),
             ],
-            policy_rule_refs=["IN-MOTOR-DEPRECIATION-2024:1.0.0", "IN-DOA-MATRIX-2026:1.0.0"],
+            policy_rule_refs=["IN-MOTOR-DEPRECIATION-2024:1.0.0", "IN-DOA-MATRIX-2026:1.0.0", "IN-RISK-PROCESSING-2026:1.0.0"],
             confidence=0.96,
             confidence_band=ConfidenceBand.HIGH,
             routing_outcome=routing,
             explanation=(
-                f"Evaluated {max(len(scenarios), 1)} settlement scenario(s) using deterministic Python Decimal math. "
-                f"Net recommended INR {net_amt}; routed to independent {required_tier} under Maker-Checker DoA."
+                f"LOW RISK straight-through settlement INR {net_amt} auto-approved within IN-RISK-PROCESSING-2026 limit (<= INR {auto_limit}). Ready for Finance payout."
+                if fast_track_auto
+                else f"Evaluated {max(len(scenarios), 1)} settlement scenario(s) using deterministic Python Decimal math. Net recommended INR {net_amt}; routed to independent {required_tier} under Maker-Checker DoA."
             ),
             alternatives_considered=[
                 s.get("label", s.get("scenario_code", "scenario")) for s in scenarios if not s.get("recommended")
@@ -1336,19 +1396,23 @@ class SettlementRecommendationAgent(BoundedAgent):
 
         return AgentInvocationResponse(
             agent_name=self.agent_name,
-            status=AgentStatus.NEEDS_HUMAN,  # Settlement always requires authorised human approval
+            status=AgentStatus.COMPLETED if fast_track_auto else AgentStatus.NEEDS_HUMAN,
             result=enriched,
             published_result=enriched,
             confidence=0.96,
             confidence_band=ConfidenceBand.HIGH,
-            limitations=["Agent cannot self-approve payout; independent Maker-Checker and Finance approval required."],
+            limitations=[
+                "Straight-through auto-approval permitted strictly for LOW risk claims <= INR 25,000; Finance payment still gated."
+                if fast_track_auto
+                else "Agent cannot self-approve payout; independent Maker-Checker and Finance approval required."
+            ],
             actions_executed=actions,
             decision=decision,
             model_id=model_id,
             model_version=model_version,
             prompt_version=self.prompt_version,
             rule_versions=request.rule_versions,
-            suggested_next_action="route_to_maker_checker_approval",
+            suggested_next_action="ready_for_finance_payment" if fast_track_auto else "route_to_maker_checker_approval",
             tools_invoked=list(dict.fromkeys(tools_used)),
         )
 

@@ -30,6 +30,7 @@ from apps.api.schemas import (
     ProviderCoordinateRequest,
     RepairMilestoneRequest,
     ReworkSubmitRequest,
+    RiskContextUpdateRequest,
     SettlementRecommendRequest,
     SingleAgentOrchestrateRequest,
     SurveyorAssignRequest,
@@ -96,6 +97,12 @@ from services.rules_engine.loader import get_active_rule
 from services.settlement.authority import validate_approval_authority
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
 from services.workflow.orchestrator import ClaimOrchestrator, record_agent_publication
+from services.workflow.risk_engine import (
+    assert_fraud_score_never_rejects,
+    evaluate_and_persist_risk,
+    gather_claim_risk_facts,
+    sanitize_risk_payload_for_user,
+)
 from services.workflow.sla_engine import complete_stage_sla_timer, compute_timer_status, create_stage_sla_timer
 from services.workflow.state_specs import WORKFLOW_STATE_SPECS
 
@@ -130,16 +137,24 @@ def _build_agent_req(
     )
 
 
-def _serialize_claim_summary(c: Claim, db: Session) -> dict[str, Any]:
+def _serialize_claim_summary(c: Claim, db: Session, user: UserContext | None = None) -> dict[str, Any]:
     timers = db.query(SLATimer).filter(SLATimer.claim_id == c.id).all()
     sla_flags = [compute_timer_status(t.due_at, t.completed_at, t.paused) for t in timers]
     sla_health = "breached" if "breached" in sla_flags else ("warning" if "warning" in sla_flags else "on_track")
+    siu_visible = (user is None) or (user.role in SIU_ALLOWED_ROLES)
     return {
         "id": c.id,
         "claim_number": c.claim_number,
         "claim_type": c.claim_type,
         "peril_cause": c.peril_cause,
         "status": c.status,
+        "risk_tier": c.risk_tier or "MEDIUM",
+        "operational_path": c.operational_path or "standard",
+        "risk_score": int(c.risk_score or 0),
+        "fraud_signal_score": str(c.fraud_signal_score or Decimal("0.000")) if siu_visible else None,
+        "multiple_vehicles_involved": bool(c.multiple_vehicles_involved),
+        "involved_vehicles_count": int(c.involved_vehicles_count or 1),
+        "legal_dispute": bool(c.legal_dispute),
         "severity_band": c.severity_band,
         "queue_name": c.queue_name,
         "policy_number_input": c.policy_number_input,
@@ -163,6 +178,8 @@ def list_claims(
     status: Optional[str] = None,
     queue_name: Optional[str] = None,
     claim_type: Optional[str] = None,
+    risk_tier: Optional[str] = None,
+    operational_path: Optional[str] = None,
     search: Optional[str] = None,
     user: UserContext = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -181,6 +198,10 @@ def list_claims(
         q = q.filter(Claim.queue_name == queue_name)
     if claim_type:
         q = q.filter(Claim.claim_type == claim_type)
+    if risk_tier:
+        q = q.filter(Claim.risk_tier == risk_tier.upper())
+    if operational_path:
+        q = q.filter(Claim.operational_path == operational_path.lower())
     if search:
         like = f"%{search}%"
         q = q.filter(
@@ -190,7 +211,7 @@ def list_claims(
         )
 
     claims = q.order_by(Claim.created_at.desc()).all()
-    return {"items": [_serialize_claim_summary(c, db) for c in claims], "total": len(claims)}
+    return {"items": [_serialize_claim_summary(c, db, user=user) for c in claims], "total": len(claims)}
 
 
 @router.post("/claims/intimations", status_code=201)
@@ -210,7 +231,7 @@ def create_fnol_intimation(
         if existing:
             return {
                 "idempotent_replay": True,
-                "claim": _serialize_claim_summary(existing, db),
+                "claim": _serialize_claim_summary(existing, db, user=user),
                 "acknowledgement": f"Claim {existing.claim_number} already registered.",
             }
 
@@ -244,16 +265,18 @@ def create_fnol_intimation(
 
     irdai = get_active_rule(db, "IN-IRDAI-MC-2024")["controls"]
     threshold = Decimal(str(irdai["mandatory_survey_threshold_inr"]))
+    ev_impacted = bool(body.ev_battery_impacted or body.peril_cause == "ev_high_voltage")
     req_survey = (
         body.estimated_loss_inr >= threshold
-        or body.peril_cause in {"theft", "fire", "flood", "total_loss"}
+        or body.peril_cause in {"theft", "fire", "flood", "total_loss", "ev_high_voltage", "tp_bodily_injury"}
         or body.injury_or_fatality
-        or body.ev_battery_impacted
+        or ev_impacted
     )
 
     clean_desc, _, _ = sanitize_untrusted_text(body.incident_description)
     claim_num = f"CLM-DEMO-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:6].upper()}"
-    missing_docs = ["Policy Schedule", "Registration Certificate (RC)", "Driving Licence (DL)", "6-Angle Photos"]
+    missing_docs = [] if body.documents_complete_at_fnol else ["Policy Schedule", "Registration Certificate (RC)", "Driving Licence (DL)", "6-Angle Photos"]
+    multi_veh = bool(body.multiple_vehicles_involved or body.involved_vehicles_count > 1)
 
     claim = Claim(
         tenant_id=user.tenant_id,
@@ -266,8 +289,8 @@ def create_fnol_intimation(
         peril_cause=body.peril_cause,
         intake_channel=body.intake_channel,
         status=ClaimStatus.SUBMITTED.value,
-        severity_band="critical" if body.injury_or_fatality else ("high" if req_survey else "medium"),
-        queue_name="legal_tp_specialist" if (body.injury_or_fatality or body.claim_type == "third_party") else "evidence_intake",
+        severity_band="critical" if body.injury_or_fatality else ("high" if (req_survey or multi_veh) else "medium"),
+        queue_name="legal_tp_specialist" if (body.injury_or_fatality or body.claim_type == "third_party" or multi_veh) else "evidence_intake",
         incident_at=inc_at,
         incident_location=body.incident_location,
         incident_description=clean_desc,
@@ -280,14 +303,21 @@ def create_fnol_intimation(
         injury_or_fatality=body.injury_or_fatality,
         police_involved=body.police_involved,
         towing_needed=body.towing_needed,
-        ev_battery_impacted=body.ev_battery_impacted or (vehicle.is_ev if vehicle else False),
+        ev_battery_impacted=ev_impacted,
+        multiple_vehicles_involved=multi_veh,
+        involved_vehicles_count=max(1, body.involved_vehicles_count, 2 if multi_veh else 1),
+        legal_dispute=body.legal_dispute,
         estimated_loss_inr=body.estimated_loss_inr,
         requires_mandatory_survey=req_survey,
         preferred_language=body.preferred_language,
         assigned_garage_id=body.preferred_garage_id,
         missing_documents=missing_docs,
         duplicate_candidate_claim_id=dup.id if dup else None,
-        next_expected_action="Upload RC, DL, Policy Schedule, and 6 vehicle photos (claim accepted without blocking)",
+        next_expected_action=(
+            "Baseline documents complete; ready for Risk-Based Triage / Orchestration"
+            if not missing_docs
+            else "Upload RC, DL, Policy Schedule, and 6 vehicle photos (claim accepted without blocking)"
+        ),
         workflow_state={
             "workflow_run_id": f"wf-{uuid.uuid4().hex[:10]}",
             "steps_completed": [],
@@ -320,6 +350,9 @@ def create_fnol_intimation(
             "police_involved": claim.police_involved,
             "towing_needed": claim.towing_needed,
             "ev_battery_impacted": claim.ev_battery_impacted,
+            "multiple_vehicles_involved": claim.multiple_vehicles_involved,
+            "involved_vehicles_count": claim.involved_vehicles_count,
+            "legal_dispute": claim.legal_dispute,
             "estimated_loss_inr": str(claim.estimated_loss_inr),
             "missing_documents": missing_docs,
             "auto_send_ack": body.auto_send_ack,
@@ -334,7 +367,14 @@ def create_fnol_intimation(
         language=claim.preferred_language,
         template_id="FNOL_ACKNOWLEDGEMENT",
         subject=f"Claim {claim.claim_number} Registered (DEMO / SYNTHETIC)",
-        body=f"Your motor claim {claim.claim_number} for vehicle {claim.vehicle_reg_input} has been registered. Next steps: {', '.join(missing_docs)}.",
+        body=(
+            f"Your motor claim {claim.claim_number} for vehicle {claim.vehicle_reg_input} has been registered on {claim.risk_tier} risk ({claim.operational_path}). "
+            + (
+                "All core documents attached; eligible for straight-through assisted processing."
+                if not missing_docs
+                else f"Next steps: {', '.join(missing_docs)}."
+            )
+        ),
         requires_human_review=False,
         delivery_status="sent_mock",
     )
@@ -364,7 +404,8 @@ def create_fnol_intimation(
 
     return {
         "idempotent_replay": False,
-        "claim": _serialize_claim_summary(claim, db),
+        "claim": _serialize_claim_summary(claim, db, user=user),
+        "risk_assessment": sanitize_risk_payload_for_user(claim.risk_assessment, siu_visible=(user.role in SIU_ALLOWED_ROLES)),
         "acknowledgement": ack_comm.body,
         "duplicate_review_alert": f"Potential related open claim: {dup.claim_number}" if dup else None,
         "agent_response": agent_res.model_dump(),
@@ -585,10 +626,17 @@ def get_claim_360(
     )
     canonical_st = to_canonical_state(claim.status)
     state_contract = WORKFLOW_STATE_SPECS.get(canonical_st)
+    safe_risk_assessment = sanitize_risk_payload_for_user(claim.risk_assessment, siu_visible=siu_visible)
+    raw_risk_history = list(claim.risk_history or [])
+    safe_risk_history = (
+        raw_risk_history
+        if siu_visible
+        else [{**h, "fraud_signal_score": None} for h in raw_risk_history]
+    )
 
     return {
         "claim": {
-            **_serialize_claim_summary(claim, db),
+            **_serialize_claim_summary(claim, db, user=user),
             "canonical_state": canonical_st,
             "incident_at": claim.incident_at.isoformat(),
             "incident_location": claim.incident_location,
@@ -602,10 +650,14 @@ def get_claim_360(
             "missing_documents": claim.missing_documents,
             "coverage_factsheet": claim.coverage_factsheet,
             "triage_summary": claim.triage_summary,
+            "risk_assessment": safe_risk_assessment,
+            "risk_history": safe_risk_history,
             "workflow_state": claim.workflow_state,
             "duplicate_candidate_claim_id": claim.duplicate_candidate_claim_id,
             "assigned_handler_id": claim.assigned_handler_id,
         },
+        "risk_assessment": safe_risk_assessment,
+        "risk_history": safe_risk_history,
         "policy": {
             "id": policy.id,
             "policy_number": policy.policy_number,
@@ -649,6 +701,7 @@ def get_claim_360(
                 "malware_scan_status": ev.malware_scan_status,
                 "prompt_injection_flagged": ev.prompt_injection_flagged,
                 "ocr_text": ev.ocr_text,
+                "legal_hold": bool(ev.legal_hold),
                 "image_angle": ev.image_angle,
                 "image_quality_status": ev.image_quality_status,
                 "created_at": ev.created_at.isoformat(),
@@ -1066,6 +1119,24 @@ async def upload_evidence(
         },
         apply_state_progression=True,
     )
+    risk_res = evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event=f"evidence_uploaded:{ev.doc_type}",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=(
+            claim.status
+            not in {
+                ClaimStatus.SUBMITTED.value,
+                ClaimStatus.REGISTERED.value,
+                ClaimStatus.VALIDATION.value,
+                ClaimStatus.EVIDENCE_PENDING.value,
+                ClaimStatus.HUMAN_REVIEW.value,
+            }
+        ),
+    )
 
     emit_outbox_event(
         db,
@@ -1092,10 +1163,14 @@ async def upload_evidence(
         "doc_type": ev.doc_type,
         "doc_status": ev.doc_status,
         "sha256": ev.sha256,
+        "legal_hold": bool(ev.legal_hold),
         "malware_scan_status": ev.malware_scan_status,
         "prompt_injection_flagged": ev.prompt_injection_flagged,
         "image_quality": extraction["image_quality"],
         "extracted_facts": created_facts,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "risk_assessment": sanitize_risk_payload_for_user(risk_res, siu_visible=(user.role in SIU_ALLOWED_ROLES)),
         "agent_response": agent_res.model_dump(),
     }
 
@@ -1155,6 +1230,17 @@ def correct_extracted_fact(
     if ev:
         ev.doc_status = "verified"
 
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="fact_verified_or_corrected",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
+
     record_audit_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1168,7 +1254,13 @@ def correct_extracted_fact(
         after_state={"verified_value": fact.verified_value, "validation_status": fact.validation_status},
     )
     db.commit()
-    return {"id": fact.id, "verified_value": fact.verified_value, "validation_status": fact.validation_status}
+    return {
+        "id": fact.id,
+        "verified_value": fact.verified_value,
+        "validation_status": fact.validation_status,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+    }
 
 
 @router.post("/claims/{claim_id}/coverage-checks")
@@ -1241,27 +1333,21 @@ def run_claim_triage(
 ):
     claim = _get_claim_for_user(db, claim_id, user)
     vehicle = db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
+    triage_facts = gather_claim_risk_facts(db, claim)
+    triage_facts.update({"is_ev": vehicle.is_ev if vehicle else False, "police_involved": claim.police_involved})
     orch = ClaimOrchestrator(db, user)
     agent_res = orch.run_agent(
         claim,
         "claim_triage",
         enforce_dependencies=False,
-        override_facts={
-            "estimated_loss_inr": str(claim.estimated_loss_inr),
-            "injury_or_fatality": claim.injury_or_fatality,
-            "ev_battery_impacted": claim.ev_battery_impacted,
-            "is_ev": vehicle.is_ev if vehicle else False,
-            "vehicle_immobile": claim.vehicle_immobile,
-            "airbags_deployed": claim.airbags_deployed,
-            "police_involved": claim.police_involved,
-            "claim_type": claim.claim_type,
-            "peril_cause": claim.peril_cause,
-        },
+        override_facts=triage_facts,
         apply_state_progression=True,
     )
     res_data = agent_res.result
     claim.next_expected_action = (
-        "Assign registered surveyor (IRDAI threshold/peril)" if claim.requires_mandatory_survey else "Run AI damage assessment"
+        "Specialist human-led investigation (HIGH RISK)"
+        if claim.risk_tier == "HIGH"
+        else ("Assign registered surveyor (IRDAI threshold/peril)" if claim.requires_mandatory_survey else "Run AI damage assessment")
     )
     emit_outbox_event(db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="TriageCompleted", payload=res_data)
     record_audit_event(
@@ -1273,10 +1359,22 @@ def run_claim_triage(
         action="CLAIM_TRIAGED",
         object_type="claim",
         object_id=claim.id,
-        details={"queue": claim.queue_name, "severity": claim.severity_band, "mandatory_survey": claim.requires_mandatory_survey},
+        details={
+            "queue": claim.queue_name,
+            "severity": claim.severity_band,
+            "mandatory_survey": claim.requires_mandatory_survey,
+            "risk_tier": claim.risk_tier,
+            "operational_path": claim.operational_path,
+        },
     )
     db.commit()
-    return {"claim_status": claim.status, "triage": claim.triage_summary}
+    return {
+        "claim_status": claim.status,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "risk_assessment": sanitize_risk_payload_for_user(claim.risk_assessment, siu_visible=(user.role in SIU_ALLOWED_ROLES)),
+        "triage": claim.triage_summary,
+    }
 
 
 @router.post("/claims/{claim_id}/damage-assessments")
@@ -1344,6 +1442,16 @@ def review_damage_observation(
         raise DomainError(ErrorCode.NOT_FOUND, "Damage assessment row not found", status_code=404)
     da.reviewer_outcome = body.reviewer_outcome
     da.reviewer_notes = body.reviewer_notes
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="damage_observation_reviewed",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
     record_audit_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1356,7 +1464,7 @@ def review_damage_observation(
         details={"outcome": body.reviewer_outcome},
     )
     db.commit()
-    return {"id": da.id, "reviewer_outcome": da.reviewer_outcome}
+    return {"id": da.id, "reviewer_outcome": da.reviewer_outcome, "risk_tier": claim.risk_tier}
 
 
 @router.post("/claims/{claim_id}/estimates", status_code=201)
@@ -1445,7 +1553,14 @@ def submit_and_validate_estimate(
         details={"claimed": str(est.total_claimed_inr), "recommended": str(est.total_approved_inr), "anomalies": len(val["anomalies"])},
     )
     db.commit()
-    return {"estimate_id": est.id, "validation": val, "agent_response": agent_res.model_dump()}
+    return {
+        "estimate_id": est.id,
+        "validation": val,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "risk_assessment": sanitize_risk_payload_for_user(claim.risk_assessment, siu_visible=(user.role in SIU_ALLOWED_ROLES)),
+        "agent_response": agent_res.model_dump(),
+    }
 
 
 @router.patch("/claims/{claim_id}/estimates/{estimate_id}/lines/{line_id}")
@@ -1474,6 +1589,17 @@ def review_estimate_line(
         est.total_approved_inr = sum((Decimal(str(ln.approved_amount_inr or 0)) for ln in all_lines), Decimal("0.00"))
         est.status = "approved"
 
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="estimate_line_reviewed",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
+
     record_audit_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1486,7 +1612,12 @@ def review_estimate_line(
         details={"status": body.reviewer_status, "approved_amount": str(line.approved_amount_inr)},
     )
     db.commit()
-    return {"id": line.id, "reviewer_status": line.reviewer_status, "approved_amount_inr": str(line.approved_amount_inr)}
+    return {
+        "id": line.id,
+        "reviewer_status": line.reviewer_status,
+        "approved_amount_inr": str(line.approved_amount_inr),
+        "risk_tier": claim.risk_tier,
+    }
 
 
 @router.post("/claims/{claim_id}/surveyor-assignments")
@@ -1628,6 +1759,17 @@ def submit_survey_report(
     else:
         claim.next_expected_action = "Generate deterministic settlement recommendation"
 
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="survey_report_submitted",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
+
     emit_outbox_event(
         db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="SurveyReportReceived", payload={"survey_id": sa.id}
     )
@@ -1643,7 +1785,7 @@ def submit_survey_report(
         details=sa.report_summary,
     )
     db.commit()
-    return {"survey_id": sa.id, "status": sa.status, "report_summary": sa.report_summary}
+    return {"survey_id": sa.id, "status": sa.status, "report_summary": sa.report_summary, "risk_tier": claim.risk_tier}
 
 
 @router.post("/claims/{claim_id}/fraud-checks")
@@ -1678,6 +1820,7 @@ def run_fraud_checks(
             db.add(fa)
             created.append(ind["indicator_code"])
 
+    db.flush()
     entity_graph = build_entity_relationship_graph(db, claim)
     agent_res = AGENT_REGISTRY["fraud_intelligence"].execute(
         _build_agent_req(
@@ -1692,6 +1835,15 @@ def run_fraud_checks(
         action_executor=ControlledActionExecutor(db, claim, user),
     )
     record_agent_publication(db, claim=claim, agent_name="fraud_intelligence", response=agent_res)
+    risk_res = evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="fraud_checks_evaluated",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=(claim.status != ClaimStatus.CLOSED.value),
+    )
     if created:
         emit_outbox_event(
             db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="FraudAlertRaised", payload={"codes": created}
@@ -1705,10 +1857,17 @@ def run_fraud_checks(
         action="FRAUD_INDICATORS_EVALUATED",
         object_type="claim",
         object_id=claim.id,
-        details={"new_alerts": created},
+        details={"new_alerts": created, "fraud_signal_score": risk_res["fraud_signal_score"], "risk_tier": claim.risk_tier},
     )
     db.commit()
-    return {"new_alerts": created, "agent_response": agent_res.model_dump()}
+    return {
+        "new_alerts": created,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "fraud_signal_score": risk_res["fraud_signal_score"] if user.role in SIU_ALLOWED_ROLES else None,
+        "fraud_score_can_reject": False,
+        "agent_response": agent_res.model_dump(),
+    }
 
 
 @router.get("/siu/alerts")
@@ -1762,6 +1921,17 @@ def disposition_fraud_alert(
     if body.disposition_reason:
         alert.disposition_reason = body.disposition_reason
 
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event=f"fraud_alert_dispositioned:{body.status}",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
+
     record_audit_event(
         db,
         tenant_id=claim.tenant_id,
@@ -1775,7 +1945,13 @@ def disposition_fraud_alert(
         after_state={"status": alert.status, "reason": alert.disposition_reason},
     )
     db.commit()
-    return {"id": alert.id, "status": alert.status, "disposition_reason": alert.disposition_reason}
+    return {
+        "id": alert.id,
+        "status": alert.status,
+        "disposition_reason": alert.disposition_reason,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+    }
 
 
 @router.get("/claims/{claim_id}/entity-graph")
@@ -1880,6 +2056,8 @@ def recommend_settlement(
         active_conditions.append("ev_battery")
     if calc.is_total_loss:
         active_conditions.append("total_loss")
+    if (claim.risk_tier or "MEDIUM") == "HIGH":
+        active_conditions.append("high_risk_complex")
 
     approval = Approval(
         tenant_id=claim.tenant_id,
@@ -1902,6 +2080,8 @@ def recommend_settlement(
         override_facts={
             "settlement_id": stl.id,
             "active_conditions": active_conditions,
+            "risk_tier": claim.risk_tier or "MEDIUM",
+            "allow_fast_track_auto_approve": False,
             "scenarios": scenarios_res["scenarios"],
             "calculation": {
                 "gross": str(calc.gross_assessed_inr),
@@ -1972,6 +2152,8 @@ def decide_approval(
         conditions.append("tp_injury")
     if claim.ev_battery_impacted:
         conditions.append("ev_battery")
+    if (claim.risk_tier or "MEDIUM") == "HIGH":
+        conditions.append("high_risk_complex")
 
     doa_ver = validate_approval_authority(
         db,
@@ -1980,6 +2162,9 @@ def decide_approval(
         amount_inr=Decimal(str(approval.amount_inr)),
         active_conditions=conditions,
         maker_user_id=approval.maker_user_id,
+        decision=body.decision,
+        rationale=body.rationale,
+        fraud_signal_score=claim.fraud_signal_score,
     )
 
     approval.checker_user_id = user.user_id
@@ -2377,6 +2562,15 @@ def open_grievance(
     )
     db.add(g)
     db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event=f"grievance_opened:{body.category}",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
     create_stage_sla_timer(db, tenant_id=claim.tenant_id, claim_id=claim.id, stage="grievance_resolution")
     emit_outbox_event(db, tenant_id=claim.tenant_id, aggregate_id=claim.id, event_type="GrievanceOpened", payload={"category": body.category})
     record_audit_event(
@@ -2411,8 +2605,18 @@ def resolve_grievance(
     g.owner_user_id = user.user_id
     g.resolved_at = datetime.now(timezone.utc)
     complete_stage_sla_timer(db, claim_id=claim.id, stage="grievance_resolution")
+    db.flush()
+    evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event="grievance_resolved",
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
     db.commit()
-    return {"id": g.id, "status": g.status, "resolution_notes": g.resolution_notes}
+    return {"id": g.id, "status": g.status, "resolution_notes": g.resolution_notes, "risk_tier": claim.risk_tier}
 
 
 @router.get("/claims/{claim_id}/orchestration")
@@ -2952,3 +3156,170 @@ def initiate_approved_payment_via_agent(
     pmt_task.completed_at = datetime.now(timezone.utc)
     db.commit()
     return {"claim_status": claim.status, "agent_response": agent_res.model_dump()}
+
+
+@router.get("/claims/{claim_id}/risk")
+def get_claim_risk_profile(
+    claim_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    assessment = claim.risk_assessment
+    if not assessment:
+        assessment = evaluate_and_persist_risk(
+            db,
+            claim,
+            trigger_event="initial_risk_inspection",
+            actor_id=user.user_id,
+            actor_role=user.role.value,
+            record_decision=False,
+            escalate_state=False,
+        )
+        db.commit()
+    safe_assessment = sanitize_risk_payload_for_user(assessment, siu_visible=siu_visible)
+    raw_hist = list(claim.risk_history or [])
+    safe_hist = raw_hist if siu_visible else [{**h, "fraud_signal_score": None} for h in raw_hist]
+    preserved_count = db.query(Evidence).filter(Evidence.claim_id == claim.id, Evidence.legal_hold.is_(True)).count()
+    return {
+        "claim_id": claim.id,
+        "claim_number": claim.claim_number,
+        "claim_status": claim.status,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "risk_score": int(claim.risk_score or 0),
+        "fraud_signal_score": str(claim.fraud_signal_score or Decimal("0.000")) if siu_visible else None,
+        "fraud_score_can_reject": False,
+        "siu_redacted": not siu_visible,
+        "preserved_evidence_count": preserved_count,
+        "risk_assessment": safe_assessment,
+        "risk_history": safe_hist,
+    }
+
+
+@router.post("/claims/{claim_id}/risk/recalculate")
+def recalculate_claim_risk(
+    claim_id: str,
+    body: RiskContextUpdateRequest,
+    user: UserContext = Depends(require_roles(*INTERNAL_ROLES, Role.SURVEYOR)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    candidate_score = (
+        body.fraud_signal_score_override_attempt
+        if body.fraud_signal_score_override_attempt is not None
+        else claim.fraud_signal_score
+    )
+    if body.decision_requested:
+        assert_fraud_score_never_rejects(
+            decision=body.decision_requested,
+            fraud_signal_score=candidate_score,
+            rationale=(
+                f"{body.trigger_event} fraud_score={candidate_score}"
+                if body.fraud_signal_score_override_attempt is not None
+                or "fraud" in body.trigger_event.lower()
+                else body.trigger_event
+            ),
+        )
+
+    if body.estimated_loss_inr is not None:
+        claim.estimated_loss_inr = body.estimated_loss_inr
+    if body.injury_or_fatality is not None:
+        claim.injury_or_fatality = body.injury_or_fatality
+    if body.multiple_vehicles_involved is not None:
+        claim.multiple_vehicles_involved = body.multiple_vehicles_involved
+        if body.multiple_vehicles_involved and int(claim.involved_vehicles_count or 1) < 2:
+            claim.involved_vehicles_count = 2
+    if body.involved_vehicles_count is not None:
+        claim.involved_vehicles_count = max(1, body.involved_vehicles_count)
+        if body.involved_vehicles_count > 1:
+            claim.multiple_vehicles_involved = True
+    if body.ev_battery_impacted is not None:
+        claim.ev_battery_impacted = body.ev_battery_impacted
+    if body.airbags_deployed is not None:
+        claim.airbags_deployed = body.airbags_deployed
+    if body.vehicle_immobile is not None:
+        claim.vehicle_immobile = body.vehicle_immobile
+    if body.towing_needed is not None:
+        claim.towing_needed = body.towing_needed
+    if body.legal_dispute is not None:
+        claim.legal_dispute = body.legal_dispute
+    if body.missing_documents is not None:
+        claim.missing_documents = list(body.missing_documents)
+    if body.incident_description_append:
+        clean_add, _, _ = sanitize_untrusted_text(body.incident_description_append)
+        claim.incident_description = f"{claim.incident_description}\n[New Evidence Update]: {clean_add}".strip()
+
+    if body.new_evidence_summary:
+        clean_note, has_inj, _ = sanitize_untrusted_text(body.new_evidence_summary)
+        db.add(
+            Evidence(
+                tenant_id=claim.tenant_id,
+                claim_id=claim.id,
+                doc_type="supplement_evidence_note",
+                doc_status="extracted_unverified",
+                filename=f"evidence_update_{uuid.uuid4().hex[:6]}.txt",
+                mime_type="text/plain",
+                size_bytes=len(clean_note.encode("utf-8")),
+                sha256=uuid.uuid4().hex,
+                storage_path=f"./evidence_store/update_{claim.id}.txt",
+                uploader_user_id=user.user_id,
+                upload_source=user.role.value,
+                malware_scan_status="clean_mock",
+                prompt_injection_flagged=has_inj,
+                ocr_version="note-update-v1",
+                ocr_text=clean_note,
+            )
+        )
+
+    if body.fraud_signal_score_override_attempt is not None:
+        score_val = Decimal(str(body.fraud_signal_score_override_attempt))
+        if score_val >= Decimal("0.650"):
+            existing_alert = (
+                db.query(FraudAlert)
+                .filter(FraudAlert.claim_id == claim.id, FraudAlert.indicator_code == "FRD-ENTITY-RING-CLUSTER")
+                .first()
+            )
+            if not existing_alert:
+                db.add(
+                    FraudAlert(
+                        tenant_id=claim.tenant_id,
+                        claim_id=claim.id,
+                        indicator_code="FRD-ENTITY-RING-CLUSTER",
+                        title="Elevated fraud signal indicator raised by new evidence",
+                        severity_band="high" if score_val >= Decimal("0.800") else "medium",
+                        confidence=min(Decimal("0.990"), score_val),
+                        evidence_summary=body.new_evidence_summary or "New cross-claim forensic signal reported.",
+                        benign_explanation="Advisory signal only; specialist SIU verification required — fraud score NEVER rejects claim.",
+                        recommended_action="Assign SIU Investigator for human-led verification and preserve evidence.",
+                        status="new",
+                    )
+                )
+
+    db.flush()
+    assessment = evaluate_and_persist_risk(
+        db,
+        claim,
+        trigger_event=body.trigger_event,
+        actor_id=user.user_id,
+        actor_role=user.role.value,
+        record_decision=True,
+        escalate_state=True,
+    )
+    db.commit()
+    siu_visible = user.role in SIU_ALLOWED_ROLES
+    preserved_count = db.query(Evidence).filter(Evidence.claim_id == claim.id, Evidence.legal_hold.is_(True)).count()
+    raw_hist = list(claim.risk_history or [])
+    return {
+        "claim_id": claim.id,
+        "claim_status": claim.status,
+        "risk_tier": claim.risk_tier,
+        "operational_path": claim.operational_path,
+        "risk_score": int(claim.risk_score or 0),
+        "fraud_signal_score": str(claim.fraud_signal_score or Decimal("0.000")) if siu_visible else None,
+        "fraud_score_can_reject": False,
+        "preserved_evidence_count": preserved_count,
+        "risk_assessment": sanitize_risk_payload_for_user(assessment, siu_visible=siu_visible),
+        "risk_history": raw_hist if siu_visible else [{**h, "fraud_signal_score": None} for h in raw_hist],
+    }

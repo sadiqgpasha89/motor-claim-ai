@@ -148,11 +148,29 @@ export default function OperationsPage() {
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
-          <h2 className="text-base font-bold text-slate-900">Portfolio Analytics (Synthetic Demo)</h2>
+          <h2 className="text-base font-bold text-slate-900">Portfolio Analytics &amp; Risk Distribution</h2>
           {analytics ? (
-            <pre className="text-xs bg-slate-50 p-3 rounded border border-slate-200 overflow-x-auto">
-              {JSON.stringify(analytics, null, 2)}
-            </pre>
+            <div className="space-y-3">
+              {"by_risk_tier" in analytics && analytics.by_risk_tier && typeof analytics.by_risk_tier === "object" ? (
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="p-2.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-950">
+                    <div className="font-bold">LOW (Fast-Track)</div>
+                    <div className="text-lg font-mono font-bold">{String((analytics.by_risk_tier as Record<string, number>).LOW ?? 0)}</div>
+                  </div>
+                  <div className="p-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-950">
+                    <div className="font-bold">MEDIUM (Standard)</div>
+                    <div className="text-lg font-mono font-bold">{String((analytics.by_risk_tier as Record<string, number>).MEDIUM ?? 0)}</div>
+                  </div>
+                  <div className="p-2.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-950">
+                    <div className="font-bold">HIGH (Complex/SIU)</div>
+                    <div className="text-lg font-mono font-bold">{String((analytics.by_risk_tier as Record<string, number>).HIGH ?? 0)}</div>
+                  </div>
+                </div>
+              ) : null}
+              <pre className="text-xs bg-slate-50 p-3 rounded border border-slate-200 overflow-x-auto">
+                {JSON.stringify(analytics, null, 2)}
+              </pre>
+            </div>
           ) : (
             <p className="text-xs text-slate-500">Switch to Manager/Handler/Auditor role to view analytics.</p>
           )}

@@ -1086,3 +1086,101 @@ footer {
     padding: 14px;
   }
 }
+
+/* Risk-Based Claim Processing Section */
+.risk-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.risk-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.14s, box-shadow 0.14s, border-color 0.14s;
+}
+
+.risk-card.low {
+  border-top: 5px solid var(--emerald);
+}
+
+.risk-card.medium {
+  border-top: 5px solid var(--amber);
+}
+
+.risk-card.high {
+  border-top: 5px solid var(--rose);
+}
+
+.risk-card.active-tier.low {
+  border-color: var(--emerald);
+  background: #f0fdf4;
+  box-shadow: 0 8px 20px -10px rgba(16, 185, 129, 0.45);
+}
+
+.risk-card.active-tier.medium {
+  border-color: var(--amber);
+  background: #fffbeb;
+  box-shadow: 0 8px 20px -10px rgba(245, 158, 11, 0.45);
+}
+
+.risk-card.active-tier.high {
+  border-color: var(--rose);
+  background: #fff1f2;
+  box-shadow: 0 8px 20px -10px rgba(244, 63, 94, 0.45);
+}
+
+.risk-goal-box {
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+}
+
+.risk-sim-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.risk-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.risk-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: var(--surface-alt);
+  cursor: pointer;
+}
+
+.risk-guardrail-banner {
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}

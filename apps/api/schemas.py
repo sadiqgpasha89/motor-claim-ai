@@ -32,6 +32,10 @@ class FNOLCreateRequest(BaseModel):
     police_involved: bool = False
     towing_needed: bool = False
     ev_battery_impacted: bool = False
+    multiple_vehicles_involved: bool = False
+    involved_vehicles_count: int = 1
+    legal_dispute: bool = False
+    documents_complete_at_fnol: bool = False
     estimated_loss_inr: Decimal = Decimal("0.00")
     preferred_garage_id: Optional[str] = None
     preferred_language: str = "en-IN"
@@ -208,3 +212,21 @@ class ProviderCoordinateRequest(BaseModel):
     preferred_garage_id: Optional[str] = None
     preferred_surveyor_id: Optional[str] = None
     towing_needed: bool = False
+
+
+class RiskContextUpdateRequest(BaseModel):
+    trigger_event: str = "manual_risk_recalculation"
+    estimated_loss_inr: Optional[Decimal] = None
+    injury_or_fatality: Optional[bool] = None
+    multiple_vehicles_involved: Optional[bool] = None
+    involved_vehicles_count: Optional[int] = None
+    ev_battery_impacted: Optional[bool] = None
+    airbags_deployed: Optional[bool] = None
+    vehicle_immobile: Optional[bool] = None
+    towing_needed: Optional[bool] = None
+    legal_dispute: Optional[bool] = None
+    missing_documents: Optional[list[str]] = None
+    incident_description_append: Optional[str] = None
+    new_evidence_summary: Optional[str] = None
+    fraud_signal_score_override_attempt: Optional[Decimal] = None
+    decision_requested: Optional[str] = None

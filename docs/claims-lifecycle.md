@@ -64,7 +64,14 @@ Every canonical state in `WORKFLOW_STATE_SPECS` defines 8 explicit properties:
 
 Legacy states (`INTIMATED`, `EVIDENCE_PENDING`, `COVERAGE_CHECKED`, `TRIAGED`, `SURVEY_ASSIGNED`, `AI_ASSESSMENT`, `ESTIMATE_REVIEW`, `SETTLEMENT_RECOMMENDED`, `APPROVAL_PENDING`, `PAYMENT_INITIATED`, `REPAIR_IN_PROGRESS`, `CLARIFICATION_REQUESTED`, `DECLINED_PARTIAL`, `REOPENED`) map deterministically via `LEGACY_TO_CANONICAL_STATE` / `to_canonical_state()` for backward compatibility.
 
-## 4. Pathway Controls
+## 4. Risk-Based Operational Paths (`IN-RISK-PROCESSING-2026`, `services/workflow/risk_engine.py`)
+Every motor claim is classified into an explainable risk tier that recalculates automatically whenever new evidence, fact corrections, estimates, survey reports, fraud alerts, or grievances arrive (`LOW` claims can dynamically escalate to `HIGH` later):
+
+1. **LOW RISK — Fast-track claims (`fast_track`):** Straight-through assisted processing to minimize human touchpoints. Requires minor damage, complete documents, valid policy, low estimate (`< ₹50,000`), and zero material anomalies. Eligible for automated processing & predefined auto-approval limit (`<= ₹25,000`; `₹25,000.01–₹49,999.99` L1 fast-track), bypassing physical survey dispatch.
+2. **MEDIUM RISK — Standard claims (`standard`):** AI-assisted claims handling to reduce handler effort and waiting time. Handles damage requiring inspection, estimate discrepancies, missing documents, coverage clarification, and repair coordination.
+3. **HIGH RISK — Complex / investigation claims (`complex_investigation`):** Specialist and human-led handling for injury or third-party liability (including multi-vehicle collisions), suspected fraud, significant loss (`>= ₹2,50,000`, CTL `>= 75%` IDV, fire/flood/theft, airbags), conflicting evidence, EV battery damage, or legal/coverage disputes. Automatically enables evidence preservation (`Evidence.legal_hold = true`), blocks L1 handler approval (`high_risk_complex`), and enforces `fraud_score_never_auto_rejects = true` (advisory `fraud_signal_score` itself never rejects a claim).
+
+## 5. Pathway Controls
 - **Incomplete Intimation:** Always accepted (`REGISTERED` / `EVIDENCE_PENDING`) with structured document checklist; never auto-rejected (`IN-IRDAI-MC-2024`).
 - **Mandatory Survey:** Triggered deterministically when `estimated_loss_inr >= 50000.00` or for `theft`, `fire`, `flood`, `total_loss`, `injury_or_fatality`, or `ev_battery_impacted`.
 - **TP Injury / Fatality:** Routed to `legal_tp_specialist` queue; medical/legal party records restricted to authorised TP/Legal roles.

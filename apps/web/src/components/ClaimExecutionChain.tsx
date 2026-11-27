@@ -9,6 +9,9 @@ export interface ClaimExecutionData {
     status: string;
     claim_type: string;
     peril_cause: string;
+    risk_tier?: string;
+    operational_path?: string;
+    risk_score?: number;
     severity_band: string;
     queue_name: string;
     estimated_loss_inr: string;
@@ -213,11 +216,11 @@ export function ClaimExecutionChain({ data }: { data: ClaimExecutionData }) {
       agent: "claim_triage",
       primaryAgentKey: "claim_triage",
       status: c.triage_summary || c.status !== "REGISTERED" ? "COMPLETED" : "PENDING",
-      tone: c.ev_battery_impacted || c.injury_or_fatality ? "amber" : "green",
-      evidence: `Loss ₹${Number(c.estimated_loss_inr).toLocaleString("en-IN")} vs ₹50,000 threshold`,
+      tone: (c.risk_tier === "HIGH" || c.ev_battery_impacted || c.injury_or_fatality) ? "amber" : "green",
+      evidence: `${c.risk_tier || "MEDIUM"} RISK (${c.operational_path || "standard"}) · Loss ₹${Number(c.estimated_loss_inr).toLocaleString("en-IN")}`,
       output: `Queue: ${c.queue_name} (${c.severity_band}) · Survey=${c.requires_mandatory_survey ? "YES" : "NO"}`,
       confidence: triageConf,
-      rules: "IN-IRDAI-MC-2024 ₹50k Survey Rule",
+      rules: "IN-RISK-PROCESSING-2026 · IN-IRDAI-MC-2024 ₹50k Gate",
       nextAction: c.requires_mandatory_survey
         ? "Assign verified surveyor & run Damage AI"
         : "Fast-track AI Damage Assessment",

@@ -63,3 +63,34 @@ export function StatusPill({ status }: { status: string }) {
     </span>
   );
 }
+
+export function RiskTierBadge({
+  tier,
+  path,
+  score,
+}: {
+  tier?: string;
+  path?: string;
+  score?: number;
+}) {
+  const norm = (tier || "MEDIUM").toUpperCase();
+  const cls =
+    norm === "LOW"
+      ? "bg-emerald-100 text-emerald-950 border-emerald-400"
+      : norm === "HIGH"
+      ? "bg-rose-100 text-rose-950 border-rose-400"
+      : "bg-amber-100 text-amber-950 border-amber-400";
+  const pathLabel =
+    path === "fast_track"
+      ? "Fast-Track"
+      : path === "complex_investigation"
+      ? "Complex / SIU"
+      : "Standard AI-Assisted";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold rounded-full border ${cls}`}>
+      <span>{norm} RISK</span>
+      <span className="font-medium opacity-80">· {pathLabel}</span>
+      {typeof score === "number" && score > 0 && <span className="font-mono text-[11px] opacity-75">({score})</span>}
+    </span>
+  );
+}
