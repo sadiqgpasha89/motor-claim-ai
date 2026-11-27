@@ -49,6 +49,7 @@ class UserContext(BaseModel):
     role: Role
     partner_id: Optional[str] = None
     branch: str = "MUM-WEST"
+    mfa_verified: bool = False
 
 
 def create_access_token(user: UserContext) -> str:
@@ -62,6 +63,7 @@ def create_access_token(user: UserContext) -> str:
         "role": user.role.value,
         "partner_id": user.partner_id,
         "branch": user.branch,
+        "mfa": user.mfa_verified,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.jwt_expire_minutes)).timestamp()),
     }
@@ -80,6 +82,7 @@ def decode_access_token(token: str) -> UserContext:
             role=Role(data["role"]),
             partner_id=data.get("partner_id"),
             branch=data.get("branch", "MUM-WEST"),
+            mfa_verified=bool(data.get("mfa", False)),
         )
     except Exception as exc:
         raise DomainError(
@@ -143,6 +146,18 @@ def enforce_claim_abac(user: UserContext, claim: Any) -> None:
                 "Surveyor can only access claims assigned to them",
                 status_code=403,
             )
+
+
+def assert_step_up(user: UserContext, action: str) -> None:
+    """Require a recent MFA step-up for high-risk actions. Off by default in the demo."""
+    from services.rules_engine.security import security_controls
+
+    if get_settings().mfa_step_up_enabled and action in security_controls()["mfa"]["step_up_actions"] and not user.mfa_verified:
+        raise DomainError(
+            ErrorCode.NOT_AUTHORISED,
+            f"MFA step-up is required for '{action}'. Verify with POST /api/v1/auth/mfa/verify.",
+            status_code=403,
+        )
 
 
 def enforce_siu_access(user: UserContext) -> None:

@@ -34,3 +34,14 @@ def test_intelligence_section_and_data_are_wired():
     assert data["fraud_network"]["never_auto_reject"] is True
     assert data["supplementary"]["reinspection_required"] is True
     assert any(c["decision"] == "replace_and_inspect" for c in data["repair_replace"]["components"])
+
+
+def test_platform_section_and_data_are_wired():
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    assert 'id="platform-security"' in html and 'href="#platform-security"' in html
+    assert html.index("platform-data.js") < html.index('src="platform.js"')
+    text = (SITE / "platform-data.js").read_text(encoding="utf-8")
+    data = json.loads(text.split("window.PLATFORM_DEMO = ", 1)[1].rstrip().rstrip(";"))
+    assert data["tool_calls"]["denied_agent"]["http_status"] == 403
+    assert data["tool_calls"]["denied_payment_tool"]["http_status"] == 403
+    assert data["audit_integrity"]["ok"] is True

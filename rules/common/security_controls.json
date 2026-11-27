@@ -1,0 +1,170 @@
+{
+  "rule_id": "IN-SECURITY-CONTROLS-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Security controls: tool policy, rate limits, MFA step-up, retention, PII and output validation (DEMO)",
+  "source_reference": "Internal security baseline. Synthetic values. Not legal advice.",
+  "owner": "Security and Compliance (DEMO)",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "status": "published",
+  "controls": {
+    "tool_policy": {
+      "policy_lookup": {
+        "port": "policy_admin",
+        "side_effect": false,
+        "idempotency_required": false,
+        "approval_required": false,
+        "allowed_agents": [
+          "coverage_intelligence",
+          "claim_triage",
+          "human"
+        ],
+        "allowed_roles": [
+          "claims_handler",
+          "claims_manager",
+          "auditor"
+        ],
+        "allowed_states": [
+          "*"
+        ]
+      },
+      "claims_ledger_post": {
+        "port": "claims_system",
+        "side_effect": true,
+        "idempotency_required": true,
+        "approval_required": false,
+        "allowed_agents": [
+          "orchestrator",
+          "human"
+        ],
+        "allowed_roles": [
+          "claims_handler",
+          "claims_manager"
+        ],
+        "allowed_states": [
+          "*"
+        ]
+      },
+      "garage_book": {
+        "port": "garage",
+        "side_effect": true,
+        "idempotency_required": true,
+        "approval_required": false,
+        "allowed_agents": [
+          "provider_coordination",
+          "human"
+        ],
+        "allowed_roles": [
+          "claims_handler",
+          "claims_manager"
+        ],
+        "allowed_states": [
+          "REGISTERED",
+          "VALIDATION",
+          "TRIAGE",
+          "ASSESSMENT",
+          "ESTIMATE_VALIDATION",
+          "ESTIMATE_REVIEW",
+          "APPROVED",
+          "REPAIR_IN_PROGRESS"
+        ]
+      },
+      "surveyor_assign": {
+        "port": "surveyor",
+        "side_effect": true,
+        "idempotency_required": true,
+        "approval_required": false,
+        "allowed_agents": [
+          "provider_coordination",
+          "human"
+        ],
+        "allowed_roles": [
+          "claims_handler",
+          "claims_manager"
+        ],
+        "allowed_states": [
+          "REGISTERED",
+          "VALIDATION",
+          "TRIAGE",
+          "ASSESSMENT",
+          "ESTIMATE_VALIDATION",
+          "ESTIMATE_REVIEW"
+        ]
+      },
+      "notify": {
+        "port": "messaging",
+        "side_effect": true,
+        "idempotency_required": true,
+        "approval_required": false,
+        "allowed_agents": [
+          "customer_communication",
+          "human"
+        ],
+        "allowed_roles": [
+          "claims_handler",
+          "claims_manager"
+        ],
+        "allowed_states": [
+          "*"
+        ]
+      },
+      "payment_execute": {
+        "port": "payment_gateway",
+        "side_effect": true,
+        "idempotency_required": true,
+        "approval_required": true,
+        "route_only": true,
+        "allowed_agents": [],
+        "allowed_roles": [
+          "finance_approver"
+        ],
+        "allowed_states": [
+          "APPROVED",
+          "PAYMENT_PENDING"
+        ]
+      }
+    },
+    "rate_limits_per_minute": {
+      "failed_login": 10,
+      "tool_call_per_user": 60,
+      "llm_call_per_user": 30
+    },
+    "mfa": {
+      "step_up_actions": [
+        "payment_initiation",
+        "approval_decision"
+      ],
+      "totp_period_seconds": 30,
+      "totp_digits": 6,
+      "totp_window_steps": 1
+    },
+    "retention": {
+      "evidence_years_after_closure": 7,
+      "audit_years": 10,
+      "purge_requires_closed_claim": true,
+      "purge_blocked_by_legal_hold": true,
+      "purge_keeps_tombstone": true
+    },
+    "pii_patterns": {
+      "EMAIL": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+      "AADHAAR": "\\b\\d{4}\\s?\\d{4}\\s?\\d{4}\\b",
+      "PAN": "\\b[A-Z]{5}[0-9]{4}[A-Z]\\b",
+      "PHONE": "(?:\\+91[\\s-]?)?\\b[6-9]\\d{9}\\b",
+      "ACCOUNT": "\\b\\d{9,18}\\b"
+    },
+    "output_validation": {
+      "max_output_chars": 4000,
+      "forbidden_decision_phrases": [
+        "approve the claim",
+        "reject the claim",
+        "deny the claim",
+        "payment released",
+        "i have paid"
+      ]
+    },
+    "audit": {
+      "chain_algorithm": "sha256",
+      "genesis_prev_hash": ""
+    }
+  }
+}

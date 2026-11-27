@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/governance", label: "Rules & Policy KB" },
   { href: "/operations", label: "Operations & SLA" },
   { href: "/agent-command-center", label: "Agent Command Center" },
+  { href: "/platform-health", label: "Platform health" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

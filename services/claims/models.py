@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -639,6 +640,7 @@ class RuleVersion(Base):
 class AuditEvent(Base):
     """Append-only immutable audit and decision ledger."""
     __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_tenant_created", "tenant_id", "created_at"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     tenant_id: Mapped[str] = mapped_column(String(36), index=True)
     claim_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
@@ -653,6 +655,8 @@ class AuditEvent(Base):
     outcome: Mapped[str] = mapped_column(String(32), default="success")
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    prev_event_hash: Mapped[str] = mapped_column(String(64), default="")
+    event_hash: Mapped[str] = mapped_column(String(64), default="")
 
 
 class OutboxEvent(Base):
@@ -850,4 +854,43 @@ class CompensationLog(Base):
     target_object_id: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(24), default="executed")
     details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class EventDelivery(Base):
+    """One delivery of one outbox event to one consumer. A dead delivery is the consumer-side DLQ."""
+
+    __tablename__ = "event_deliveries"
+    __table_args__ = (UniqueConstraint("outbox_event_id", "consumer", name="uq_event_delivery_consumer"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    outbox_event_id: Mapped[str] = mapped_column(String(36), ForeignKey("outbox_events.id"), index=True)
+    consumer: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    next_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ToolInvocation(Base):
+    """Ledger of tool gateway calls. The idempotency key makes a replay return the first result."""
+
+    __tablename__ = "tool_invocations"
+    __table_args__ = (UniqueConstraint("tenant_id", "tool", "idempotency_key", name="uq_tool_invocation_idempotency"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), index=True)
+    tool: Mapped[str] = mapped_column(String(64), index=True)
+    agent_name: Mapped[str] = mapped_column(String(64))
+    actor_id: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str] = mapped_column(String(100))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="succeeded")
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
