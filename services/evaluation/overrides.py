@@ -66,7 +66,7 @@ def human_override_report(db: Session, tenant_id: str) -> dict[str, Any]:
         if required[name]
     ]
     total_decided = len(decided)
-    total_overridden = sum(int(r["overridden"]) for r in rows)
+    total_overridden = sum(sum(c.values()) - c["approved"] for c in by_action.values())
     return {
         "approvals_decided": total_decided,
         "approvals_pending": len(approvals) - total_decided,
