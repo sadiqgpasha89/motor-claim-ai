@@ -433,7 +433,13 @@ def classify_claim_risk_from_facts(
         ),
     }
 
-    straight_through_eligible = risk_tier == "LOW" and all(low_criteria.values())
+    # Third-Party liability claims are never straight-through eligible (IN-TP-LIABILITY-2026).
+    straight_through_eligible = (
+        risk_tier == "LOW"
+        and all(low_criteria.values())
+        and claim_type != "third_party"
+        and peril not in {"tp_bodily_injury", "tp_fatality", "tp_property_damage"}
+    )
     within_auto_limit = straight_through_eligible and effective_loss <= auto_limit
 
     if risk_tier == "HIGH":

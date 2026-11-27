@@ -1593,4 +1593,57 @@ def seed_all(db: Session) -> None:
         ]
     )
 
+    db.flush()
+    _seed_tp_liability_case(db, t1.id)
+
     db.commit()
+
+
+def _seed_tp_liability_case(db: Session, tenant_id: str) -> None:
+    """CLM-DEMO-2026-0010: a Third-Party bodily-injury claim worked through the dedicated TP lifecycle (IN-TP-LIABILITY-2026)."""
+    from packages.security.auth import Role, UserContext
+    from services.claims.models import Claim as _Claim
+    from services.workflow import tp_liability as tp
+
+    claim = db.query(_Claim).filter(_Claim.id == "clm-demo-0010").first()
+    if not claim:
+        return
+    handler = UserContext(user_id="usr-handler", tenant_id=tenant_id, email="handler@demo.in", name="Vikram Mehta (Claims Handler)", role=Role.CLAIMS_HANDLER)
+    case = tp.open_tp_case(db, claim, handler, tp_category="bodily_injury")
+    tp.add_third_party(
+        db,
+        case,
+        handler,
+        role="injured",
+        name="Suresh Patil (Injured Claimant)",
+        contact="+91 98765 41199",
+        vehicle_reg="MH12DEMO7788",
+        injury_severity="grievous",
+        claimant_demand_inr=Decimal("1800000.00"),
+        notes="Two-wheeler rider; fracture of left femur, hospitalised. DEMO / SYNTHETIC.",
+    )
+    tp.add_third_party(db, case, handler, role="claimant", name="Meena Patil (Spouse, authorised claimant)", contact="+91 98765 41200")
+    db.flush()
+    tp.record_accident_facts(
+        db,
+        case,
+        handler,
+        narrative="Insured private car and a two-wheeler collided on NH-48 near Khalapur toll; rider thrown and injured. Both drivers dispute right of way.",
+        evidence=[
+            {"kind": "spot_panchnama", "description": "Police spot panchnama copy", "source": "Khalapur Police Station"},
+            {"kind": "video_cctv", "description": "Toll-plaza CCTV clip requested (legal hold applied)", "source": "NH-48 toll operator"},
+        ],
+    )
+    tp.record_police_report(
+        db,
+        case,
+        handler,
+        fir_number="FIR-441/2026",
+        police_station="Khalapur PS (DEMO)",
+        fir_date=claim.incident_at,
+        sections_invoked=["BNS rash driving (illustrative)"],
+        dar_status="pending",
+    )
+    for stage_note in ("Intake complete", "Facts and evidence preserved", "FIR on file"):
+        tp.advance_stage(db, case, claim, handler, note=stage_note)
+

@@ -74,6 +74,43 @@ Every motor claim is classified into an explainable risk tier that recalculates 
 ## 5. Pathway Controls
 - **Incomplete Intimation:** Always accepted (`REGISTERED` / `EVIDENCE_PENDING`) with structured document checklist; never auto-rejected (`IN-IRDAI-MC-2024`).
 - **Mandatory Survey:** Triggered deterministically when `estimated_loss_inr >= 50000.00` or for `theft`, `fire`, `flood`, `total_loss`, `injury_or_fatality`, or `ev_battery_impacted`.
-- **TP Injury / Fatality:** Routed to `legal_tp_specialist` queue; medical/legal party records restricted to authorised TP/Legal roles.
+- **TP Injury / Fatality / Property Damage:** A claim of type `third_party` is **never** processed by the OD estimate -> settlement -> auto-approval path. It opens a dedicated TP case with its own lifecycle, queues and controls (see section 6). Medical/legal party records stay restricted to authorised TP/Legal roles.
 - **EV High-Voltage:** Flagged with HV isolation alert and routed to `ev_specialist` queue & EV-certified network garage (`POL-WORDING-EV-2025`).
 - **Graceful Degradation:** On `ModelOutageError`, `BoundedAgent.execute()` returns `status="needs_human"` with `fallback_mode="manual_workflow"`, keeping FNOL, deterministic `Decimal` settlement math, Maker-Checker DoA, and idempotent payment reconciliation operational.
+
+## 6. Third-Party (TP) Liability Lifecycle (`IN-TP-LIABILITY-2026`, `services/workflow/tp_liability.py`)
+
+Own Damage (OD) and Third-Party (TP) claims are different products, not two variations of one workflow.
+
+| | Own Damage (OD) | Third-Party (TP) |
+|---|---|---|
+| Nature | First-party repair / replacement | Legal liability to someone who is not the insured |
+| Amount | Deterministic arithmetic on an estimate (depreciation, deductible, salvage) | Depends on fault, evidence, medical opinion, tribunal practice and legal strategy |
+| Lifecycle | `ClaimStatus` (15 canonical states) | `TPStage` (12 stages) on `TPClaimCase` |
+| Automation | LOW-risk claims up to INR 25,000 may be straight-through | **None.** Every stage is a human gate |
+| Queues | Evidence intake, survey, estimate, finance | `tp_intake` ... `tp_settlement_control`, `tp_payment_authorisation`, `tp_closure_review` |
+| Approval | Maker-checker DoA matrix | Reserve discipline + dual-control tiers (`TP-L1` / `TP-L2` / `TP-L3-COMMITTEE`) |
+
+### Stages and exit gates
+
+`INTAKE` -> `EVIDENCE_AND_FACTS` -> `POLICE_FIR` -> `LIABILITY_INVESTIGATION` -> `LEGAL_DOCUMENTATION` -> `ADVOCATE_COORDINATION` -> `MEDICAL_REVIEW` -> `LEGAL_SPECIALIST_REVIEW` -> `SETTLEMENT_CONTROL` -> `SETTLEMENT_APPROVED` -> `PAYMENT_AUTHORISED` -> `CLOSED`
+
+- Stages are skipped by rule, and the skip is recorded in `stage_history`: `POLICE_FIR` (property damage without police), `ADVOCATE_COORDINATION` (no litigation and not contested), `MEDICAL_REVIEW` (property damage).
+- Stages `INTAKE` to `LEGAL_SPECIALIST_REVIEW` are advanced only by an explicit human `POST /tp/advance`, and only when the exit gate is clear (`409 HUMAN_REVIEW_REQUIRED` with a `blockers` list otherwise). Legal-owned stages (`LEGAL_DOCUMENTATION`, `ADVOCATE_COORDINATION`, `MEDICAL_REVIEW`, `LEGAL_SPECIALIST_REVIEW`) can be advanced only by Legal/TP.
+- `SETTLEMENT_CONTROL` -> `SETTLEMENT_APPROVED` happens only when the last required approver approves; `PAYMENT_AUTHORISED` only when Finance releases payment; `CLOSED` only through a manager's closure review.
+
+### Controls
+
+- **Liability is a human decision.** Fault split, contributory negligence, policy defences and a reasoned rationale are recorded by an authorised person. Software output (`advisory`: document completeness, reserve band, late-FIR/late-intimation flags) is non-binding and cannot advance a stage.
+- **Coverage is never auto-declined for a third party.** A lapsed policy or a missing policy match marks the case `flagged` so Legal can decide statutory liability and any pay-and-recover route.
+- **Legal decision** (`negotiate_settlement`, `contest_liability`, `pay_and_recover`) constrains the settlement basis (`negotiated`, `tribunal_award`, `pay_and_recover`). `pay_and_recover` needs a recorded policy defence and, at closure, an opened recovery action against the insured.
+- **Reserve** is required before any settlement proposal; a proposal above the reserve is refused until the reserve is raised with a basis. Reserves above INR 5,00,000, or on a fatality, need a Claims Manager or Legal/TP specialist.
+- **Dual-control approval tiers:** `TP-L1` up to INR 5,00,000 (non-fatal): Claims Manager. `TP-L2` up to INR 15,00,000 (or a fatality up to that amount): Claims Manager and Legal/TP, as distinct users. `TP-L3-COMMITTEE` above INR 15,00,000: Claims Manager, Legal/TP and Admin (claims committee).
+- **Separation of duties:** the legal reviewer cannot propose the settlement; the proposer cannot decide it; each approver is a distinct user; the finance releaser cannot be the proposer, an approver or the legal reviewer. Payment authorisation is idempotent and blocks a second payout (mock gateway in DEMO).
+- **OD isolation:** `settlement-recommendations`, `approvals`, `payments`, `payments/agent-release` and `close` return `409 HUMAN_REVIEW_REQUIRED` for a TP claim. `SettlementRecommendationAgent` returns `NEEDS_HUMAN` with no actions, the orchestrator never materialises a settlement from an OD estimate for TP, and the risk engine never marks a TP claim straight-through eligible.
+- **OD claim with third-party exposure:** `POST /claims/{id}/tp/exposures` creates a separate linked `third_party` claim and TP case; the OD claim stays on the OD lifecycle.
+- **Restricted data:** injured/deceased party details and medical opinions are masked for roles outside `TP_LEGAL_ALLOWED_ROLES`.
+- **Audit:** every TP action writes an `AuditEvent` (`TP_*`); key milestones emit outbox events.
+
+All statutory references and limits in `rules/india/tp_liability_controls.json` are synthetic and require legal/compliance sign-off before production use.
+

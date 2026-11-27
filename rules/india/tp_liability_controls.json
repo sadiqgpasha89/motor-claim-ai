@@ -1,0 +1,107 @@
+{
+  "rule_id": "IN-TP-LIABILITY-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Third-Party (TP) Liability Claims Workflow Controls",
+  "source_reference": "Motor Vehicles Act 1988 (insurer liability / MACT claims), IRDAI Master Circular 2024, Insurer TP Claims & Legal Authority Policy (Synthetic V1 - legal/compliance sign-off required before production)",
+  "owner": "Chief Claims Officer & Head of Legal (Motor TP)",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "controls": {
+    "autonomous_settlement_allowed": false,
+    "ai_may_determine_liability": false,
+    "ai_may_advance_stage": false,
+    "ai_may_approve_or_release_payment": false,
+    "shared_with_od_fast_track": false,
+    "bulk_approval_forbidden": true,
+    "fraud_score_never_auto_rejects": true,
+    "legal_hold_on_open": true,
+    "reserve_required_before_settlement_proposal": true,
+    "tppd_limit_inr": "750000.00",
+    "tppd_limit_note": "Statutory third-party property damage limit for private cars (synthetic value; verify against current policy schedule / Act).",
+    "bodily_injury_and_death_limit": "unlimited_under_act",
+    "payment_release_role": "finance_approver",
+    "payment_release_max_inr": "5000000.00",
+    "separation_of_duties": [
+      "settlement proposer cannot approve the same settlement",
+      "each approver on a settlement must be a distinct user",
+      "finance payment releaser cannot be proposer or approver on the same case",
+      "legal reviewer cannot be the settlement proposer"
+    ]
+  },
+  "categories": {
+    "property_damage": {
+      "label": "TP Property Damage",
+      "police_report_required": false,
+      "medical_review_required": false,
+      "advocate_required": false,
+      "required_documents": ["claimant_id", "property_damage_photos", "repair_estimate_or_invoice", "ownership_proof"],
+      "default_reserve_inr": "75000.00"
+    },
+    "bodily_injury": {
+      "label": "TP Bodily Injury",
+      "police_report_required": true,
+      "medical_review_required": true,
+      "advocate_required": true,
+      "required_documents": ["claimant_id", "fir_copy", "medical_records", "discharge_summary", "medico_legal_certificate", "income_proof"],
+      "default_reserve_inr": "500000.00"
+    },
+    "fatality": {
+      "label": "TP Fatality",
+      "police_report_required": true,
+      "medical_review_required": true,
+      "advocate_required": true,
+      "required_documents": ["claimant_id", "fir_copy", "death_certificate", "postmortem_report", "legal_heir_certificate", "income_proof_of_deceased"],
+      "default_reserve_inr": "1500000.00"
+    }
+  },
+  "reserve_bands_by_injury_severity": {
+    "minor": "150000.00",
+    "moderate": "500000.00",
+    "grievous": "1200000.00",
+    "permanent_disability": "2500000.00",
+    "fatality": "1500000.00"
+  },
+  "stage_catalogue": {
+    "INTAKE": {"order": 1, "queue": "tp_intake", "owner_role": "claims_handler", "sla_hours": 24, "human_gate": true},
+    "EVIDENCE_AND_FACTS": {"order": 2, "queue": "tp_evidence_facts", "owner_role": "claims_handler", "sla_hours": 72, "human_gate": true},
+    "POLICE_FIR": {"order": 3, "queue": "tp_police_fir", "owner_role": "claims_handler", "sla_hours": 72, "human_gate": true},
+    "LIABILITY_INVESTIGATION": {"order": 4, "queue": "tp_liability_investigation", "owner_role": "claims_handler", "sla_hours": 240, "human_gate": true},
+    "LEGAL_DOCUMENTATION": {"order": 5, "queue": "tp_legal_documentation", "owner_role": "legal_tp", "sla_hours": 168, "human_gate": true},
+    "ADVOCATE_COORDINATION": {"order": 6, "queue": "tp_advocate_coordination", "owner_role": "legal_tp", "sla_hours": 72, "human_gate": true},
+    "MEDICAL_REVIEW": {"order": 7, "queue": "tp_medical_review", "owner_role": "legal_tp", "sla_hours": 168, "human_gate": true},
+    "LEGAL_SPECIALIST_REVIEW": {"order": 8, "queue": "tp_legal_specialist_review", "owner_role": "legal_tp", "sla_hours": 120, "human_gate": true},
+    "SETTLEMENT_CONTROL": {"order": 9, "queue": "tp_settlement_control", "owner_role": "claims_manager", "sla_hours": 120, "human_gate": true},
+    "SETTLEMENT_APPROVED": {"order": 10, "queue": "tp_payment_authorisation", "owner_role": "finance_approver", "sla_hours": 48, "human_gate": true},
+    "PAYMENT_AUTHORISED": {"order": 11, "queue": "tp_closure_review", "owner_role": "claims_manager", "sla_hours": 72, "human_gate": true},
+    "CLOSED": {"order": 12, "queue": "tp_closed", "owner_role": "auditor", "sla_hours": 0, "human_gate": false}
+  },
+  "settlement_approval_tiers": [
+    {
+      "tier": "TP-L1",
+      "max_amount_inr": "500000.00",
+      "allow_fatality": false,
+      "required_approver_roles": ["claims_manager"]
+    },
+    {
+      "tier": "TP-L2",
+      "max_amount_inr": "1500000.00",
+      "allow_fatality": true,
+      "required_approver_roles": ["claims_manager", "legal_tp"]
+    },
+    {
+      "tier": "TP-L3-COMMITTEE",
+      "max_amount_inr": null,
+      "allow_fatality": true,
+      "required_approver_roles": ["claims_manager", "legal_tp", "admin"]
+    }
+  ],
+  "legal_decisions": ["negotiate_settlement", "contest_liability", "pay_and_recover"],
+  "settlement_bases": ["negotiated", "tribunal_award", "pay_and_recover"],
+  "advisory_thresholds": {
+    "late_intimation_days": 30,
+    "late_fir_days": 7,
+    "claimant_demand_to_reserve_ratio_flag": "1.5"
+  }
+}

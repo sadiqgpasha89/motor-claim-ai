@@ -121,6 +121,13 @@ from services.workflow.risk_engine import (
 )
 from services.workflow.sla_engine import complete_stage_sla_timer, compute_timer_status, create_stage_sla_timer
 from services.workflow.state_specs import WORKFLOW_STATE_SPECS
+from services.workflow.tp_liability import (
+    assert_not_tp_for_od_path,
+    claim_requires_tp_workflow,
+    get_tp_case,
+    open_tp_case,
+    serialize_tp_summary,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["claims"])
 
@@ -375,6 +382,11 @@ def create_fnol_intimation(
         },
         duplicate_candidate=dup,
     )
+
+    if claim_requires_tp_workflow(claim):
+        # Third-Party claims get their own lifecycle, queues and controls (IN-TP-LIABILITY-2026),
+        # never the OD estimate -> auto-settlement path.
+        open_tp_case(db, claim, user, system_initiated=True)
 
     ack_comm = Communication(
         tenant_id=user.tenant_id,
@@ -790,6 +802,12 @@ def get_claim_360(
             for s in surveys
         ],
         "ecosystem": serialize_ecosystem_coordination(db, get_or_create_ecosystem_coordination(db, claim)),
+        "tp_workflow": (
+            serialize_tp_summary(_tp_case)
+            if (_tp_case := get_tp_case(db, claim)) and user.role in TP_LEGAL_ALLOWED_ROLES
+            else None
+        ),
+        "tp_workflow_required": claim_requires_tp_workflow(claim),
         "fraud_alerts_restricted": fraud_alerts_payload is None,
         "fraud_alerts": fraud_alerts_payload or [],
         "settlements": [
@@ -2051,6 +2069,7 @@ def recommend_settlement(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    assert_not_tp_for_od_path(claim, operation="OD settlement recommendation")
     policy = db.query(Policy).filter(Policy.id == claim.policy_id).first() if claim.policy_id else None
     vehicle = db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
     if not policy or not vehicle:
@@ -2214,6 +2233,7 @@ def decide_approval(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    assert_not_tp_for_od_path(claim, operation="OD settlement approval")
     approval = db.query(Approval).filter(Approval.id == body.approval_id, Approval.claim_id == claim.id).first()
     if not approval:
         raise DomainError(ErrorCode.NOT_FOUND, "Approval task not found", status_code=404)
@@ -2317,6 +2337,7 @@ def initiate_payment(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    assert_not_tp_for_od_path(claim, operation="OD payment initiation")
     existing = (
         db.query(Payment)
         .filter(Payment.tenant_id == claim.tenant_id, Payment.idempotency_key == body.idempotency_key)
@@ -2504,6 +2525,7 @@ def close_claim(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    assert_not_tp_for_od_path(claim, operation="OD claim closure")
     confirmed_pmt = db.query(Payment).filter(Payment.claim_id == claim.id, Payment.status == "confirmed").first()
     open_grievance = db.query(Grievance).filter(Grievance.claim_id == claim.id, Grievance.status != "resolved").first()
     unresolved_mismatch = (
@@ -3372,6 +3394,7 @@ def initiate_approved_payment_via_agent(
     db: Session = Depends(get_db),
 ):
     claim = _get_claim_for_user(db, claim_id, user)
+    assert_not_tp_for_od_path(claim, operation="agent payment release")
     stl = db.query(Settlement).filter(Settlement.id == body.settlement_id, Settlement.claim_id == claim.id).first()
     if not stl or stl.approval_status != "approved":
         raise DomainError(

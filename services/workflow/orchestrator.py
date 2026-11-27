@@ -2374,6 +2374,11 @@ class ClaimOrchestrator:
         return dlq
 
     def _materialize_settlement_if_ready(self, claim: Claim) -> None:
+        from services.workflow.tp_liability import claim_requires_tp_workflow
+
+        if claim_requires_tp_workflow(claim):
+            # Third-Party liability is never materialised from an OD repair estimate (IN-TP-LIABILITY-2026).
+            return
         policy = self.db.query(Policy).filter(Policy.id == claim.policy_id).first() if claim.policy_id else None
         vehicle = self.db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
         estimates = self.db.query(Estimate).filter(Estimate.claim_id == claim.id).order_by(Estimate.version.desc()).all()
@@ -2706,7 +2711,8 @@ class ClaimOrchestrator:
                 "risk_tier": claim.risk_tier or "MEDIUM",
                 "straight_through_eligible": bool(elig.get("straight_through_eligible", False)),
                 "auto_approval_limit_inr": str(elig.get("auto_approval_limit_inr", "25000.00")),
-                "allow_fast_track_auto_approve": True,
+                "allow_fast_track_auto_approve": claim.claim_type != "third_party",
+                "tp_workflow_required": claim.claim_type == "third_party",
                 "calculation": {
                     "gross": str(stl.gross_assessed_inr) if stl else "0.00",
                     "net": str(stl.net_payable_inr) if stl else "0.00",

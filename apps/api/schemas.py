@@ -269,3 +269,135 @@ class RiskContextUpdateRequest(BaseModel):
     new_evidence_summary: Optional[str] = None
     fraud_signal_score_override_attempt: Optional[Decimal] = None
     decision_requested: Optional[str] = None
+
+
+# ---- Third-Party (TP) liability workflow (IN-TP-LIABILITY-2026) ----
+class TPOpenRequest(BaseModel):
+    tp_category: Optional[str] = None
+
+
+class TPExposureRequest(BaseModel):
+    tp_category: str
+    description: str = ""
+
+
+class TPThirdPartyRequest(BaseModel):
+    role: str
+    name: str
+    contact: str = ""
+    vehicle_reg: str = ""
+    other_insurer: str = ""
+    injury_severity: Optional[str] = None
+    claimant_demand_inr: Optional[Decimal] = None
+    is_minor: bool = False
+    notes: str = ""
+
+
+class TPEvidenceItem(BaseModel):
+    kind: str = "other"
+    description: str = ""
+    source: str = ""
+
+
+class TPFactsRequest(BaseModel):
+    accident_at: Optional[datetime] = None
+    location: Optional[str] = None
+    narrative: Optional[str] = None
+    police_involved: Optional[bool] = None
+    vehicles_involved: Optional[int] = None
+    evidence: list[TPEvidenceItem] = []
+
+
+class TPPoliceReportRequest(BaseModel):
+    fir_number: str = ""
+    police_station: str = ""
+    fir_date: Optional[datetime] = None
+    sections_invoked: list[str] = []
+    dar_status: str = "pending"
+    charge_sheet_status: str = "not_filed"
+    fir_waived: bool = False
+    waiver_reason: str = ""
+
+
+class TPLiabilityRequest(BaseModel):
+    insured_fault_pct: int
+    third_party_fault_pct: int
+    contributory_negligence: bool = False
+    policy_defences: list[str] = []
+    rationale: str
+    investigator_name: str = ""
+
+
+class TPLegalDocumentRequest(BaseModel):
+    doc_type: str
+    status: str = "received"
+    reference: str = ""
+    notes: str = ""
+
+
+class TPTribunalRequest(BaseModel):
+    claim_petition_filed: Optional[bool] = None
+    tribunal_name: str = ""
+    petition_number: str = ""
+    next_hearing_at: Optional[datetime] = None
+    award_amount_inr: Optional[Decimal] = None
+    award_reference: str = ""
+
+
+class TPAdvocateRequest(BaseModel):
+    advocate_name: str
+    bar_enrolment_ref: str = ""
+    role: str = "panel_counsel"
+    fee_cap_inr: Optional[Decimal] = None
+    conflict_check_cleared: bool = False
+
+
+class TPMedicalReviewRequest(BaseModel):
+    injury_severity: str
+    disability_percent: Optional[int] = None
+    causation_consistent: bool = True
+    opinion: str
+    reviewer_name: str
+    records_reviewed: list[str] = []
+
+
+class TPLegalReviewRequest(BaseModel):
+    decision: str
+    notes: str
+    exposure_summary: str = ""
+
+
+class TPReserveRequest(BaseModel):
+    amount_inr: Decimal
+    basis: str
+
+
+class TPSettlementProposalRequest(BaseModel):
+    basis: str = "negotiated"
+    amount_inr: Decimal
+    components: dict[str, Decimal] = {}
+    rationale: str
+    award_reference: str = ""
+
+
+class TPSettlementDecisionRequest(BaseModel):
+    decision: str
+    rationale: str
+
+
+class TPPaymentAuthoriseRequest(BaseModel):
+    idempotency_key: str
+    payee_type: str = "claimant"
+    payee_name: str
+    account_last4: str = ""
+    ifsc: str = ""
+    simulate_timeout: bool = False
+
+
+class TPAdvanceRequest(BaseModel):
+    note: str = ""
+
+
+class TPCloseRequest(BaseModel):
+    closure_notes: str
+    recovery_action_opened: bool = False
