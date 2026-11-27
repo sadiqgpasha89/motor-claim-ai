@@ -1423,6 +1423,185 @@
     out.textContent = logs[mode] || logs.preferred_honoured;
   };
 
+  var cxState = {
+    presetKey: "registered_survey_pending",
+    triggerKey: "survey_scheduled",
+    escalatedRef: null
+  };
+
+  window.setCxDemoStage = function (presetKey) {
+    if (!DATA.customerExperienceLab || !DATA.customerExperienceLab.presets[presetKey]) return;
+    cxState.presetKey = presetKey;
+    cxState.triggerKey = DATA.customerExperienceLab.presets[presetKey].defaultTrigger;
+    cxState.escalatedRef = null;
+    window.renderCustomerExperienceLab();
+  };
+
+  window.selectCxTrigger = function (triggerKey) {
+    cxState.triggerKey = triggerKey;
+    cxState.escalatedRef = null;
+    window.renderCustomerExperienceLab();
+  };
+
+  window.triggerCxHumanEscalation = function () {
+    var lab = DATA.customerExperienceLab;
+    var preset = lab.presets[cxState.presetKey];
+    var lang = el("cx-lang-select") ? el("cx-lang-select").value : "en-IN";
+    var reqCh = el("cx-channel-select") ? el("cx-channel-select").value : "whatsapp";
+    var waConsent = el("cx-wa-consent") ? el("cx-wa-consent").checked : true;
+    var effCh = reqCh === "whatsapp" && !waConsent ? "email" : reqCh;
+    cxState.escalatedRef = {
+      ref: "ESC-DEMO-4812",
+      channel: effCh,
+      blockedWa: reqCh === "whatsapp" && !waConsent,
+      lang: lang,
+      claimNumber: preset.claimNumber
+    };
+    window.renderCustomerExperienceLab();
+  };
+
+  window.renderCustomerExperienceLab = function () {
+    var lab = DATA.customerExperienceLab;
+    var trackerEl = el("cx-tracker-box");
+    var gridEl = el("cx-triggers-grid");
+    var previewEl = el("cx-message-preview");
+    if (!lab || !trackerEl || !gridEl || !previewEl) return;
+
+    var preset = lab.presets[cxState.presetKey];
+    var lang = el("cx-lang-select") ? el("cx-lang-select").value : "en-IN";
+    var reqCh = el("cx-channel-select") ? el("cx-channel-select").value : "whatsapp";
+    var waConsent = el("cx-wa-consent") ? el("cx-wa-consent").checked : true;
+    var waBlocked = reqCh === "whatsapp" && !waConsent;
+    var effCh = waBlocked ? "email" : reqCh;
+    var titles = lab.stageTitles[lang] || lab.stageTitles["en-IN"];
+
+    var stagesHtml = preset.stages
+      .map(function (st, idx) {
+        var statusTag =
+          st.status === "completed"
+            ? "Completed"
+            : st.status === "action_required"
+            ? "Action Needed"
+            : st.status === "delayed"
+            ? "Delayed"
+            : st.status === "in_progress"
+            ? "In Progress"
+            : "Pending";
+        return (
+          '<div class="cx-stage-card ' +
+          escapeHtml(st.status) +
+          '">' +
+          '<div style="display:flex; justify-content:space-between; font-size:10.5px; font-weight:700; text-transform:uppercase;">' +
+          "<span>Step " +
+          (idx + 1) +
+          "</span><span>" +
+          escapeHtml(statusTag) +
+          "</span></div>" +
+          '<div style="font-weight:800; font-size:13px;">' +
+          escapeHtml(titles[idx]) +
+          "</div>" +
+          '<div style="line-height:1.4;">' +
+          escapeHtml(st.detail) +
+          "</div>" +
+          (st.date ? '<div style="font-family:monospace; font-size:10.5px; opacity:0.8;">' + escapeHtml(st.date) + "</div>" : "") +
+          "</div>"
+        );
+      })
+      .join("");
+
+    trackerEl.innerHTML =
+      '<div class="cx-tracker-header">' +
+      '<div><div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; opacity:0.8;">Motor claim tracker</div>' +
+      '<div style="font-size:16px; font-weight:800;">' +
+      escapeHtml(preset.claimNumber) +
+      " · " +
+      escapeHtml(preset.vehicle) +
+      "</div></div>" +
+      '<span class="badge badge-green">' +
+      preset.progressPct +
+      "% Complete</span></div>" +
+      '<div class="cx-tracker-grid">' +
+      stagesHtml +
+      "</div>";
+
+    gridEl.innerHTML = lab.triggers
+      .map(function (tr) {
+        var isFlagged = preset.activeTriggers.indexOf(tr.key) >= 0;
+        var isSel = cxState.triggerKey === tr.key;
+        return (
+          '<button type="button" class="cx-trigger-btn' +
+          (isSel ? " active" : "") +
+          (isFlagged ? " flagged" : "") +
+          '" onclick="selectCxTrigger(\'' +
+          escapeHtml(tr.key) +
+          "')\">" +
+          '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">' +
+          "<strong>" +
+          escapeHtml(tr.label) +
+          "</strong>" +
+          (isFlagged ? '<span class="badge badge-amber" style="font-size:9.5px; padding:1px 6px;">ACTIVE</span>' : "") +
+          "</div>" +
+          '<div style="font-size:10.5px; opacity:0.75; margin-top:2px; font-family:monospace;">' +
+          escapeHtml(tr.key) +
+          "</div></button>"
+        );
+      })
+      .join("");
+
+    if (cxState.escalatedRef) {
+      previewEl.innerHTML =
+        '<div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-bottom:8px;">' +
+        "<strong>Human Specialist Escalation Created: " +
+        escapeHtml(cxState.escalatedRef.ref) +
+        " (4-hour Callback SLA)</strong>" +
+        '<span class="badge badge-rose">ClaimTask Assigned: claims_handler</span></div>' +
+        '<div style="background:#fff; border:1px solid #fecdd3; border-radius:8px; padding:10px;">' +
+        "Immediate acknowledgement dispatched on <strong>" +
+        escapeHtml(cxState.escalatedRef.channel.toUpperCase()) +
+        "</strong> in <code>" +
+        escapeHtml(cxState.escalatedRef.lang) +
+        "</code>" +
+        (cxState.escalatedRef.blockedWa
+          ? " (WhatsApp opt-in consent unchecked &rarr; routed via consented Email fallback)."
+          : " (WhatsApp opt-in consent verified).") +
+        "</div>";
+      return;
+    }
+
+    var msgMap = lab.messages[cxState.triggerKey] || lab.messages.documents_missing;
+    var msg = msgMap[lang] || msgMap["en-IN"];
+    var subj = msg.subject.replace("{cn}", preset.claimNumber);
+    var body = msg.body.replace(/\{cn\}/g, preset.claimNumber);
+
+    previewEl.innerHTML =
+      '<div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">' +
+      "<strong>State-Aware AI Update Preview · <code>" +
+      escapeHtml(cxState.triggerKey) +
+      "</code> (" +
+      escapeHtml(lang) +
+      ")</strong>" +
+      '<div style="display:flex; gap:6px;">' +
+      '<span class="badge ' +
+      (waBlocked ? "badge-amber" : "badge-green") +
+      '">Effective Channel: ' +
+      escapeHtml(effCh.toUpperCase()) +
+      "</span>" +
+      (effCh === "whatsapp" ? '<span class="badge badge-blue">wamid.DEMO Verified</span>' : "") +
+      "</div></div>" +
+      (waBlocked
+        ? '<div class="badge badge-amber" style="display:block; margin-bottom:8px;">WhatsApp Consent Guardrail: WhatsApp opt-in is unchecked (RC_WHATSAPP_CONSENT_REQUIRED) — routed to ' +
+          escapeHtml(effCh.toUpperCase()) +
+          ".</div>"
+        : "") +
+      '<div style="background:#ffffff; border:1px solid #c7d2fe; border-radius:8px; padding:10px;">' +
+      '<div style="font-weight:700; margin-bottom:4px;">' +
+      escapeHtml(subj) +
+      "</div>" +
+      "<div>" +
+      escapeHtml(body) +
+      "</div></div>";
+  };
+
   document.addEventListener("DOMContentLoaded", function () {
     renderOrchestratorEngine();
     if (window.runOrchLab) window.runOrchLab("parallel_wave");
@@ -1430,6 +1609,7 @@
     if (window.renderDamageAiLab) window.renderDamageAiLab("guardrail_uncertain");
     if (window.renderEcosystemDashboard) window.renderEcosystemDashboard("all");
     if (window.runEcoSim) window.runEcoSim("preferred_honoured");
+    if (window.renderCustomerExperienceLab) window.renderCustomerExperienceLab();
     renderActiveWorkflow();
     renderQuestions();
     renderCapabilityMatrix();
