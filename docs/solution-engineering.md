@@ -40,6 +40,25 @@ Located in `services/settlement/calculator.py`, `SettlementCalculator` accepts t
 4. **Traceability:**
    - Stores a complete JSON `calculation_trace`, `rule_versions`, and `policy_citations` on the `Settlement` entity so any customer or auditor can trace every deduction to a policy clause.
 
+### 2.1 Settlement Decision Workbench (`services/settlement/workbench.py`)
+
+The calculator is wrapped by a workbench that evaluates **twelve scenarios** on the synthetic demo claim, always through `SettlementCalculator` so no second copy of the money rules exists: cashless repair, reimbursement, repair vs replacement, partial approval, supplementary estimate, total loss, constructive total loss, salvage recovery, Zero-Depreciation add-on, Consumables add-on, different deductibles, and underinsurance / IDV implications.
+
+Every scenario returns the same eight-part decision record:
+
+1. **Claimed** - amount and basis (garage quote, market value, structural estimate).
+2. **Assessed** - after assessment adjustments (duplicate line, rate above benchmark, repair substitution, IDV basis).
+3. **Approved** - after lines withheld pending evidence.
+4. **Deducted** - tariff depreciation, compulsory/voluntary excess, retained salvage, pro-rata reduction, with add-on benefits shown separately.
+5. **Policy clauses applied** - clause id, page and the reason it applied (`SEC-1-2`, `SEC-1-5`, `SEC-1-6`, `SEC-1-7`, `SEC-1-8`, `COND-CLAIM-02/03`, add-ons).
+6. **Who approves** - resolved from `IN-DOA-MATRIX-2026` by `resolve_required_authority()` (checker role, limit, why lower tiers were skipped, payment-release role). The demo records no real approval.
+7. **What the customer receives** - payee, outcome and what the customer still pays.
+8. **Why it differs from the request** - an itemised reconciliation that must balance exactly (`why_different.balanced`).
+
+Parameters, wording and the clause map live in `rules/india/settlement_scenario_rules.json` (`IN-SETTLEMENT-SCENARIOS-2026`); the demo claim is `knowledge/synthetic_policy_samples/demo_claim_settlement.json`. The API exposes it at `POST /api/v1/settlement/workbench` (what-if overrides, read-only).
+
+**Static site mirror.** `site/settlement-engine.js` reproduces the engine with integer-paise `BigInt` arithmetic. `scripts/export_settlement_workbench_data.py` generates `site/settlement-workbench-data.js` from the same rule files, and `tests/unit/test_settlement_workbench.py` fails if that file is stale or if the JS and Python engines ever return different output.
+
 ---
 
 ## 3. Bounded Multi-Agent Runtime & Guardrails
