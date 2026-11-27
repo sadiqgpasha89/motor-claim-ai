@@ -61,7 +61,12 @@ class Customer(Base):
     phone_masked: Mapped[str] = mapped_column(String(32))
     email_masked: Mapped[str] = mapped_column(String(120))
     preferred_language: Mapped[str] = mapped_column(String(16), default="en-IN")
+    preferred_channel: Mapped[str] = mapped_column(String(24), default="whatsapp")
     consent_whatsapp: Mapped[bool] = mapped_column(Boolean, default=True)
+    consent_sms: Mapped[bool] = mapped_column(Boolean, default=True)
+    consent_email: Mapped[bool] = mapped_column(Boolean, default=True)
+    proactive_updates_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    whatsapp_consent_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_synthetic_demo: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -180,6 +185,8 @@ class Claim(Base):
     risk_assessment: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     risk_history: Mapped[list] = mapped_column(JSON, default=list)
     preferred_language: Mapped[str] = mapped_column(String(16), default="en-IN")
+    preferred_channel: Mapped[str] = mapped_column(String(24), default="whatsapp")
+    whatsapp_consent: Mapped[bool] = mapped_column(Boolean, default=True)
 
     assigned_handler_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     assigned_surveyor_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
@@ -547,11 +554,16 @@ class Communication(Base):
     channel: Mapped[str] = mapped_column(String(24), default="email")
     language: Mapped[str] = mapped_column(String(16), default="en-IN")
     template_id: Mapped[str] = mapped_column(String(64))
+    trigger_event: Mapped[str] = mapped_column(String(64), default="manual_update")
+    claim_state_snapshot: Mapped[str] = mapped_column(String(48), default="")
     subject: Mapped[str] = mapped_column(String(240))
     body: Mapped[str] = mapped_column(Text)
     requires_human_review: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    delivery_status: Mapped[str] = mapped_column(String(24), default="sent_mock")
+    delivery_status: Mapped[str] = mapped_column(String(32), default="sent_mock")
+    consent_verified: Mapped[bool] = mapped_column(Boolean, default=True)
+    whatsapp_message_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    context_summary: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

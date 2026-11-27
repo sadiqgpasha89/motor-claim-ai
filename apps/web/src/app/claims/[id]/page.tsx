@@ -7,8 +7,9 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ProvenanceBadge, RiskTierBadge, SlaBadge, StatusPill } from "@/components/Badges";
 import { ClaimExecutionChain } from "@/components/ClaimExecutionChain";
+import { MotorClaimTracker } from "@/components/MotorClaimTracker";
 
-type TabId = "overview" | "orchestration" | "ecosystem" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
+type TabId = "overview" | "customer_experience" | "orchestration" | "ecosystem" | "decisions" | "evidence" | "damage_estimate" | "siu" | "settlement" | "audit";
 
 interface RiskDriver {
   code: string;
@@ -531,6 +532,13 @@ interface Claim360 {
     rework_queue: Array<{ id: string; from_agent: string; to_agent: string; reason_code: string; instructions: string; status: string }>;
     escalations: Array<{ id: string; agent_name: string; reason: string; status: string }>;
   };
+  communications?: Array<{
+    id: string;
+    channel: string;
+    language: string;
+    subject: string;
+    body: string;
+  }>;
 }
 
 export default function Claim360Page() {
@@ -699,6 +707,7 @@ export default function Claim360Page() {
         {(
           [
             ["overview", "Overview & AI Workflow"],
+            ["customer_experience", `Customer Journey & Comms (${data.communications?.length || 0})`],
             ["orchestration", `Orchestration & Actions (${data.tasks?.length || 0})`],
             ["ecosystem", "Ecosystem & Repair"],
             ["decisions", `Decision Intelligence (${data.decisions?.length || 0})`],
@@ -1000,6 +1009,11 @@ export default function Claim360Page() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: CUSTOMER EXPERIENCE INTELLIGENCE & MOTOR CLAIM TRACKER */}
+      {tab === "customer_experience" && token && (
+        <MotorClaimTracker claimId={claimId} token={token} allowUpload={true} onClaimUpdated={loadClaim} />
       )}
 
       {/* TAB: ORCHESTRATION, ACTIONS & TASKS */}

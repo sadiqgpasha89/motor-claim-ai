@@ -1776,7 +1776,7 @@ class SettlementRecommendationAgent(BoundedAgent):
 
 class CustomerCommunicationAgent(BoundedAgent):
     agent_name = "customer_communication"
-    prompt_version = "comm-v2.0"
+    prompt_version = "comm-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["customer_communication"].allowed_tools)
 
     def _run(
@@ -1787,67 +1787,132 @@ class CustomerCommunicationAgent(BoundedAgent):
         model_version: str,
         executor: ControlledActionExecutor,
     ) -> AgentInvocationResponse:
+        from services.workflow.customer_experience import (
+            PROACTIVE_TRIGGER_MAP,
+            compose_state_aware_message,
+            resolve_effective_channel,
+        )
+
         ModelGateway.generate_structured_summary(task="customer_communication", facts=request.minimised_facts)
         facts = request.minimised_facts
         is_adverse = bool(facts.get("is_adverse", False))
         locale = str(facts.get("language") or request.locale or "en-IN")
         if locale not in _LOCALIZED_COMM_TEMPLATES:
             locale = "en-IN"
-        channel = str(facts.get("channel", "whatsapp"))
-        msg_type = str(facts.get("message_type", "status_update"))
-        if msg_type not in {"status_update", "document_reminder", "delay_advisory", "next_steps"}:
-            msg_type = "status_update"
+        requested_channel = str(facts.get("channel") or "whatsapp")
+        consent_whatsapp = bool(facts.get("consent_whatsapp", True))
+        consent_sms = bool(facts.get("consent_sms", True))
+        consent_email = bool(facts.get("consent_email", True))
+        phone_masked = str(facts.get("phone_masked") or "******4321")
 
-        tpl = _LOCALIZED_COMM_TEMPLATES[locale][msg_type]
-        ctx = {
-            "claim_number": facts.get("claim_number", request.claim_id),
-            "vehicle": facts.get("vehicle_reg", "your vehicle"),
-            "status": facts.get("claim_status", "IN_PROGRESS"),
-            "next_step": facts.get("next_expected_action", "Processing under review"),
-            "missing_docs": ", ".join(facts.get("missing_documents", [])) or "pending evidence",
-            "delay_reason": facts.get("delay_reason", "surveyor report follow-up"),
+        prefs = {
+            "preferred_language": locale,
+            "preferred_channel": requested_channel,
+            "consent_whatsapp": consent_whatsapp,
+            "consent_sms": consent_sms,
+            "consent_email": consent_email,
         }
-        subject = str(facts.get("subject") or tpl["subject"].format(**ctx))
-        draft = str(facts.get("draft_message") or tpl["body"].format(**ctx))
+        effective_channel, wa_blocked, channel_note = resolve_effective_channel(requested_channel, prefs)
+
+        trigger_event = str(facts.get("trigger_event") or "").strip()
+        raw_msg_type = str(facts.get("message_type") or "")
+        if not trigger_event:
+            if raw_msg_type == "delay_advisory":
+                trigger_event = "surveyor_delayed" if "surveyor" in str(facts.get("delay_reason", "")).lower() else "parts_delayed"
+            elif raw_msg_type == "document_reminder":
+                trigger_event = "documents_missing"
+            elif facts.get("missing_documents"):
+                trigger_event = "documents_missing"
+            else:
+                trigger_event = "status_update"
+
+        composed = compose_state_aware_message(trigger_event, locale, {**facts, "claim_number": facts.get("claim_number", request.claim_id)})
+        msg_type = raw_msg_type if raw_msg_type in {"status_update", "document_reminder", "delay_advisory", "next_steps"} else composed["message_type"]
+
+        subject = str(facts.get("subject") or composed["subject"])
+        draft = str(facts.get("draft_message") or composed["body"])
+        action_cta = str(facts.get("action_cta") or composed["action_cta"])
+        template_id = (
+            f"PROACTIVE_{trigger_event.upper()}"
+            if trigger_event in PROACTIVE_TRIGGER_MAP
+            else f"COMM_{msg_type.upper()}"
+        )
+
+        context_summary = {
+            "claim_status": facts.get("claim_status", "IN_PROGRESS"),
+            "trigger_event": trigger_event,
+            "detected_triggers": facts.get("detected_triggers", [trigger_event]),
+            "requested_channel": requested_channel,
+            "effective_channel": effective_channel,
+            "whatsapp_blocked_no_consent": wa_blocked,
+        }
 
         actions = [
             executor.send_customer_update(
                 agent_name=self.agent_name,
-                channel=channel,
+                channel=requested_channel,
                 language=locale,
-                template_id=f"COMM_{msg_type.upper()}",
+                template_id=template_id,
                 subject=subject,
                 body=draft,
                 is_adverse=is_adverse,
+                trigger_event=trigger_event,
+                consent_whatsapp=consent_whatsapp,
+                phone_masked=phone_masked,
+                context_summary=context_summary,
             )
         ]
 
-        routing = "held_for_human_comm_approval" if is_adverse else f"proactive_{msg_type}_dispatched"
-        reason_codes = [f"RC_COMM_{msg_type.upper()}", f"RC_LOCALE_{locale.replace('-', '_').upper()}"]
+        routing = "held_for_human_comm_approval" if is_adverse else f"proactive_{trigger_event}_dispatched"
+        reason_codes = [
+            f"RC_COMM_{trigger_event.upper()}",
+            f"RC_COMM_{msg_type.upper()}",
+            f"RC_LOCALE_{locale.replace('-', '_').upper()}",
+        ]
+        if wa_blocked:
+            reason_codes.append("RC_WHATSAPP_CONSENT_REQUIRED")
         if is_adverse:
             reason_codes.append("RC_ADVERSE_HUMAN_REVIEW_REQUIRED")
 
         result = {
-            "channel": channel,
+            "trigger_event": trigger_event,
+            "channel": requested_channel,
+            "effective_channel": effective_channel,
+            "whatsapp_blocked_no_consent": wa_blocked,
+            "channel_resolution_note": channel_note,
+            "consent_whatsapp": consent_whatsapp,
             "language": locale,
             "message_type": msg_type,
             "subject": subject,
             "draft_message": draft,
+            "action_cta": action_cta,
+            "detected_triggers": facts.get("detected_triggers", [trigger_event]),
             "requires_human_review": is_adverse,
+            "human_escalation_available": True,
         }
         decision = DecisionIntelligence(
             decision_id=self._decision_id(self.agent_name),
             reason_codes=reason_codes,
-            evidence=[f"Channel={channel}, Locale={locale}, Type={msg_type}, Adverse={is_adverse}"],
-            policy_rule_refs=["IRDAI-POLICYHOLDER-COMM-2024", "ADVERSE-NOTICE-HUMAN-GATE"],
-            confidence=0.93,
+            evidence=[
+                f"Trigger={trigger_event}, State={facts.get('claim_status', 'IN_PROGRESS')}, Requested={requested_channel}, Effective={effective_channel}, WhatsAppConsent={consent_whatsapp}, Locale={locale}"
+            ],
+            policy_rule_refs=["IRDAI-POLICYHOLDER-COMM-2024", "WHATSAPP-OPTIN-CONSENT-2026", "ADVERSE-NOTICE-HUMAN-GATE"],
+            confidence=0.95,
             confidence_band=ConfidenceBand.HIGH,
             routing_outcome=routing,
             explanation=(
-                f"Prepared localized {msg_type} in {locale} for {channel}. "
-                + ("Held in pending_human_review because message is adverse." if is_adverse else "Dispatched proactively without holding claim.")
+                f"Synthesized state-aware {trigger_event} update in {locale} (claim state={facts.get('claim_status', 'IN_PROGRESS')}). "
+                + (
+                    "WhatsApp opt-in consent is False, so delivery routed to fallback consented channel. "
+                    if wa_blocked
+                    else f"Dispatched via {effective_channel}. "
+                )
+                + ("Held in pending_human_review because message is adverse." if is_adverse else "Proactively notified customer with human escalation option.")
             ),
-            alternatives_considered=["send_english_only_passive (upgraded to multilingual proactive cadence)"],
+            alternatives_considered=[
+                "send_generic_static_template (upgraded to state-aware claim-context synthesis)",
+                "force_whatsapp_without_consent (prohibited by consent guardrail)",
+            ],
         )
 
         return AgentInvocationResponse(
@@ -1855,9 +1920,12 @@ class CustomerCommunicationAgent(BoundedAgent):
             status=AgentStatus.NEEDS_HUMAN if is_adverse else AgentStatus.COMPLETED,
             result=result,
             published_result=result,
-            confidence=0.93,
+            confidence=0.95,
             confidence_band=ConfidenceBand.HIGH,
-            limitations=["Adverse or legal communications cannot be sent without human approval."],
+            limitations=[
+                "Adverse or legal communications cannot be sent without human approval.",
+                "WhatsApp messages require verified opt-in consent (consent_whatsapp=true).",
+            ],
             actions_executed=actions,
             decision=decision,
             model_id=model_id,
@@ -1865,7 +1933,7 @@ class CustomerCommunicationAgent(BoundedAgent):
             prompt_version=self.prompt_version,
             rule_versions=request.rule_versions,
             suggested_next_action="human_comm_review" if is_adverse else "dispatch_notification",
-            tools_invoked=["approved_templates", "communication_preference", "send_customer_update"],
+            tools_invoked=["approved_templates", "communication_preference", "claim_status_read", "send_customer_update"],
         )
 
 

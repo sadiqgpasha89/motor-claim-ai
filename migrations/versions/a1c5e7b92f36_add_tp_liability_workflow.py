@@ -1,7 +1,7 @@
 """add_tp_liability_workflow
 
 Revision ID: a1c5e7b92f36
-Revises: f9a2b4d83e21
+Revises: a1c3e5f70912
 Create Date: 2026-11-27 18:00:00.000000
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a1c5e7b92f36"
-down_revision: Union[str, None] = "f9a2b4d83e21"
+down_revision = "a1c3e5f70912"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -540,29 +540,37 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         display_name="Customer Communication",
         stage="8. Proactive Updates & Closure",
         operational_responsibility=(
-            "Generates and dispatches proactive status updates, document reminders, SLA delay advisories, "
-            "and clear next steps in the policyholder's preferred language and channel."
+            "Understands live claim state across all lifecycle stages and proactively synthesizes meaningful, "
+            "multilingual updates (10 proactive triggers), enforces WhatsApp opt-in consent & channel preferences, "
+            "and provides a direct escalation path to a human specialist."
         ),
         required_capabilities=[
-            "Proactive milestone status updates",
-            "Missing document & recapture reminders",
-            "SLA delay advisories with explanations",
-            "Clear next-steps guidance",
-            "Multilingual templates (en-IN, hi-IN, mr-IN, ta-IN, kn-IN)",
+            "State-aware proactive updates across 10 claim triggers (missing docs, photo recapture, survey scheduled/delayed, estimate approved, repair start, parts delay, settlement approval, payout, closure)",
+            "Motor Claim Tracker 5-stage customer journey synthesis",
+            "Multilingual communication (en-IN, hi-IN, mr-IN, ta-IN, kn-IN)",
+            "Communication preference & WhatsApp opt-in consent enforcement",
+            "Direct escalation path to human claims specialist",
         ],
         input_contract={
+            "trigger_event": "documents_missing | photos_insufficient | survey_scheduled | surveyor_delayed | estimate_approved | repair_begins | parts_delayed | settlement_awaiting_approval | payment_processed | claim_closed | status_update",
             "message_type": "status_update | document_reminder | delay_advisory | next_steps | adverse_or_clarification",
-            "locale": "BCP-47 language code",
+            "locale": "BCP-47 language code (en-IN | hi-IN | mr-IN | ta-IN | kn-IN)",
             "channel": "whatsapp | sms | email | portal",
+            "consent_whatsapp": "boolean",
             "is_adverse": "boolean",
         },
         output_contract={
+            "trigger_event": "string",
             "language": "string",
             "channel": "string",
+            "effective_channel": "string",
+            "whatsapp_blocked_no_consent": "boolean",
             "message_type": "string",
             "subject": "string",
             "draft_message": "string",
+            "action_cta": "string",
             "requires_human_review": "boolean",
+            "human_escalation_available": "boolean",
         },
         allowed_tools=[
             "approved_templates",
@@ -577,12 +585,13 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         ],
         prohibited_actions=[
             "send_unapproved_adverse_or_repudiation_notice",
+            "send_whatsapp_without_customer_consent",
             "leak_internal_siu_notes",
             "mutate_claim_state_directly",
         ],
         depends_on=["fnol_concierge"],
         can_request_rework_from=[],
-        human_gate_condition="Any adverse, partial-decline, or legal communication is held in pending_human_review.",
+        human_gate_condition="Any adverse, partial-decline, or legal communication is held in pending_human_review; WhatsApp dispatch blocked if consent_whatsapp=false.",
         timeout_seconds=10,
         max_retries=2,
     ),

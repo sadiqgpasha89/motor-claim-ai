@@ -46,7 +46,6 @@ from services.claims.models import (
     Policy,
     Provider,
     Settlement,
-    SLATimer,
     SurveyAssignment,
     Vehicle,
 )
@@ -62,7 +61,6 @@ from services.rules_engine.loader import get_active_rule, load_rule_files
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
 from services.workflow.risk_engine import evaluate_and_persist_risk, gather_claim_risk_facts
 from services.workflow.sla_engine import (
-    compute_timer_status,
     pause_active_sla_timers,
     resume_paused_sla_timers,
     transition_state_sla_timer,
@@ -1307,12 +1305,15 @@ class ClaimOrchestrator:
                 real_actions.append(
                     executor.send_customer_update(
                         agent_name=agent_name,
-                        channel=str(pl.get("channel") or res.get("channel") or "whatsapp"),
+                        channel=str(pl.get("requested_channel") or pl.get("channel") or res.get("channel") or "whatsapp"),
                         language=str(pl.get("language") or res.get("language") or claim.preferred_language),
-                        template_id=f"COMM_{str(res.get('message_type', 'status_update')).upper()}",
+                        template_id=f"PROACTIVE_{str(res.get('trigger_event', 'status_update')).upper()}",
                         subject=str(res.get("subject") or f"Update for {claim.claim_number}"),
                         body=str(res.get("draft_message") or act.summary),
                         is_adverse=bool(pl.get("is_adverse", False)),
+                        trigger_event=str(pl.get("trigger_event") or res.get("trigger_event") or "status_update"),
+                        consent_whatsapp=bool(pl.get("consent_whatsapp", res.get("consent_whatsapp", claim.whatsapp_consent))),
+                        context_summary=dict(pl.get("context_summary") or {}),
                     )
                 )
             else:
@@ -2721,22 +2722,25 @@ class ClaimOrchestrator:
             }
 
         if agent_name == "customer_communication":
-            timers = self.db.query(SLATimer).filter(SLATimer.claim_id == claim.id).all()
-            sla_breached = any(compute_timer_status(t.due_at, t.completed_at, t.paused) == "breached" for t in timers)
-            msg_type = (
-                "delay_advisory"
-                if sla_breached
-                else ("document_reminder" if claim.missing_documents else "status_update")
-            )
+            from services.workflow.customer_experience import inspect_claim_communication_context
+
+            cx = inspect_claim_communication_context(self.db, claim)
+            prefs = cx["preferences"]
+            rec = cx["recommended_message"]
             return {
-                "claim_number": claim.claim_number,
-                "vehicle_reg": claim.vehicle_reg_input,
-                "claim_status": claim.status,
-                "next_expected_action": claim.next_expected_action,
-                "missing_documents": claim.missing_documents,
-                "language": claim.preferred_language,
-                "channel": "whatsapp" if claim.intake_channel == "whatsapp" else "email",
-                "message_type": msg_type,
+                **cx["state_context"],
+                "language": prefs["preferred_language"],
+                "channel": cx["requested_channel"],
+                "consent_whatsapp": prefs["consent_whatsapp"],
+                "consent_sms": prefs["consent_sms"],
+                "consent_email": prefs["consent_email"],
+                "phone_masked": prefs["phone_masked"],
+                "trigger_event": cx["primary_trigger"],
+                "message_type": rec["message_type"],
+                "subject": rec["subject"],
+                "draft_message": rec["body"],
+                "action_cta": rec["action_cta"],
+                "detected_triggers": [d["trigger"] for d in cx["detected_triggers"]],
                 "is_adverse": claim.status == ClaimStatus.DECLINED_PARTIAL.value,
             }
 

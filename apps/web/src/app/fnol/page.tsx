@@ -92,6 +92,8 @@ export default function FNOLPage() {
   const [involvedVehicles, setInvolvedVehicles] = useState(1);
   const [legalDispute, setLegalDispute] = useState(false);
   const [docsComplete, setDocsComplete] = useState(false);
+  const [preferredChannel, setPreferredChannel] = useState("whatsapp");
+  const [whatsappConsent, setWhatsappConsent] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +169,8 @@ export default function FNOLPage() {
             airbags_deployed: airbags,
             police_involved: policeInvolved,
             preferred_language: lang,
+            preferred_channel: preferredChannel,
+            whatsapp_consent: whatsappConsent,
           }),
         },
         token
@@ -512,6 +516,30 @@ export default function FNOLPage() {
           <label className="flex items-center gap-2 p-2.5 border border-emerald-200 bg-emerald-50/40 rounded-lg cursor-pointer">
             <input type="checkbox" checked={docsComplete} onChange={(e) => setDocsComplete(e.target.checked)} />
             <span>Complete Documents Ready (Fast-Track)</span>
+          </label>
+        </div>
+
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-700">Preferred Update Channel:</span>
+            <select
+              value={preferredChannel}
+              onChange={(e) => setPreferredChannel(e.target.value)}
+              className="px-2.5 py-1 border border-slate-300 rounded bg-white font-medium"
+            >
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">Email</option>
+              <option value="sms">SMS</option>
+              <option value="portal">Customer Portal</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer font-medium text-emerald-950">
+            <input
+              type="checkbox"
+              checked={whatsappConsent}
+              onChange={(e) => setWhatsappConsent(e.target.checked)}
+            />
+            <span>I consent to receive proactive claim status &amp; document alerts on WhatsApp</span>
           </label>
         </div>
 

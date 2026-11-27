@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -735,7 +735,27 @@ class ControlledActionExecutor:
         subject: str,
         body: str,
         is_adverse: bool = False,
+        trigger_event: str = "manual_update",
+        consent_whatsapp: bool = True,
+        phone_masked: str = "******4321",
+        context_summary: Optional[dict[str, Any]] = None,
     ) -> AgentActionExecution:
+        wa_blocked = channel == "whatsapp" and not consent_whatsapp
+        effective_channel = "portal" if wa_blocked else channel
+        wa_msg_id: Optional[str] = None
+        consent_verified = not wa_blocked
+
+        if effective_channel == "whatsapp" and not is_adverse:
+            wa_res = IntegrationAdapterRegistry.send_whatsapp_message(
+                phone_masked=phone_masked,
+                language=language,
+                template_id=template_id,
+                body=body,
+                consent_whatsapp=consent_whatsapp,
+            )
+            wa_msg_id = wa_res.get("whatsapp_message_id")
+            consent_verified = bool(wa_res.get("consent_verified", True))
+
         if self.db is None or self.claim is None:
             return AgentActionExecution(
                 action_id=self._aid(),
@@ -744,22 +764,45 @@ class ControlledActionExecutor:
                 status="gated_human_review" if is_adverse else "simulated",
                 target_type="communication",
                 target_id="sim-comm",
-                summary=f"[Simulated] {template_id} ({language}) via {channel}",
-                payload={"channel": channel, "language": language, "is_adverse": is_adverse},
+                summary=f"[Simulated] {trigger_event} ({language}) via {effective_channel}",
+                payload={
+                    "channel": effective_channel,
+                    "requested_channel": channel,
+                    "language": language,
+                    "is_adverse": is_adverse,
+                    "trigger_event": trigger_event,
+                    "consent_whatsapp": consent_whatsapp,
+                    "whatsapp_blocked_no_consent": wa_blocked,
+                    "whatsapp_message_id": wa_msg_id,
+                    "context_summary": context_summary or {},
+                },
             )
 
-        delivery_status = "pending_human_review" if is_adverse else "sent_mock"
+        if is_adverse:
+            delivery_status = "pending_human_review"
+        elif wa_blocked:
+            delivery_status = "sent_fallback_no_wa_consent"
+        elif effective_channel == "whatsapp" and wa_msg_id:
+            delivery_status = "delivered_whatsapp_mock"
+        else:
+            delivery_status = "sent_mock"
+
         comm = Communication(
             tenant_id=self.claim.tenant_id,
             claim_id=self.claim.id,
-            channel=channel,
+            channel=effective_channel,
             language=language,
             template_id=template_id,
+            trigger_event=trigger_event,
+            claim_state_snapshot=self.claim.status,
             subject=subject[:240],
             body=body,
             requires_human_review=is_adverse,
             approved_by=None if is_adverse else f"agent:{agent_name}",
             delivery_status=delivery_status,
+            consent_verified=consent_verified,
+            whatsapp_message_id=wa_msg_id,
+            context_summary=context_summary,
         )
         self.db.add(comm)
         self.db.flush()
@@ -779,7 +822,14 @@ class ControlledActionExecutor:
             tenant_id=self.claim.tenant_id,
             aggregate_id=self.claim.id,
             event_type="CustomerNotified" if not is_adverse else "CustomerCommunicationHeldForReview",
-            payload={"communication_id": comm.id, "channel": channel, "language": language},
+            payload={
+                "communication_id": comm.id,
+                "channel": effective_channel,
+                "language": language,
+                "trigger_event": trigger_event,
+                "whatsapp_message_id": wa_msg_id,
+                "whatsapp_blocked_no_consent": wa_blocked,
+            },
         )
         return AgentActionExecution(
             action_id=self._aid(),
@@ -788,8 +838,25 @@ class ControlledActionExecutor:
             status="gated_human_review" if is_adverse else "executed",
             target_type="communication",
             target_id=comm.id,
-            summary=f"{'Queued adverse notice for human approval' if is_adverse else 'Dispatched update'} ({language}) via {channel}",
-            payload={"communication_id": comm.id, "delivery_status": delivery_status, "language": language},
+            summary=(
+                f"Queued adverse notice for human approval ({language})"
+                if is_adverse
+                else (
+                    f"WhatsApp consent missing -> fell back to {effective_channel} ({language})"
+                    if wa_blocked
+                    else f"Dispatched {trigger_event} ({language}) via {effective_channel}"
+                )
+            ),
+            payload={
+                "communication_id": comm.id,
+                "channel": effective_channel,
+                "requested_channel": channel,
+                "delivery_status": delivery_status,
+                "language": language,
+                "trigger_event": trigger_event,
+                "whatsapp_message_id": wa_msg_id,
+                "whatsapp_blocked_no_consent": wa_blocked,
+            },
         )
 
     def reschedule_inspection(
