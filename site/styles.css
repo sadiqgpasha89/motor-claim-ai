@@ -1537,6 +1537,68 @@ footer {
   font-size: 13px;
 }
 
+/* Electric-vehicle (EV) claims workflow */
+.tp-col.evc {
+  border-top: 4px solid var(--rose);
+}
+
+.tp-step-no.ev {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.ev-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.ev-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px 10px;
+  margin: 0;
+  background: var(--surface);
+}
+
+.ev-fieldset legend {
+  font-weight: 800;
+  font-size: 12px;
+  padding: 0 6px;
+  color: var(--text-muted, #475569);
+}
+
+.ev-sig {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0;
+  font-weight: 500;
+}
+
+.ev-sev {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.ev-sev-critical {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+.ev-sev-high {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
 /* ===== Settlement decision workbench (section 9) ===== */
 .swb-banner {
   display: flex;

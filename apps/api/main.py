@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from apps.api.routes import claims, governance, tp
+from apps.api.routes import claims, ev, governance, tp
 from apps.api.schemas import LoginRequest
 from packages.config import get_settings
 from packages.contracts.errors import DomainError, ErrorCode, register_exception_handlers
@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(claims.router)
     app.include_router(governance.router)
     app.include_router(tp.router)
+    app.include_router(ev.router)
     return app
 
 

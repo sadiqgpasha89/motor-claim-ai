@@ -1643,6 +1643,42 @@ class SettlementRecommendationAgent(BoundedAgent):
                 suggested_next_action="route_to_tp_legal_workflow",
                 tools_invoked=["policy_facts_read"],
             )
+        if facts.get("ev_workflow_required") and not facts.get("ev_settlement_cleared"):
+            # An EV claim is not settled until a human EV technical sign-off clears the HV hold (IN-EV-CLAIMS-2026).
+            ev_result = {
+                "auto_approved": False,
+                "ev_workflow_required": True,
+                "approval_mode": "ev_technical_signoff_required",
+                "required_doa_tier": "ev_technical_lead",
+                "message": "Electric-vehicle claims are settled only after the EV workflow's human technical sign-off. Battery safety and condition are never inferred from photographs.",
+            }
+            return AgentInvocationResponse(
+                agent_name=self.agent_name,
+                status=AgentStatus.NEEDS_HUMAN,
+                result=ev_result,
+                published_result=ev_result,
+                confidence=1.0,
+                confidence_band=ConfidenceBand.HIGH,
+                limitations=["Settlement is held until EV specialist survey, OEM diagnostics and technical sign-off are complete."],
+                actions_executed=[],
+                decision=DecisionIntelligence(
+                    decision_id=self._decision_id(self.agent_name),
+                    reason_codes=["RC_EV_TECHNICAL_SIGNOFF_REQUIRED", "RC_NO_PHOTO_ONLY_EV_CLEARANCE"],
+                    evidence=["ev_workflow_required=true", "IN-EV-CLAIMS-2026 controls.photo_only_clearance_allowed=false"],
+                    policy_rule_refs=["IN-EV-CLAIMS-2026:1.0.0"],
+                    confidence=1.0,
+                    confidence_band=ConfidenceBand.HIGH,
+                    routing_outcome="route_to_ev_workflow",
+                    explanation="Routed to the EV workflow; no settlement, approval request or payment instruction was created.",
+                    alternatives_considered=[],
+                ),
+                model_id=model_id,
+                model_version=model_version,
+                prompt_version=self.prompt_version,
+                rule_versions=request.rule_versions,
+                suggested_next_action="route_to_ev_workflow",
+                tools_invoked=["policy_facts_read"],
+            )
         calc = dict(facts.get("calculation", {}))
         scenarios = list(facts.get("scenarios") or calc.get("scenarios") or [])
         net_str = str(calc.get("net") or calc.get("net_payable_inr") or "0.00")
