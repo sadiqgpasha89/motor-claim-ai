@@ -1,0 +1,619 @@
+{
+ "dataset": "estimate",
+ "agent": "estimate_validation",
+ "version": "1.0.0",
+ "description": "Repair-estimate benchmarking against the rate card: anomaly detection, boundaries and rework.",
+ "base": {
+  "input": {}
+ },
+ "cases": [
+  {
+   "id": "EST-001",
+   "category": "clean_claim",
+   "description": "Bumper part, labour and paint exactly on the rate card",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Front bumper"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "labour",
+      "unit_price_inr": "3200.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Bumper labour"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "paint",
+      "unit_price_inr": "4500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Bumper paint"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "20200.00",
+    "status": "completed",
+    "routing": "estimate_within_benchmark",
+    "next": "run_fraud_checks"
+   }
+  },
+  {
+   "id": "EST-002",
+   "category": "settlement_boundary",
+   "description": "Exactly +12.00% over the OEM benchmark is tolerated",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "14000.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "14000.00",
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-003",
+   "category": "settlement_boundary",
+   "description": "+12.01% breaches the tolerance and is capped at the benchmark",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "14000.01",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "rate_variance"
+    ],
+    "severities": [
+     "medium"
+    ],
+    "recommended": "12500.00",
+    "overcharge": "1500.01",
+    "status": "needs_human",
+    "routing": "hold_anomalies_flagged",
+    "next": "adjuster_estimate_review",
+    "task": "estimate_review"
+   },
+   "critical": true
+  },
+  {
+   "id": "EST-004",
+   "category": "settlement_boundary",
+   "description": "+25% is a high-severity variance",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "15625.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "rate_variance"
+    ],
+    "severities": [
+     "high"
+    ],
+    "recommended": "12500.00",
+    "status": "needs_human"
+   },
+   "critical": true
+  },
+  {
+   "id": "EST-005",
+   "category": "duplicate_evidence",
+   "description": "Duplicate part line is flagged and zeroed in the recommendation",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "duplicate_line"
+    ],
+    "recommended": "12500.00",
+    "overcharge": "12500.00",
+    "status": "needs_human",
+    "task": "estimate_review"
+   },
+   "critical": true
+  },
+  {
+   "id": "EST-006",
+   "category": "fraud_signal",
+   "description": "Quantity of 3 for a single panel needs verification",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FND-RH-01",
+      "line_type": "part",
+      "unit_price_inr": "7800.00",
+      "quantity": 3,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "quantity_anomaly"
+    ],
+    "severities": [
+     "low"
+    ],
+    "status": "needs_human"
+   }
+  },
+  {
+   "id": "EST-007",
+   "category": "conflicting_documents",
+   "description": "Garage quotes replacement but the visual assessment says repair",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ],
+    "damage_observations": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "recommended_action": "repair",
+      "repair_vs_replace_rationale": "Surface scuff only"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "repair_vs_replace_conflict"
+    ],
+    "status": "needs_human",
+    "routing": "rework_damage_verification",
+    "rework_to": "damage_assessment"
+   },
+   "critical": true
+  },
+  {
+   "id": "EST-008",
+   "category": "clean_claim",
+   "description": "A 'refinish' description is a repair, not a replacement conflict (no false positive)",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Refinish bumper"
+     }
+    ],
+    "damage_observations": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "recommended_action": "repair",
+      "repair_vs_replace_rationale": "Surface scuff only"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-009",
+   "category": "fraud_signal",
+   "description": "Labour inflated by 40%",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "labour",
+      "unit_price_inr": "4500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "rate_variance"
+    ],
+    "severities": [
+     "high"
+    ],
+    "recommended": "3200.00",
+    "status": "needs_human"
+   }
+  },
+  {
+   "id": "EST-010",
+   "category": "fraud_signal",
+   "description": "Paint inflated by 20%",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "paint",
+      "unit_price_inr": "5400.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "rate_variance"
+    ],
+    "severities": [
+     "medium"
+    ],
+    "recommended": "4500.00",
+    "status": "needs_human"
+   }
+  },
+  {
+   "id": "EST-011",
+   "category": "clean_claim",
+   "description": "Price below the benchmark is not an anomaly",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "6000.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "6000.00",
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-012",
+   "category": "fraud_signal",
+   "description": "Several anomalies together raise a high-priority review task",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "15625.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "15625.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FND-RH-01",
+      "line_type": "part",
+      "unit_price_inr": "7800.00",
+      "quantity": 3,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "rate_variance",
+     "rate_variance",
+     "duplicate_line",
+     "quantity_anomaly"
+    ],
+    "status": "needs_human",
+    "task": "estimate_review",
+    "task_priority": "high"
+   },
+   "critical": true
+  },
+  {
+   "id": "EST-013",
+   "category": "ev_claim",
+   "description": "EV battery tray at rate-card price with labour",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-EV-BAT-TRAY",
+      "line_type": "part",
+      "unit_price_inr": "42000.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-EV-BAT-TRAY",
+      "line_type": "labour",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "54500.00",
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-014",
+   "category": "clean_claim",
+   "description": "Consumables kit at the benchmark",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-CONS-KIT-01",
+      "line_type": "consumable",
+      "unit_price_inr": "2400.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "2400.00",
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-015",
+   "category": "high_value_claim",
+   "description": "High-value multi-panel estimate on the rate card",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-DOOR-RH-01",
+      "line_type": "part",
+      "unit_price_inr": "19500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-BON-01",
+      "line_type": "part",
+      "unit_price_inr": "16200.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-HL-LED-RH",
+      "line_type": "part",
+      "unit_price_inr": "18400.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ],
+    "visible_part_codes": [
+     "PRT-DOOR-RH-01",
+     "PRT-BON-01",
+     "PRT-HL-LED-RH",
+     "PRT-FRT-BMP-01"
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "66600.00",
+    "status": "completed"
+   }
+  },
+  {
+   "id": "EST-016",
+   "category": "fraud_signal",
+   "description": "A part code that is not on the rate card must be flagged, not silently accepted",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FAKE-999",
+      "line_type": "part",
+      "unit_price_inr": "99999.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "unknown_part"
+    ],
+    "status": "needs_human"
+   },
+   "known_gap": "GAP-EST-001",
+   "critical": true
+  },
+  {
+   "id": "EST-017",
+   "category": "settlement_boundary",
+   "description": "A negative unit price or quantity must be rejected",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "-500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "invalid_line"
+    ],
+    "status": "needs_human"
+   },
+   "known_gap": "GAP-EST-002",
+   "critical": true
+  },
+  {
+   "id": "EST-018",
+   "category": "settlement_boundary",
+   "description": "Zero quantity line must be rejected",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 0,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "invalid_line"
+    ],
+    "status": "needs_human"
+   },
+   "known_gap": "GAP-EST-002"
+  },
+  {
+   "id": "EST-019",
+   "category": "fraud_signal",
+   "description": "A part outside the visible damage needs surveyor verification",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-DOOR-RH-01",
+      "line_type": "part",
+      "unit_price_inr": "19500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ],
+    "visible_part_codes": [
+     "PRT-FRT-BMP-01"
+    ]
+   },
+   "expected": {
+    "anomalies": [
+     "not_in_visible_damage"
+    ],
+    "status": "needs_human"
+   },
+   "known_gap": "GAP-EST-003"
+  },
+  {
+   "id": "EST-020",
+   "category": "incorrect_policy_data",
+   "description": "Line items for the same part but different line types are not duplicates",
+   "input": {
+    "lines": [
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "part",
+      "unit_price_inr": "12500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "labour",
+      "unit_price_inr": "3200.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     },
+     {
+      "part_code": "PRT-FRT-BMP-01",
+      "line_type": "paint",
+      "unit_price_inr": "4500.00",
+      "quantity": 1,
+      "action": "replace",
+      "description": "Line"
+     }
+    ]
+   },
+   "expected": {
+    "anomalies": [],
+    "recommended": "20200.00",
+    "status": "completed"
+   }
+  }
+ ]
+}

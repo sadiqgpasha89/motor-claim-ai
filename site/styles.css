@@ -1555,6 +1555,9 @@ footer {
   font-size: 13px;
 }
 
+/* AI evaluation dashboard */
+#ai-evals .card { overflow-x: auto; margin-bottom: 16px; }
+#ai-evals .metric-fail { color: #b91c1c; font-weight: 700; }
 /* Electric-vehicle (EV) claims workflow */
 .tp-col.evc {
   border-top: 4px solid var(--rose);

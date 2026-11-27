@@ -17,9 +17,9 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
       - name: Lint (ruff)
-        run: ruff check apps services packages agents scripts tests
+        run: ruff check apps services packages agents scripts tests evals
       - name: Type check (mypy)
-        run: mypy --explicit-package-bases apps packages services agents
+        run: mypy --explicit-package-bases apps packages services agents evals
       - name: Run unit, integration, security & model eval tests
         run: pytest -v
 

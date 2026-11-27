@@ -30,3 +30,6 @@ evidence_store/
 # OS / IDE
 .DS_Store
 *.log
+
+# AI evaluation reports (generated)
+eval-report.json

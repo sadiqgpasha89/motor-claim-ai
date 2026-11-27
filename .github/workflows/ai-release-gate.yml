@@ -1,0 +1,57 @@
+name: AI Release Gate
+
+# Every AI, prompt, agent-contract or rules change must pass the evaluation suite before it can ship.
+on:
+  push:
+    branches: [main, "feat/**"]
+    paths:
+      - "agents/**"
+      - "services/agent_runtime/**"
+      - "services/**/prompts/**"
+      - "packages/security/**"
+      - "packages/contracts/**"
+      - "rules/**"
+      - "evals/**"
+      - "tests/evals/**"
+      - ".github/workflows/ai-release-gate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "agents/**"
+      - "services/**"
+      - "packages/**"
+      - "rules/**"
+      - "evals/**"
+      - "tests/evals/**"
+  workflow_dispatch:
+
+jobs:
+  ai-release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Evaluation framework tests (incl. gate-has-teeth mutation tests)
+        run: pytest tests/evals -q
+      - name: Run AI release gate
+        run: |
+          set +e
+          python -m evals.gate --json eval-report.json --markdown > gate-summary.md
+          status=$?
+          cat gate-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Site snapshot is in sync with the gate
+        run: |
+          python -m evals.gate --site-snapshot > /dev/null || true
+          git diff --exit-code site/eval-report.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-eval-report
+          path: |
+            eval-report.json
+            gate-summary.md

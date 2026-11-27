@@ -24,6 +24,7 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 |---|---|---|
 | **GitHub Pages Showcase** | [sadiqgpasha89.github.io/motor-claim-ai](https://sadiqgpasha89.github.io/motor-claim-ai/) | First-class Claim Orchestration Engine showcase: 15-state deterministic workflow, 3-tier Risk-Based Claim Processing (Fast-Track / Standard / Complex-SIU) & Dynamic Escalation Lab, 10-step Visual Damage Assessment AI & Per-Component Confidence Lab, Claims Ecosystem Coordination Dashboard & Authorization Guardrail Lab, Third-Party (TP) Liability Workflow & Controls Lab, Predictive SLA Operations (8-metric rule-driven dashboard, versioned SLA rules explorer, explainable breach-risk lab, agent authorisation matrix), Customer Experience Intelligence (5-stage Motor Claim Tracker, 10 proactive triggers, 5 languages, WhatsApp consent & 4h human escalation), Post-FNOL parallel/conditional DAG scheduler, DLQ/Saga/Pause-Resume Resilience Lab, 12-agent capability matrix, the 12-scenario Settlement Decision Workbench, and the EV Safety Lab (impact detection, thermal risk, specialist routing, OEM diagnostics, parts benchmark) |
 | **TP Liability Workflow** | [docs/claims-lifecycle.md](docs/claims-lifecycle.md#6-third-party-tp-liability-lifecycle-in-tp-liability-2026-servicesworkflowtp_liabilitypy) | Third-Party claims run on their own 12-stage lifecycle with dedicated queues, legal/medical controls, reserve discipline, dual-control settlement and no autonomous settlement; OD paths refuse TP claims |
+| **AI Evaluation & Release Gate** | [docs/ai-evaluation.md](docs/ai-evaluation.md) | 264 golden cases over 17 scenario categories, per-agent metrics for all 11 agents, an independent settlement oracle, six safety suites, a CI release gate and a registry of defects the framework found |
 | **EV Claims Workflow** | [docs/claims-lifecycle.md](docs/claims-lifecycle.md#7-electric-vehicle-ev-claims-lifecycle-in-ev-claims-2026-servicesworkflowev_claimspy) | EV claims run on a dedicated 11-stage safety-first lifecycle: HV hold from FNOL, flatbed recovery, EV-HV certified physical survey, OEM diagnostics, battery repair-vs-replace decision, EV parts benchmarks, technical sign-off, recertification and salvage controls. An EV is **never cleared from photographs**; OD paths refuse EV claims until sign-off |
 | **Predictive SLA Operations** | [docs/sla-management.md](docs/sla-management.md) | Versioned SLA rules service, 8-metric dashboard, event-derived clocks with pauses, explainable breach prediction, and the bounded SLA agent (recommend vs authorised execute) |
 | **System Design** | [docs/architecture.md](docs/architecture.md) | Layered system design, C4/deployment Mermaid diagrams, invariants, and ADRs |
@@ -71,8 +72,12 @@ docker compose up --build
 .venv/bin/pytest -v
 
 # Backend lint & type check
-.venv/bin/ruff check apps services packages agents scripts tests
-.venv/bin/mypy --explicit-package-bases apps packages services agents
+.venv/bin/ruff check apps services packages agents scripts tests evals
+.venv/bin/mypy --explicit-package-bases apps packages services agents evals
+
+# AI release gate: 264 golden cases, 6 safety suites, thresholds and drift baseline (exit 1 = release blocked)
+.venv/bin/python -m evals.gate
+.venv/bin/pytest tests/evals -q
 
 # Frontend typecheck, lint & production build
 cd apps/web && npm run typecheck && npm run lint && npm run build
