@@ -2380,6 +2380,12 @@ class ClaimOrchestrator:
         if claim_requires_tp_workflow(claim):
             # Third-Party liability is never materialised from an OD repair estimate (IN-TP-LIABILITY-2026).
             return
+        from services.workflow.ev_claims import ev_od_hold_blockers
+
+        if ev_od_hold_blockers(self.db, claim):
+            # An EV claim is not settled from a photo-led estimate: the EV technical sign-off must clear it first.
+            claim.workflow_state = {**(claim.workflow_state or {}), "ev_settlement_hold": True}
+            return
         policy = self.db.query(Policy).filter(Policy.id == claim.policy_id).first() if claim.policy_id else None
         vehicle = self.db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
         estimates = self.db.query(Estimate).filter(Estimate.claim_id == claim.id).order_by(Estimate.version.desc()).all()
@@ -2706,14 +2712,21 @@ class ClaimOrchestrator:
             if (claim.risk_tier or "MEDIUM") == "HIGH":
                 active_conditions.append("high_risk_complex")
             elig = (claim.risk_assessment or {}).get("automation_eligibility", {}) if isinstance(claim.risk_assessment, dict) else {}
+            from services.workflow.ev_claims import claim_requires_ev_workflow, ev_od_hold_blockers
+
+            _veh = self.db.query(Vehicle).filter(Vehicle.id == claim.vehicle_id).first() if claim.vehicle_id else None
+            _ev_required = claim_requires_ev_workflow(claim, _veh)
+            _ev_blockers = ev_od_hold_blockers(self.db, claim) if _ev_required else []
             return {
                 "settlement_id": stl.id if stl else None,
                 "active_conditions": active_conditions,
                 "risk_tier": claim.risk_tier or "MEDIUM",
                 "straight_through_eligible": bool(elig.get("straight_through_eligible", False)),
                 "auto_approval_limit_inr": str(elig.get("auto_approval_limit_inr", "25000.00")),
-                "allow_fast_track_auto_approve": claim.claim_type != "third_party",
+                "allow_fast_track_auto_approve": claim.claim_type != "third_party" and not _ev_required,
                 "tp_workflow_required": claim.claim_type == "third_party",
+                "ev_workflow_required": _ev_required,
+                "ev_settlement_cleared": _ev_required and not _ev_blockers,
                 "calculation": {
                     "gross": str(stl.gross_assessed_inr) if stl else "0.00",
                     "net": str(stl.net_payable_inr) if stl else "0.00",

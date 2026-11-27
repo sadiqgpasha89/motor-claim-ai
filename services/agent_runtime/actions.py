@@ -86,7 +86,7 @@ class ControlledActionExecutor:
                 target_type="claim_task",
                 target_id=existing.id,
                 summary=f"Existing open task reused: {existing.title}",
-                payload={"task_type": task_type, "priority": existing.priority, "assigned_role": existing.assigned_role},
+                payload={"task_type": task_type, "priority": existing.priority, "assigned_role": existing.assigned_role, "task_id": existing.id, "reused": True},
             )
 
         task = ClaimTask(

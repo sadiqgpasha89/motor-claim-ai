@@ -13,7 +13,7 @@ pytest tests/evals -q                   # framework tests, including "gate has t
 
 ## 1. Datasets (`evals/datasets/*.json`)
 
-250 curated cases, one file per agent, each tagged with one of 17 scenario categories: clean claims, incomplete claims, incorrect policy data, conflicting documents, low-quality photographs, duplicate evidence, fraud signals, prompt injection, high-value, injury, third-party, EV, expired policies, policy exclusions, network/API outages, settlement boundary conditions, and payment timeout/retry. The gate requires at least five cases per category.
+264 curated cases, one file per agent, each tagged with one of 17 scenario categories: clean claims, incomplete claims, incorrect policy data, conflicting documents, low-quality photographs, duplicate evidence, fraud signals, prompt injection, high-value, injury, third-party, EV, expired policies, policy exclusions, network/API outages, settlement boundary conditions, and payment timeout/retry. The gate requires at least five cases per category.
 
 Cases carry `critical` (a failure always blocks), `statistical` (contributes to metrics only) and `known_gap` (a tracked, registered defect). Seeded generators in `evals/synthetic.py` add OCR-noise documents and the injection and PII corpora. Money and payment scenarios use an isolated in-memory database with the production schema.
 
@@ -32,6 +32,7 @@ Cases carry `critical` (a failure always blocks), `statistical` (contributes to 
 | Settlement | calculation correctness, oracle agreement, rule adherence, payment safety |
 | Communication | factual accuracy, approved-template compliance, consent, adverse-notice gating, localisation |
 | QA | defect detection recall, closure checklist accuracy, rework routing, false-closure rate |
+| Predictive SLA | action authorisation accuracy, guardrail compliance, prediction monotonicity, unsafe autonomy count |
 
 Settlement numbers are checked against hand-verified golden values and an independent exact-arithmetic (`Fraction`) oracle in `evals/oracles/`.
 
@@ -71,6 +72,7 @@ The framework found real defects. They are registered in `evals/known_gaps.json`
 | GAP-QA-002 | high | qa_compliance | QA treats the string 'false' as a passed control |
 | GAP-TOOL-001 | high | fnol_concierge | Request-level allowed_tools is not enforced on the action path |
 | GAP-COV-002 | medium | coverage_intelligence | EV claim without the EV endorsement is not treated as ambiguous |
+| GAP-COV-003 | medium | coverage_intelligence | Retrieval no longer cites the depreciation clause SEC-1-2 after the settlement clauses were added |
 | GAP-DMG-002 | medium | damage_assessment | Damage classifier over-predicts damaged components |
 | GAP-DMG-003 | medium | damage_assessment | Damage confidence is poorly calibrated |
 | GAP-DOC-001 | medium | document_intelligence | OCR accuracy degrades under character-noise |

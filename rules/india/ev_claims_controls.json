@@ -1,0 +1,202 @@
+{
+  "rule_id": "IN-EV-CLAIMS-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Electric Vehicle (EV) Claims Workflow Controls",
+  "source_reference": "POL-WORDING-EV-2025 (EV-BAT-01 traction battery & BMS, EV-SAFE-01 HV safety isolation protocol), IRDAI Master Circular 2024, Battery Waste Management Rules 2022 (MoEFCC) for end-of-life battery handling, OEM high-voltage service procedures (Synthetic V1 - OEM engineering, safety and compliance sign-off required before production; every numeric threshold below is illustrative)",
+  "owner": "Chief Claims Officer & Head of EV Technical (Motor)",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "controls": {
+    "photo_only_clearance_allowed": false,
+    "ai_may_declare_vehicle_safe_to_operate": false,
+    "ai_may_advance_stage": false,
+    "ai_may_authorise_battery_repair_or_replacement": false,
+    "shared_with_od_fast_track": false,
+    "hv_safety_hold_on_open": true,
+    "specialist_surveyor_required": true,
+    "oem_diagnostics_required": true,
+    "battery_decision_requires_oem_engineer_signoff": true,
+    "settlement_requires_technical_signoff": true,
+    "salvage_disposal_certificate_required_for_closure": true,
+    "resale_of_damaged_pack_as_used_part_forbidden": true,
+    "downgrade_of_risk_class_forbidden": true,
+    "acceptable_inspection_modes": ["physical_on_lift", "physical_on_site"],
+    "rejected_inspection_modes": ["photo_remote", "video_remote", "customer_self_declared"],
+    "acceptable_tow_methods": ["flatbed", "on_site_isolation_only"],
+    "rejected_tow_methods": ["driven_under_own_power", "wheel_lift_tow", "dolly_tow"],
+    "emergency_number": "112",
+    "separation_of_duties": [
+      "the user who records the battery disposition cannot give the technical sign-off on it",
+      "the user who raised a safety escalation cannot be the only one to resolve it",
+      "the surveyor who inspected the vehicle cannot be the OEM engineer who signs off the battery decision"
+    ]
+  },
+  "risk_classes": {
+    "battery_critical": {
+      "label": "Battery critical",
+      "description": "Critical thermal/HV signal, two or more high-severity signals, or the claim is flagged as traction battery impacted. Full specialist path, thermal watch and safety hold.",
+      "thermal_watch_required": true
+    },
+    "hv_suspected": {
+      "label": "HV system suspected",
+      "description": "At least one high or moderate signal, or any collision, underbody, flood or fire peril on an EV. Full specialist path; the pack cannot be assumed undamaged.",
+      "thermal_watch_required": false
+    },
+    "screening_only": {
+      "label": "HV screening only",
+      "description": "No battery, HV or thermal signal declared (for example glass or cosmetic damage). Still requires an OEM HV health screening: nothing is cleared from photographs.",
+      "thermal_watch_required": false
+    }
+  },
+  "impact_bands": {
+    "not_excluded": {"min_score": 0, "label": "Battery impact not excluded", "note": "Absence of declared signals is never evidence of a safe pack."},
+    "possible": {"min_score": 20, "label": "Battery impact possible"},
+    "probable": {"min_score": 50, "label": "Battery impact probable"},
+    "severe": {"min_score": 75, "label": "Severe battery impact suspected"}
+  },
+  "signals": {
+    "underbody_impact": {"label": "Underbody / pack-zone strike", "category": "impact", "severity": "high", "weight": 30},
+    "pack_zone_deformation": {"label": "Deformation of pack enclosure, tray or side sill", "category": "impact", "severity": "high", "weight": 30},
+    "side_sill_intrusion": {"label": "Side-sill / floor intrusion", "category": "impact", "severity": "high", "weight": 25},
+    "airbags_deployed": {"label": "Airbags deployed", "category": "impact", "severity": "high", "weight": 20},
+    "collision_impact_any": {"label": "Any collision or road-hazard impact", "category": "impact", "severity": "moderate", "weight": 10},
+    "ground_strike_debris_pothole": {"label": "Strike by debris, kerb or pothole", "category": "impact", "severity": "moderate", "weight": 15},
+    "hv_warning_light": {"label": "HV / battery warning light on dash", "category": "hv", "severity": "high", "weight": 25},
+    "isolation_fault_warning": {"label": "Isolation fault / insulation warning", "category": "hv", "severity": "critical", "weight": 40},
+    "orange_cable_damage": {"label": "Damaged or exposed orange HV cable", "category": "hv", "severity": "critical", "weight": 40},
+    "loss_of_drive_power": {"label": "Loss of drive power / vehicle immobile", "category": "hv", "severity": "moderate", "weight": 10},
+    "coolant_leak_near_pack": {"label": "Coolant leak at or near the pack", "category": "thermal", "severity": "high", "weight": 25},
+    "smoke_or_fire": {"label": "Smoke or fire", "category": "thermal", "severity": "critical", "weight": 50},
+    "burning_or_chemical_smell": {"label": "Burning or sweet chemical smell", "category": "thermal", "severity": "critical", "weight": 40},
+    "venting_hissing_swelling": {"label": "Venting, hissing or swelling of the pack", "category": "thermal", "severity": "critical", "weight": 45},
+    "abnormal_heat_from_pack": {"label": "Abnormal heat from the pack area", "category": "thermal", "severity": "critical", "weight": 40},
+    "thermal_event_warning": {"label": "Thermal event / thermal runaway warning", "category": "thermal", "severity": "critical", "weight": 50},
+    "charge_port_damage": {"label": "Charge port or inlet damaged", "category": "charging", "severity": "high", "weight": 20},
+    "charging_fault_behaviour": {"label": "Charging fault or abnormal charging behaviour", "category": "charging", "severity": "high", "weight": 20},
+    "flood_or_immersion": {"label": "Flood or water immersion", "category": "water", "severity": "high", "weight": 35}
+  },
+  "perils_that_imply_hv_suspected": ["road_accident", "collision", "flood", "fire", "ev_high_voltage", "natural_calamity", "total_loss", "malicious_damage"],
+  "perils_out_of_scope": ["theft", "tp_bodily_injury", "tp_fatality", "tp_property_damage"],
+  "thermal": {
+    "watch_review_hours": 24,
+    "quarantine_monitoring_days": 14,
+    "quarantine_min_clearance_m": 5,
+    "note": "Illustrative synthetic values. Damaged packs can reach thermal runaway after a delay; the watch window and clearance distance must be set by OEM guidance and the insurer's EV safety officer before production."
+  },
+  "hv_components_checklist": [
+    "traction_battery_pack_enclosure_and_seals",
+    "battery_modules_and_cell_taps",
+    "bms_and_cell_monitoring_harness",
+    "hv_junction_box_and_contactors",
+    "service_disconnect_and_hv_interlock_loop",
+    "orange_hv_cable_harness",
+    "inverter_and_motor_controller",
+    "drive_motor_and_reduction_gear",
+    "dc_dc_converter",
+    "onboard_charger",
+    "battery_thermal_management_coolant_circuit",
+    "pyro_fuse_and_crash_disconnect"
+  ],
+  "charging_components_checklist": [
+    "charge_port_inlet_and_locking_actuator",
+    "ac_dc_charge_harness_and_pilot_lines",
+    "onboard_charger",
+    "charge_port_thermal_sensor"
+  ],
+  "oem_diagnostics": {
+    "required_tests": ["dtc_scan", "bms_cell_voltage_delta", "insulation_resistance", "hv_interlock_loop", "coolant_circuit_pressure", "pack_leak_ip_test", "state_of_health"],
+    "screening_only_required_tests": ["dtc_scan", "insulation_resistance", "hv_interlock_loop", "state_of_health"],
+    "allowed_results": ["pass", "fail", "inconclusive"],
+    "thresholds": {
+      "insulation_resistance_min_ohm_per_volt": 500,
+      "bms_cell_voltage_delta_max_mv": 50,
+      "state_of_health_floor_pct": 70
+    },
+    "critical_fail_tests": ["insulation_resistance", "pack_leak_ip_test", "coolant_circuit_pressure"],
+    "oem_report_reference_required": true
+  },
+  "surveyor_requirements": {
+    "provider_type": "surveyor",
+    "required_skill": "ev_hv",
+    "ev_capable_flag_required": true,
+    "licence_status_required": "verified",
+    "licence_must_be_unexpired": true,
+    "inspection_must_be_physical": true,
+    "note": "The surveyor must be EV-HV certified. General surveyors cannot sign off an EV battery claim."
+  },
+  "diagnostic_provider_requirements": {
+    "provider_type": "garage",
+    "required_skill": "ev_hv",
+    "oem_skill_prefix": "oem_",
+    "ev_capable_flag_required": true,
+    "licence_status_required": "verified",
+    "licence_must_be_unexpired": true
+  },
+  "recovery_provider_requirements": {
+    "provider_types": ["towing", "garage"],
+    "required_skill": "ev_hv",
+    "flatbed_skill": "flatbed_recovery",
+    "ev_capable_flag_required": true
+  },
+  "disposition": {
+    "decisions": ["no_battery_work", "repair_in_place", "replace_modules", "replace_pack", "total_loss_review"],
+    "decisions_requiring_removal": ["replace_modules", "replace_pack", "total_loss_review"],
+    "decisions_barred_after_critical_fail": ["no_battery_work", "repair_in_place"],
+    "pack_replacement_total_loss_review_ratio_of_idv": "0.40",
+    "advisory_note": "The recommendation is a non-binding aid. The decision is made by a human and needs an OEM engineer reference (battery_decision_requires_oem_engineer_signoff)."
+  },
+  "benchmarks": {
+    "currency": "INR",
+    "vehicle_class": "ev_private_car",
+    "variance_tolerance_pct": "15.00",
+    "suspiciously_low_ratio": "0.50",
+    "manager_review_above_inr": "50000.00",
+    "labour_hv_certified_per_hour_inr": {"min": "1200.00", "max": "2600.00"},
+    "parts": {
+      "PRT-EV-BAT-TRAY": {"name": "Battery underbody shield & tray", "min": "18000.00", "max": "42000.00"},
+      "PRT-EV-PACK-FULL": {"name": "Traction battery pack (complete, new)", "min": "900000.00", "max": "1650000.00"},
+      "PRT-EV-MODULE": {"name": "Battery module (each)", "min": "85000.00", "max": "190000.00"},
+      "PRT-EV-BMS": {"name": "Battery management system unit", "min": "35000.00", "max": "95000.00"},
+      "PRT-EV-HV-JB": {"name": "HV junction box / PDU", "min": "40000.00", "max": "110000.00"},
+      "PRT-EV-HV-HARNESS": {"name": "Orange HV cable harness", "min": "15000.00", "max": "60000.00"},
+      "PRT-EV-INVERTER": {"name": "Inverter / motor controller", "min": "90000.00", "max": "240000.00"},
+      "PRT-EV-MOTOR": {"name": "Drive motor assembly", "min": "120000.00", "max": "320000.00"},
+      "PRT-EV-DCDC": {"name": "DC-DC converter", "min": "22000.00", "max": "60000.00"},
+      "PRT-EV-OBC": {"name": "Onboard charger", "min": "35000.00", "max": "95000.00"},
+      "PRT-EV-CHG-PORT": {"name": "Charge port / inlet assembly", "min": "9000.00", "max": "32000.00"},
+      "PRT-EV-COOLANT-PLATE": {"name": "Battery cooling plate / coolant circuit kit", "min": "25000.00", "max": "78000.00"}
+    }
+  },
+  "salvage": {
+    "required_events": ["pack_removed", "quarantined", "handed_over", "disposal_certified"],
+    "allowed_events": ["pack_removed", "quarantined", "handed_over", "received_by_recycler", "disposal_certified"],
+    "forbidden_events": ["sold_for_reuse", "retained_by_insured", "sold_as_used_part"],
+    "recycler_registration_required": true,
+    "dangerous_goods_compliant_transport_required": true,
+    "serial_number_continuity_required": true,
+    "regulation_reference": "Battery Waste Management Rules 2022 (extended producer responsibility; registered recycler/refurbisher). Synthetic reference: compliance sign-off required."
+  },
+  "safety_escalation": {
+    "levels": {
+      "emergency": {"label": "Emergency - active thermal event", "sla_minutes": 15, "triggered_by_categories": ["thermal"], "customer_message": "Move well away from the vehicle, do not touch it, do not try to charge or drive it, and call the fire/emergency services on 112 now. Our EV safety officer has been alerted."},
+      "urgent": {"label": "Urgent - HV isolation or charging fault", "sla_minutes": 60, "triggered_by_categories": ["hv", "charging", "water"], "customer_message": "Do not drive, charge or jump-start the vehicle and do not touch orange cables. A flatbed recovery to an EV-certified centre is being arranged."}
+    },
+    "owner_role": "claims_manager",
+    "resolution_requires_evidence_reference": true
+  },
+  "stage_catalogue": {
+    "INTAKE_TRIAGE": {"queue": "ev_triage_intake", "owner_role": "claims_handler", "sla_hours": 2, "human_gate": true, "label": "EV safety triage & HV hold"},
+    "SAFE_RECOVERY_ISOLATION": {"queue": "ev_safe_recovery", "owner_role": "claims_handler", "sla_hours": 12, "human_gate": true, "label": "Flatbed recovery, HV isolation & quarantine"},
+    "SPECIALIST_SURVEY": {"queue": "ev_specialist_survey", "owner_role": "surveyor", "sla_hours": 48, "human_gate": true, "label": "EV-HV certified physical survey"},
+    "OEM_DIAGNOSTICS": {"queue": "ev_oem_diagnostics", "owner_role": "garage", "sla_hours": 72, "human_gate": true, "label": "OEM diagnostic scan & HV tests"},
+    "BATTERY_DISPOSITION": {"queue": "ev_battery_disposition", "owner_role": "claims_manager", "sla_hours": 72, "human_gate": true, "label": "Battery repair vs replacement decision"},
+    "COST_BENCHMARKING": {"queue": "ev_cost_benchmark", "owner_role": "claims_handler", "sla_hours": 48, "human_gate": true, "label": "EV parts cost benchmarking"},
+    "TECHNICAL_SIGN_OFF": {"queue": "ev_technical_signoff", "owner_role": "claims_manager", "sla_hours": 48, "human_gate": true, "label": "EV technical sign-off & settlement clearance"},
+    "SETTLEMENT_CLEARED": {"queue": "ev_settlement_in_od_engine", "owner_role": "claims_handler", "sla_hours": 72, "human_gate": true, "label": "Settlement in the OD engine (EV-flagged)"},
+    "REPAIR_RECERTIFICATION": {"queue": "ev_recertification", "owner_role": "garage", "sla_hours": 96, "human_gate": true, "label": "Post-repair HV recertification & release"},
+    "SALVAGE_DISPOSAL": {"queue": "ev_salvage_disposal", "owner_role": "claims_handler", "sla_hours": 240, "human_gate": true, "label": "Battery salvage & disposal controls"},
+    "CLOSED": {"queue": "ev_closed", "owner_role": "auditor", "sla_hours": 0, "human_gate": false, "label": "Closed"}
+  }
+}

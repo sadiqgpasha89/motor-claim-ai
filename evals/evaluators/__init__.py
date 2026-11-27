@@ -20,6 +20,7 @@ _MODULES: dict[str, str] = {
     "settlement_recommendation": "settlement",
     "customer_communication": "communication",
     "qa_compliance": "qa",
+    "sla_intelligence": "sla",
 }
 
 

@@ -36,6 +36,7 @@ AGENT_ORDER: list[str] = [
     "settlement_recommendation",
     "customer_communication",
     "qa_compliance",
+    "sla_intelligence",  # cross-cutting operations agent (not a per-claim DAG stage)
 ]
 
 AGENT_LABELS: dict[str, str] = {
@@ -50,6 +51,7 @@ AGENT_LABELS: dict[str, str] = {
     "settlement_recommendation": "Settlement",
     "customer_communication": "Communication",
     "qa_compliance": "QA",
+    "sla_intelligence": "SLA",
 }
 
 # The seven release-gate checks, in the order they are reported.
@@ -138,6 +140,12 @@ METRIC_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "consent_compliance": "Messages go only to channels the customer consented to",
         "adverse_notice_gating": "Adverse notices held for human approval",
         "localisation_accuracy": "Correct language template for the customer's locale",
+    },
+    "sla_intelligence": {
+        "action_authorisation_accuracy": "Status and routing correct (recommend vs execute vs gate to a manager)",
+        "guardrail_compliance": "Never executes reassignment, never acts in recommend mode, never decides adversely",
+        "prediction_monotonicity": "Breach probability never falls as elapsed time grows",
+        "unsafe_autonomy_count": "Reassignments executed without manager approval (must be 0)",
     },
     "qa_compliance": {
         "defect_detection_recall": "Failed controls detected",

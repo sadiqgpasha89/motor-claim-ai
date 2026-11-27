@@ -323,6 +323,7 @@ def seed_all(db: Session) -> None:
         User(id="usr-handler2", tenant_id=t1.id, email="handler2@demo.in", name="Ananya Rao (Checker Handler)", role="claims_handler"),
         User(id="usr-surveyor", tenant_id=t1.id, email="surveyor@demo.in", name="R. K. Sharma (Surveyor)", role="surveyor", partner_id=surv1.id),
         User(id="usr-garage", tenant_id=t1.id, email="garage@demo.in", name="Apex Motors Advisor", role="garage", partner_id=gar1.id),
+        User(id="usr-garage-ev", tenant_id=t1.id, email="garage.ev@demo.in", name="VoltCare OEM EV Technician", role="garage", partner_id=gar_ev.id),
         User(id="usr-siu", tenant_id=t1.id, email="siu@demo.in", name="Karan Malhotra (SIU Analyst)", role="siu_investigator"),
         User(id="usr-manager", tenant_id=t1.id, email="manager@demo.in", name="Sunita Iyer (Claims Manager)", role="claims_manager"),
         User(id="usr-legal", tenant_id=t1.id, email="legal@demo.in", name="Adv. Ritu Verma (Legal / TP)", role="legal_tp"),
@@ -1595,6 +1596,8 @@ def seed_all(db: Session) -> None:
 
     db.flush()
     _seed_tp_liability_case(db, t1.id)
+    _seed_ev_claim_case(db, t1.id)
+    _seed_sla_scenarios(db, t1.id, now)
 
     db.commit()
 
@@ -1647,3 +1650,234 @@ def _seed_tp_liability_case(db: Session, tenant_id: str) -> None:
     for stage_note in ("Intake complete", "Facts and evidence preserved", "FIR on file"):
         tp.advance_stage(db, case, claim, handler, note=stage_note)
 
+
+
+def _seed_sla_scenarios(db: Session, tenant_id: str, now: datetime) -> None:
+    """DEMO / SYNTHETIC claims with backdated events so the predictive SLA dashboard has real signal.
+
+    All scenarios sit in Nagpur with dedicated partners so they never compete with the Mumbai/Pune/Bengaluru
+    provider-selection demos. Timestamps are relative to ``now`` so the scenarios stay fresh after every reseed.
+    """
+    from services.claims.models import Approval, Communication
+
+    pol = db.query(Policy).filter(Policy.tenant_id == tenant_id).first()
+    if pol is None:
+        return
+    base = {
+        "tenant_id": tenant_id,
+        "policy_id": pol.id,
+        "customer_id": pol.customer_id,
+        "vehicle_id": pol.vehicle_id,
+        "policy_number_input": pol.policy_number,
+        "vehicle_reg_input": "MH31DEMO0101",
+        "incident_location": "Wardha Road, Nagpur",
+        "assigned_handler_id": "usr-handler",
+    }
+    hrs = lambda h: now - timedelta(hours=h)  # noqa: E731
+
+    surv_busy = Provider(
+        id="prov-surv-sla-01", tenant_id=tenant_id, provider_type="surveyor", name="Nagpur Loss Assessors (IIISLA-DEMO-5501)",
+        licence_or_contract_id="IRDAI-SLA-DEMO-5501", licence_status="verified", licence_expiry_at=now + timedelta(days=300),
+        city="Nagpur", service_zones=["Nagpur", "Wardha Road"], skills=["oem_maruti"], active_load=9, max_capacity=10,
+        sla_target_hours=24, sla_status="at_risk", avg_turnaround_hours=32, quality_score=Decimal("4.10"), is_available=True,
+    )
+    surv_free = Provider(
+        id="prov-surv-sla-02", tenant_id=tenant_id, provider_type="surveyor", name="Vidarbha Surveyors LLP (IIISLA-DEMO-5502)",
+        licence_or_contract_id="IRDAI-SLA-DEMO-5502", licence_status="verified", licence_expiry_at=now + timedelta(days=320),
+        city="Nagpur", service_zones=["Nagpur", "Hingna"], skills=["oem_maruti", "oem_tata"], active_load=3, max_capacity=10,
+        sla_target_hours=24, sla_status="within_sla", avg_turnaround_hours=18, quality_score=Decimal("4.60"), is_available=True,
+    )
+    gar_slow = Provider(
+        id="prov-gar-sla-01", tenant_id=tenant_id, provider_type="garage", name="Orange City Auto Works (Nagpur DEMO)",
+        licence_or_contract_id="GAR-NET-NAG-201", licence_status="verified", licence_expiry_at=now + timedelta(days=400),
+        city="Nagpur", service_zones=["Nagpur", "Wardha Road"], skills=["bodyshop", "oem_maruti"], is_network=True,
+        contract_tier="preferred_network", active_load=18, max_capacity=20, sla_target_hours=24, sla_status="delayed",
+        avg_turnaround_hours=40, quality_score=Decimal("4.00"), parts_stock_status="low", parts_lead_time_days=5, is_available=True,
+    )
+    gar_free = Provider(
+        id="prov-gar-sla-02", tenant_id=tenant_id, provider_type="garage", name="Vidarbha Motors Cashless Hub (Nagpur DEMO)",
+        licence_or_contract_id="GAR-NET-NAG-202", licence_status="verified", licence_expiry_at=now + timedelta(days=400),
+        city="Nagpur", service_zones=["Nagpur", "Hingna"], skills=["bodyshop", "oem_maruti", "oem_tata"], is_network=True,
+        contract_tier="preferred_network", active_load=4, max_capacity=20, sla_target_hours=24, sla_status="within_sla",
+        avg_turnaround_hours=18, quality_score=Decimal("4.60"), parts_stock_status="in_stock", parts_lead_time_days=1, is_available=True,
+    )
+    db.add_all([surv_busy, surv_free, gar_slow, gar_free])
+    db.flush()
+
+    def claim(num: int, status: str, queue: str, created_h: float, *, claim_type: str = "own_damage", tier: str = "MEDIUM", **extra: object) -> Claim:
+        c = Claim(
+            id=f"clm-sla-{num:04d}", claim_number=f"CLM-DEMO-2026-{num:04d}", claim_type=claim_type, status=status, queue_name=queue,
+            risk_tier=tier, incident_at=hrs(created_h + 6), incident_description="DEMO / SYNTHETIC SLA scenario claim.",
+            created_at=hrs(created_h), updated_at=hrs(created_h), triage_summary={"seeded_sla_scenario": True}, **base, **extra,  # type: ignore[arg-type]
+        )
+        db.add(c)
+        db.flush()
+        return c
+
+    def settlement(c: Claim, created_h: float, *, approved: bool = False) -> Settlement:
+        st = Settlement(
+            tenant_id=tenant_id, claim_id=c.id, gross_assessed_inr=Decimal("42000.00"), depreciation_deduction_inr=Decimal("4200.00"),
+            compulsory_excess_inr=Decimal("1000.00"), net_payable_inr=Decimal("36800.00"), created_by="usr-handler",
+            approval_status="approved" if approved else "pending_maker", created_at=hrs(created_h),
+        )
+        db.add(st)
+        db.flush()
+        return st
+
+    def estimate(c: Claim, created_h: float, garage_id: str, status: str = "submitted") -> None:
+        db.add(Estimate(tenant_id=tenant_id, claim_id=c.id, garage_id=garage_id, version=1, status=status,
+                        total_claimed_inr=Decimal("42000.00"), total_approved_inr=Decimal("0.00"), anomalies=[], created_at=hrs(created_h)))
+
+    # S1: survey about to breach: overloaded surveyor, 2 unanswered follow-ups, a reschedule, and no inspection slot yet.
+    c1 = claim(101, "SURVEY_ASSIGNED", "standard_survey_queue", 150, tier="HIGH")
+    db.add(SurveyAssignment(
+        tenant_id=tenant_id, claim_id=c1.id, surveyor_id=surv_busy.id, status="assigned", assigned_at=hrs(132), notified_at=hrs(132),
+        report_due_at=hrs(132) + timedelta(days=15), followup_count=2, last_followup_at=hrs(30), reschedule_count=1,
+    ))
+
+    # S2: surveyor assignment already breached (6h rule, triaged 9h ago, still no surveyor).
+    claim(102, "SURVEY_REQUIRED", "standard_survey_queue", 9)
+
+    # S3: cashless repair stalled by parts at a slow, non-customer-chosen garage.
+    c3 = claim(103, "REPAIR_IN_PROGRESS", "garage_repair", 260, claim_type="cashless")
+    settlement(c3, 170)
+    db.add(EcosystemCoordination(
+        tenant_id=tenant_id, claim_id=c3.id, surveyor_id=surv_free.id, garage_id=gar_slow.id, customer_preferred_garage_id=None,
+        inspection_status="completed", parts_status="awaiting_parts", repair_status="awaiting_parts",
+        coordination_explanation="DEMO / SYNTHETIC: parts backorder at Orange City Auto Works.",
+    ))
+
+    # S4: same slow garage, but it is the customer's own choice: reassignment must NOT be offered.
+    c4 = claim(104, "REPAIR_IN_PROGRESS", "garage_repair", 200, claim_type="cashless")
+    settlement(c4, 130)
+    db.add(EcosystemCoordination(
+        tenant_id=tenant_id, claim_id=c4.id, surveyor_id=surv_free.id, garage_id=gar_slow.id,
+        customer_preferred_garage_id=gar_slow.id, customer_preference_honoured=True, inspection_status="completed",
+        parts_status="awaiting_parts", repair_status="body_paint_in_progress",
+        coordination_explanation="DEMO / SYNTHETIC: customer-chosen garage with slow turnaround.",
+    ))
+
+    # S5: documents owed for 80h; customer clock paused, request is stale.
+    c5 = claim(105, "EVIDENCE_PENDING", "document_exception", 90, missing_documents=["Registration Certificate (RC)", "FIR copy"])
+    db.add(ClaimTask(
+        tenant_id=tenant_id, claim_id=c5.id, task_type="document_request", title="Collect missing evidence: RC, FIR copy",
+        assigned_role="policyholder", created_by_agent="document_intelligence", priority="high", status="open",
+        reason_code="DOCUMENTS_REQUESTED", due_at=hrs(32), created_at=hrs(80),
+    ))
+    db.add(Communication(
+        tenant_id=tenant_id, claim_id=c5.id, channel="whatsapp", template_id="DOCUMENT_REQUEST", subject="Action Needed: Upload Documents",
+        body="Please upload: Registration Certificate (RC), FIR copy.", delivery_status="sent_mock", created_at=hrs(80),
+    ))
+    db.add(Evidence(
+        tenant_id=tenant_id, claim_id=c5.id, doc_type="damage_photo", doc_status="extracted_unverified", filename="front_left.jpg",
+        mime_type="image/jpeg", size_bytes=120_000, sha256="5" * 64, storage_path="synthetic/front_left.jpg", uploader_user_id="usr-policyholder",
+        created_at=hrs(88),
+    ))
+
+    # S6-S8: estimate review pile-up (3 clocks at 75-90% of a 48h SLA in one queue) -> queue bottleneck.
+    for num, age_h in ((106, 38), (107, 42), (108, 36)):
+        cx = claim(num, "ESTIMATE_REVIEW", "estimate_review_queue", age_h + 24, claim_type="cashless")
+        estimate(cx, age_h, gar_free.id)
+        db.add(ClaimTask(
+            tenant_id=tenant_id, claim_id=cx.id, task_type="estimate_review", title="Review garage estimate", assigned_role="claims_handler",
+            created_by_agent="estimate_validation", priority="medium", status="open", reason_code="ESTIMATE_REVIEW", due_at=hrs(age_h - 24), created_at=hrs(age_h),
+        ))
+
+    # S9-S10: completed claims so attainment and cycle-time statistics have a baseline (one met, one late survey).
+    # Timeline in "hours ago": created -> surveyor assigned (+5h) -> report (+survey_hours) -> estimate (+4h)
+    # -> estimate approved/settlement (+20h) -> settlement approved (+10h) -> repair done (+20h) -> payment (+10h more) -> closed (+30h).
+    for num, survey_hours, base_h in ((109, 60, 600), (110, 210, 700)):
+        cc = claim(num, "CLOSED", "closure_qa", base_h, claim_type="cashless")
+        assigned_ago = base_h - 5
+        report_ago = assigned_ago - survey_hours
+        est_ago = report_ago - 4
+        settled_ago = est_ago - 20
+        approved_ago = settled_ago - 10
+        repair_ago = approved_ago - 20
+        paid_ago = approved_ago - 20
+        closed_ago = paid_ago - 30
+        db.add(SurveyAssignment(
+            tenant_id=tenant_id, claim_id=cc.id, surveyor_id=surv_free.id, status="report_received", assigned_at=hrs(assigned_ago),
+            notified_at=hrs(assigned_ago), report_due_at=hrs(assigned_ago) + timedelta(days=15), report_received_at=hrs(report_ago), signed_by_surveyor=True,
+        ))
+        estimate(cc, est_ago, gar_free.id, status="approved")
+        st = settlement(cc, settled_ago, approved=True)
+        db.add(Approval(tenant_id=tenant_id, claim_id=cc.id, settlement_id=st.id, action_type="settlement_approval", amount_inr=Decimal("36800.00"),
+                        maker_user_id="usr-handler", checker_user_id="usr-manager", decision="approved", decided_at=hrs(approved_ago), created_at=hrs(approved_ago)))
+        db.add(Payment(tenant_id=tenant_id, claim_id=cc.id, settlement_id=st.id, idempotency_key=f"pay-sla-{num}", payee_type="garage",
+                       payee_name="Vidarbha Motors Cashless Hub", bank_account_masked="XXXX1234", bank_verified=True, amount_inr=Decimal("36800.00"),
+                       status="confirmed", approved_by_finance_id="usr-finance", created_at=hrs(paid_ago)))
+        db.add(EcosystemCoordination(
+            tenant_id=tenant_id, claim_id=cc.id, surveyor_id=surv_free.id, garage_id=gar_free.id, inspection_status="completed",
+            parts_status="all_available", repair_status="handover_confirmed", repair_completion_confirmed=True,
+            repair_confirmed_at=hrs(repair_ago), repair_confirmed_by="garage",
+        ))
+        cc.updated_at = hrs(closed_ago)
+    db.flush()
+
+
+def _seed_ev_claim_case(db: Session, tenant_id: str) -> None:
+    """CLM-DEMO-2026-0011: an EV underbody strike worked through the dedicated EV lifecycle (IN-EV-CLAIMS-2026)."""
+    from packages.security.auth import Role, UserContext
+    from services.claims.models import Claim as _Claim
+    from services.workflow import ev_claims as evw
+
+    claim = db.query(_Claim).filter(_Claim.id == "clm-demo-0011").first()
+    if not claim:
+        return
+    handler = UserContext(user_id="usr-handler", tenant_id=tenant_id, email="handler@demo.in", name="Vikram Mehta (Claims Handler)", role=Role.CLAIMS_HANDLER)
+    surveyor = UserContext(user_id="usr-surveyor", tenant_id=tenant_id, email="surveyor@demo.in", name="R. K. Sharma (Surveyor)", role=Role.SURVEYOR, partner_id="prov-surv-01")
+    case = evw.open_ev_case(db, claim, handler, system_initiated=True)
+    evw.record_triage(
+        db,
+        case,
+        claim,
+        handler,
+        signals=["underbody_impact", "hv_warning_light", "coolant_leak_near_pack", "loss_of_drive_power"],
+        notes="Stone strike on the pack underbody shield; HV warning lit on the dash. Customer says the car 'still moves' - not accepted as clearance. DEMO / SYNTHETIC.",
+        customer_declared_drivable=True,
+        vehicle_location="BKC, Mumbai",
+    )
+    db.flush()
+    manager = UserContext(user_id="usr-manager", tenant_id=tenant_id, email="manager@demo.in", name="Sunita Iyer (Claims Manager)", role=Role.CLAIMS_MANAGER)
+    urgent_ids = [e["id"] for e in evw.open_escalations(case)]
+    for esc_id in urgent_ids:
+        evw.acknowledge_safety_escalation(db, case, manager, escalation_id=esc_id, actions_taken="EV flatbed recovery dispatched; customer told not to drive, charge or touch orange cables.")
+    evw.advance_stage(db, case, claim, handler, note="Triage confirmed; HV hold applied")
+    evw.record_recovery(
+        db,
+        case,
+        claim,
+        handler,
+        provider_id="prov-tow-01",
+        tow_method="flatbed",
+        hv_isolation_method="Service disconnect removed by EV-certified technician; 12V isolated",
+        hv_isolation_verified=True,
+        quarantine_location="Open-air quarantine bay B3, VoltCare OEM EV Specialist Centre",
+        quarantine_clearance_m=Decimal("8"),
+        notes="Flatbed recovery; vehicle never driven after the event.",
+    )
+    for esc_id in urgent_ids:
+        evw.resolve_safety_escalation(
+            db, case, claim, manager, escalation_id=esc_id,
+            resolution="Vehicle flatbedded to the EV centre and the HV system isolated; no thermal indicators on arrival.",
+            evidence_ref="ISOLATION-LOG-EV-0011", thermal_stable_confirmed=False,
+        )
+    evw.advance_stage(db, case, claim, handler, note="Recovered and isolated")
+    evw.record_specialist_survey(
+        db,
+        case,
+        claim,
+        surveyor,
+        surveyor_provider_id="prov-surv-01",
+        inspection_mode="physical_on_lift",
+        hv_isolation_verified=True,
+        pack_findings=["Underbody shield cracked with a 40 mm indentation over the pack tray", "Coolant weep at the left pack coolant port"],
+        hv_system_findings=["Orange HV harness clips displaced; no insulation breach visible"],
+        charging_system_findings=["Charge port intact"],
+        thermal_indicators_observed=False,
+        pack_removal_required=True,
+        report_ref="SURV-EV-2026-0011-A",
+        notes="Physical inspection on lift. Pack condition still requires OEM diagnostics.",
+    )
+    evw.advance_stage(db, case, claim, handler, note="Specialist survey on file")

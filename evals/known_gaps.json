@@ -190,6 +190,15 @@
       "kind": "case",
       "description": "A replacement line for a part that no photo shows as damaged is accepted without surveyor verification.",
       "recommended_fix": "Flag parts outside the observed damage set for surveyor verification."
+    },
+    {
+      "id": "GAP-COV-003",
+      "title": "Retrieval no longer cites the depreciation clause SEC-1-2 after the settlement clauses were added",
+      "agent": "coverage_intelligence",
+      "severity": "medium",
+      "kind": "case",
+      "description": "Adding SEC-1-5 to SEC-1-8 (excess, IDV basis, salvage, reinstatement) to the policy corpus pushed SEC-1-2 out of the top-5 retrieved clauses for a plain own-damage claim, so a clean claim no longer cites the depreciation basis. Caught by the regression suite when main was merged.",
+      "recommended_fix": "Raise the retrieval top-k or boost clauses referenced by the coverage matrix; re-baseline citation_recall once SEC-1-2 is cited again."
     }
   ]
 }

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from packages.contracts.agents import (
     AgentActionExecution,
@@ -12,6 +14,7 @@ from packages.contracts.agents import (
     EvidenceCitation,
     ReworkRequest,
 )
+from packages.contracts.errors import DomainError
 from services.agent_runtime.actions import ControlledActionExecutor
 from services.agent_runtime.base import BoundedAgent
 from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS
@@ -20,6 +23,17 @@ from services.damage_ai.assessor import assess_damage_from_evidence
 from services.document_ai.processor import reconcile_claim_documents
 from services.rules_engine.knowledge import HybridPolicyRetriever
 from services.rules_engine.loader import load_rule_files
+from services.sla.actions import (
+    AuthorisationDecision,
+    RecommendedAction,
+    authorise_action,
+    plan_claim_actions,
+    task_spec,
+)
+from services.sla.engine import SLAInstance
+from services.sla.predictor import MODEL_ID as SLA_MODEL_ID
+from services.sla.predictor import ClaimSignals, predict_instance
+from services.sla.rules import SLARulesService
 from services.workflow.risk_engine import classify_claim_risk_from_facts, compute_fraud_signal_score
 
 _LOCALIZED_FNOL_ACK: dict[str, str] = {
@@ -1643,6 +1657,42 @@ class SettlementRecommendationAgent(BoundedAgent):
                 suggested_next_action="route_to_tp_legal_workflow",
                 tools_invoked=["policy_facts_read"],
             )
+        if facts.get("ev_workflow_required") and not facts.get("ev_settlement_cleared"):
+            # An EV claim is not settled until a human EV technical sign-off clears the HV hold (IN-EV-CLAIMS-2026).
+            ev_result = {
+                "auto_approved": False,
+                "ev_workflow_required": True,
+                "approval_mode": "ev_technical_signoff_required",
+                "required_doa_tier": "ev_technical_lead",
+                "message": "Electric-vehicle claims are settled only after the EV workflow's human technical sign-off. Battery safety and condition are never inferred from photographs.",
+            }
+            return AgentInvocationResponse(
+                agent_name=self.agent_name,
+                status=AgentStatus.NEEDS_HUMAN,
+                result=ev_result,
+                published_result=ev_result,
+                confidence=1.0,
+                confidence_band=ConfidenceBand.HIGH,
+                limitations=["Settlement is held until EV specialist survey, OEM diagnostics and technical sign-off are complete."],
+                actions_executed=[],
+                decision=DecisionIntelligence(
+                    decision_id=self._decision_id(self.agent_name),
+                    reason_codes=["RC_EV_TECHNICAL_SIGNOFF_REQUIRED", "RC_NO_PHOTO_ONLY_EV_CLEARANCE"],
+                    evidence=["ev_workflow_required=true", "IN-EV-CLAIMS-2026 controls.photo_only_clearance_allowed=false"],
+                    policy_rule_refs=["IN-EV-CLAIMS-2026:1.0.0"],
+                    confidence=1.0,
+                    confidence_band=ConfidenceBand.HIGH,
+                    routing_outcome="route_to_ev_workflow",
+                    explanation="Routed to the EV workflow; no settlement, approval request or payment instruction was created.",
+                    alternatives_considered=[],
+                ),
+                model_id=model_id,
+                model_version=model_version,
+                prompt_version=self.prompt_version,
+                rule_versions=request.rule_versions,
+                suggested_next_action="route_to_ev_workflow",
+                tools_invoked=["policy_facts_read"],
+            )
         calc = dict(facts.get("calculation", {}))
         scenarios = list(facts.get("scenarios") or calc.get("scenarios") or [])
         net_str = str(calc.get("net") or calc.get("net_payable_inr") or "0.00")
@@ -2048,6 +2098,239 @@ class QAComplianceAgent(BoundedAgent):
         return mapping.get(control_name)
 
 
+class PredictiveSLAAgent(BoundedAgent):
+    """Predicts SLA breaches, recommends operational actions and executes only the authorised ones.
+
+    Cross-cutting operations agent (not a per-claim DAG stage). Prediction is deterministic and explainable; the
+    action gate (``authorise_action``) is the only path from a recommendation to a side effect.
+    """
+
+    agent_name = "sla_intelligence"
+    prompt_version = "sla-v1.0"
+    allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["sla_intelligence"].allowed_tools)
+
+    def _run(
+        self,
+        request: AgentInvocationRequest,
+        *,
+        model_id: str,
+        model_version: str,
+        executor: ControlledActionExecutor,
+    ) -> AgentInvocationResponse:
+        ModelGateway.generate_structured_summary(task="sla_prediction", facts=request.minimised_facts)
+        facts = request.minimised_facts
+        mode = "execute" if facts.get("mode") == "execute" else "recommend"
+        inputs = facts.get("sla_inputs")
+        rules = SLARulesService.load(executor.db)
+        tools_used = ["sla_rules_read", "sla_clock_read"]
+
+        if not inputs or not inputs.get("instances"):
+            result = {
+                "claim_id": request.claim_id,
+                "catalogue_version": rules.catalogue_version,
+                "model_id": SLA_MODEL_ID,
+                "mode": mode,
+                "predictions": [],
+                "recommended_actions": [],
+                "suppressed": [],
+                "executed_count": 0,
+                "already_open_count": 0,
+                "gated_count": 0,
+            }
+            return AgentInvocationResponse(
+                agent_name=self.agent_name,
+                status=AgentStatus.COMPLETED,
+                result=result,
+                published_result=result,
+                confidence=0.9,
+                confidence_band=ConfidenceBand.HIGH,
+                limitations=["No SLA clocks supplied for this claim; nothing to predict."],
+                decision=DecisionIntelligence(
+                    decision_id=self._decision_id(self.agent_name),
+                    reason_codes=["RC_SLA_NO_OPEN_CLOCKS"],
+                    evidence=["No SLA instances in input"],
+                    policy_rule_refs=[rules.catalogue_version],
+                    confidence=0.9,
+                    confidence_band=ConfidenceBand.HIGH,
+                    routing_outcome="no_action_required",
+                    explanation="No applicable SLA clock is running for this claim, so there is nothing to predict or act on.",
+                ),
+                model_id=model_id,
+                model_version=model_version,
+                prompt_version=self.prompt_version,
+                rule_versions={"COMMON-SLA-RULES-V2": rules.catalogue_version},
+                suggested_next_action="none",
+                tools_invoked=tools_used,
+            )
+
+        instances = [SLAInstance.from_dict(i) for i in inputs["instances"]]
+        signals = ClaimSignals.from_dict(inputs["signals"])
+        now = datetime.fromisoformat(inputs["now"]) if inputs.get("now") else datetime.now(timezone.utc)
+        inst_by_sla = {i.sla_id: i for i in instances}
+        predictions = [p for p in (predict_instance(i, signals, rules, now) for i in instances) if p is not None]
+        tools_used.append("predict_sla_breach")
+        recs, suppressed = plan_claim_actions(instances, predictions, signals, rules, facts.get("queue_context"))
+        if signals.surveyor or signals.garage:
+            tools_used.append("provider_load_read")
+
+        claim_type = signals.claim_type
+        request_tools = set(request.allowed_tools or self.allowed_tools)
+        executed_count = gated_count = already_open_count = 0
+        actions: list[AgentActionExecution] = []
+        rec_rows: list[dict[str, Any]] = []
+        for rec in recs:
+            auth = authorise_action(
+                rec,
+                mode=mode,
+                claim_type=claim_type,
+                agent_tools=self.allowed_tools,
+                request_tools=request_tools,
+                rules=rules,
+                executed_so_far=executed_count,
+            )
+            execution = self._apply(rec, auth, inst_by_sla.get(rec.sla_id), executor)
+            if auth.decision == "execute" and execution.status == "executed" and execution.payload.get("reused"):
+                execution = execution.model_copy(update={"status": "already_open"})
+                already_open_count += 1
+            elif auth.decision == "execute" and execution.status == "executed":
+                executed_count += 1
+                tools_used.append(rec.tool)
+            elif auth.decision == "gate_human" and execution.status == "gated_human_review":
+                gated_count += 1
+                tools_used.append("create_claim_task")
+            actions.append(execution)
+            rec_rows.append({**rec.to_dict(), "authorisation": {"decision": auth.decision, "reason": auth.reason, "status": execution.status}})
+
+        pred_rows = [p.to_dict() for p in predictions]
+        worst = max((p.breach_probability for p in predictions), default=0.0)
+        inferred = sum(1 for i in instances if "inferred" in i.event_sources.values())
+        conf = round(max(0.55, 0.88 - 0.15 * (inferred / len(instances))), 2)
+        actionable_metrics = sorted({r.metric for r in recs})
+        if gated_count:
+            routing, status = "gated_for_manager_approval", AgentStatus.NEEDS_HUMAN
+        elif executed_count:
+            routing, status = "execute_authorised_actions", AgentStatus.COMPLETED
+        elif recs:
+            routing, status = "recommendations_only", AgentStatus.COMPLETED
+        else:
+            routing, status = "no_action_required", AgentStatus.COMPLETED
+        reason_codes = [f"RC_SLA_PREDICTED_BREACH_{m.upper()}" for m in actionable_metrics] or ["RC_SLA_ON_TRACK"]
+        result = {
+            "claim_id": request.claim_id,
+            "catalogue_version": rules.catalogue_version,
+            "model_id": SLA_MODEL_ID,
+            "mode": mode,
+            "worst_breach_probability": round(worst, 4),
+            "predictions": pred_rows,
+            "recommended_actions": rec_rows,
+            "suppressed": suppressed,
+            "executed_count": executed_count,
+            "already_open_count": already_open_count,
+            "gated_count": gated_count,
+        }
+        decision = DecisionIntelligence(
+            decision_id=self._decision_id(self.agent_name),
+            reason_codes=reason_codes,
+            evidence=[
+                f"{p.metric}: P(breach)={p.breach_probability:.0%}, band={p.risk_band}, drivers={[d['code'] for d in p.drivers[:3]]}"
+                for p in predictions
+            ][:6]
+            or ["No open SLA clocks"],
+            policy_rule_refs=[rules.catalogue_version, "COMMON-SLA-RULES-V2:agent_guardrails"],
+            confidence=conf,
+            confidence_band=self._band(conf),
+            routing_outcome=routing,
+            explanation=(
+                f"Assessed {len(predictions)} open SLA clock(s); worst breach probability {worst:.0%}. "
+                f"{len(recs)} action(s) recommended, {executed_count} newly executed within guardrails ({already_open_count} already open), {gated_count} awaiting human approval "
+                f"(mode={mode})."
+            ),
+            alternatives_considered=[
+                "Reassign surveyor/garage autonomously (prohibited: needs licence re-verification and manager approval)",
+                "Override the customer's chosen garage (prohibited outside the authorised override flow)",
+            ],
+        )
+        return AgentInvocationResponse(
+            agent_name=self.agent_name,
+            status=status,
+            result=result,
+            published_result=result,
+            confidence=conf,
+            confidence_band=self._band(conf),
+            assumptions=["Event timestamps marked 'inferred' are derived from claim status, not recorded events."] if inferred else [],
+            limitations=[
+                "Baseline explainable model, not a trained forecaster; probabilities are decision aids.",
+                "Only tasks, reminders and follow-ups run autonomously; reassignment always needs a manager.",
+            ],
+            actions_executed=actions,
+            decision=decision,
+            model_id=model_id,
+            model_version=model_version,
+            prompt_version=self.prompt_version,
+            rule_versions={"COMMON-SLA-RULES-V2": rules.catalogue_version},
+            suggested_next_action="manager_review_approvals" if gated_count else ("monitor" if recs else "none"),
+            tools_invoked=list(dict.fromkeys(tools_used)),
+        )
+
+    def _apply(
+        self,
+        rec: RecommendedAction,
+        auth: AuthorisationDecision,
+        inst: SLAInstance | None,
+        executor: ControlledActionExecutor,
+    ) -> AgentActionExecution:
+        def passive(status: str, prefix: str) -> AgentActionExecution:
+            return AgentActionExecution(
+                action_id=f"act-sla-{rec.action}-{rec.claim_number[-4:]}",
+                action_type=rec.action,
+                tool_name=rec.tool,
+                status=status,
+                target_type="claim",
+                target_id=rec.claim_id,
+                summary=f"[{prefix}] {rec.label}: {auth.reason}",
+                payload={"urgency": rec.urgency, "metric": rec.metric, "probability": rec.probability},
+            )
+
+        if auth.decision == "block_policy":
+            return passive("blocked_policy", "Blocked")
+        if auth.decision == "recommend_only":
+            return passive("simulated", "Recommended")
+        try:
+            if auth.decision == "gate_human":
+                spec = task_spec(rec, inst, approval=True)
+                made = executor.create_claim_task(agent_name=self.agent_name, **spec)
+                return made.model_copy(
+                    update={
+                        "status": "gated_human_review",
+                        "summary": f"[Approval required from {rec.approver_role}] {made.summary}",
+                    }
+                )
+            if rec.tool == "send_surveyor_followup":
+                return executor.send_surveyor_followup(
+                    agent_name=self.agent_name,
+                    notes=f"Predictive SLA follow-up: {rec.rationale}"[:240],
+                    escalate_to_manager=bool(rec.params.get("escalate_to_manager")),
+                )
+            if rec.tool == "request_documents":
+                return executor.request_documents(
+                    agent_name=self.agent_name,
+                    documents=list(rec.params.get("documents", [])),
+                    reason_code="RC_SLA_CHASE_DOCUMENTS",
+                )
+            return executor.create_claim_task(agent_name=self.agent_name, **task_spec(rec, inst, approval=False))
+        except DomainError as exc:
+            return AgentActionExecution(
+                action_id=f"act-sla-{rec.action}-{rec.claim_number[-4:]}",
+                action_type=rec.action,
+                tool_name=rec.tool,
+                status="blocked_policy",
+                target_type="claim",
+                target_id=rec.claim_id,
+                summary=f"[Blocked] {rec.label}: {exc.message}",
+                payload={"error_code": str(exc.code)},
+            )
+
+
 AGENT_REGISTRY: dict[str, BoundedAgent] = {
     "fnol_concierge": FNOLConciergeAgent(),
     "document_intelligence": DocumentIntelligenceAgent(),
@@ -2060,4 +2343,5 @@ AGENT_REGISTRY: dict[str, BoundedAgent] = {
     "settlement_recommendation": SettlementRecommendationAgent(),
     "customer_communication": CustomerCommunicationAgent(),
     "qa_compliance": QAComplianceAgent(),
+    "sla_intelligence": PredictiveSLAAgent(),
 }

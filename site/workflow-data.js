@@ -2093,6 +2093,19 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
       dependsOn: ["settlement_recommendation"],
       reworkTargets: ["document_intelligence", "estimate_validation", "fraud_intelligence", "provider_coordination", "settlement_recommendation"],
       humanGate: "Read-only gate; failed controls block closure and assign remediation tasks."
+    },
+    {
+      agentName: "sla_intelligence",
+      displayName: "Predictive SLA Intelligence",
+      stage: "Cross-cutting: SLA operations",
+      enhancement: "Rule-driven SLA clocks with versioned rules, pause conditions and escalation sequences; explainable breach probability with ranked drivers",
+      responsibility: "Predicts claims likely to breach, garages causing delays, overloaded surveyors, documents likely to stall processing and queue bottlenecks; recommends reassignment, escalation, reminders, scheduling and prioritisation, and executes only authorised actions. Runs on demand or on a schedule across claims, so it is not a stage in the per-claim DAG.",
+      inputContract: "sla_inputs{instances[], signals, now}, queue_context{queue, pressure, open_clocks, late_clocks}, mode (recommend | execute)",
+      outputContract: "predictions[] (breach_probability, risk_band, drivers), recommended_actions[] (action, urgency, rationale, autonomy, authorisation), suppressed[], executed_count, gated_count",
+      authorisedActions: ["create_claim_task", "send_surveyor_followup", "request_documents"],
+      dependsOn: [],
+      reworkTargets: [],
+      humanGate: "Reassignment (surveyor / garage) and queue rebalancing are never executed by the agent: each becomes a claims_manager approval task. Execute mode needs claims_manager or admin. The customer's chosen garage is never reassigned; third-party claims allow task-level actions only."
     }
   ],
 
