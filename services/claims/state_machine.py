@@ -122,6 +122,7 @@ ALLOWED_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
         ClaimStatus.TRIAGE,
         ClaimStatus.TRIAGED,
         ClaimStatus.COVERAGE_CHECKED,
+        ClaimStatus.INVESTIGATION_REQUIRED,
         ClaimStatus.HUMAN_REVIEW,
         ClaimStatus.CLARIFICATION_REQUESTED,
         ClaimStatus.DECLINED_PARTIAL,
@@ -190,6 +191,7 @@ ALLOWED_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     },
     ClaimStatus.SETTLEMENT_PENDING_APPROVAL: {
         ClaimStatus.APPROVED,
+        ClaimStatus.INVESTIGATION_REQUIRED,
         ClaimStatus.HUMAN_REVIEW,
         ClaimStatus.ESTIMATE_VALIDATION,
         ClaimStatus.CLARIFICATION_REQUESTED,
@@ -199,6 +201,7 @@ ALLOWED_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
         ClaimStatus.PAYMENT_PENDING,
         ClaimStatus.PAYMENT_INITIATED,
         ClaimStatus.REPAIR_IN_PROGRESS,
+        ClaimStatus.INVESTIGATION_REQUIRED,
         ClaimStatus.HUMAN_REVIEW,
     },
     ClaimStatus.PAYMENT_PENDING: {

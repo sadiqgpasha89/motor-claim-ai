@@ -16,7 +16,7 @@
       "role": "claims_handler",
       "max_settlement_inr": "75000.00",
       "allowed_claim_types": ["own_damage", "cashless", "reimbursement"],
-      "disallowed_conditions": ["fraud_alert_open", "total_loss", "repudiation", "tp_injury", "ev_battery"]
+      "disallowed_conditions": ["fraud_alert_open", "total_loss", "repudiation", "tp_injury", "ev_battery", "high_risk_complex"]
     },
     {
       "role": "claims_manager",

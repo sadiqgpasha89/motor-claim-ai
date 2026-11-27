@@ -183,23 +183,33 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         display_name="Claim Triage",
         stage="3. Triage",
         operational_responsibility=(
-            "Evaluates severity, complexity, injury, liability, drivable status, and regulatory thresholds "
-            "to assign routing priority, specialist queues, and mandatory survey flags."
+            "Evaluates explainable LOW / MEDIUM / HIGH claim risk, operational path "
+            "(fast_track, standard, complex_investigation), severity, injury/TP liability, EV battery, "
+            "drivable status, and regulatory thresholds to assign queues and automation eligibility."
         ),
         required_capabilities=[
-            "Severity band & complexity tier classification",
-            "Injury / fatality & TP liability indicator routing",
-            "Vehicle drivable status & immediate towing triage",
-            "Priority routing (P1_URGENT to P4_FAST_TRACK) & IRDAI ₹50k survey gate",
+            "Explainable 3-tier risk classification (LOW / MEDIUM / HIGH) & operational path routing",
+            "Injury / fatality, multi-vehicle & TP liability specialist escalation",
+            "Vehicle drivable status, EV battery safety & immediate towing triage",
+            "Priority routing (P1_URGENT to P4_FAST_TRACK), automated fast-track eligibility & IRDAI ₹50k gate",
         ],
         input_contract={
             "estimated_loss_inr": "decimal string",
             "injury_or_fatality": "boolean",
+            "multiple_vehicles_involved": "boolean",
             "ev_battery_impacted": "boolean",
             "vehicle_immobile": "boolean",
+            "missing_documents": "list[string]",
+            "legal_dispute": "boolean",
             "peril_cause": "string",
         },
         output_contract={
+            "risk_tier": "LOW | MEDIUM | HIGH",
+            "operational_path": "fast_track | standard | complex_investigation",
+            "risk_score": "integer 0-100",
+            "risk_drivers": "list[object]",
+            "low_risk_criteria_check": "object",
+            "automation_eligibility": "object",
             "severity_band": "low | medium | high | critical",
             "complexity_tier": "string",
             "injury_status": "string",
@@ -223,11 +233,12 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         prohibited_actions=[
             "use_protected_demographic_traits",
             "approve_settlement",
+            "auto_reject_on_fraud_score",
             "mutate_claim_state_directly",
         ],
         depends_on=["document_intelligence", "coverage_intelligence"],
         can_request_rework_from=["coverage_intelligence", "fnol_concierge"],
-        human_gate_condition="TP injury/fatality routes to legal_tp_specialist; EV HV routes to ev_specialist.",
+        human_gate_condition="HIGH risk (injury/TP, multi-vehicle, EV HV, SIU fraud, significant loss, disputes) routes to specialist human-led investigation; LOW risk <= ₹25k is straight-through eligible.",
         timeout_seconds=10,
         max_retries=2,
     ),
@@ -400,6 +411,8 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         },
         output_contract={
             "alert_count": "integer",
+            "fraud_signal_score": "decimal string 0.000-1.000 (advisory; never auto-rejects)",
+            "fraud_score_can_reject": "boolean (always false)",
             "network_patterns_detected": "list[string]",
             "suspicious_connections": "list[object]",
             "indicators": "list[object]",
@@ -442,7 +455,9 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         ],
         input_contract={
             "calculation": "object (primary + scenarios)",
-            "active_conditions": "list[string] (fraud_alert_open, ev_battery, tp_injury, total_loss)",
+            "active_conditions": "list[string] (fraud_alert_open, ev_battery, tp_injury, total_loss, high_risk_complex)",
+            "risk_tier": "LOW | MEDIUM | HIGH",
+            "straight_through_eligible": "boolean",
             "settlement_approved": "boolean (for payment release)",
         },
         output_contract={
@@ -450,6 +465,7 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
             "net_payable_inr": "decimal string",
             "scenarios": "list[object]",
             "required_doa_tier": "string",
+            "auto_approved": "boolean",
         },
         allowed_tools=[
             "deterministic_calculator",
@@ -472,7 +488,7 @@ AGENT_CAPABILITY_CONTRACTS: dict[str, AgentContractSpec] = {
         ],
         depends_on=["coverage_intelligence", "damage_assessment", "estimate_validation", "fraud_intelligence", "provider_coordination"],
         can_request_rework_from=["estimate_validation", "coverage_intelligence", "provider_coordination"],
-        human_gate_condition="Always requires independent Maker-Checker DoA sign-off; payment requires Finance role + approved settlement.",
+        human_gate_condition="MEDIUM/HIGH or > ₹25k claims always require independent Maker-Checker DoA sign-off; only rule-verified LOW risk claims <= ₹25,000 qualify for straight-through auto-approval limit.",
         timeout_seconds=15,
         max_retries=2,
     ),

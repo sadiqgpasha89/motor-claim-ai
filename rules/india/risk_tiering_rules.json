@@ -1,0 +1,66 @@
+{
+  "rule_id": "IN-RISK-PROCESSING-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Risk-Based Motor Claim Processing & Operational Path Rules",
+  "source_reference": "IRDAI Master Circular 2024 + Insurer Risk-Tiered Claims Operating Model (Synthetic V1)",
+  "owner": "Chief Claims Officer & Enterprise Risk Committee",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "effective_to": null,
+  "status": "published",
+  "disclaimer": "Reference configuration for synthetic/demo use. Compliance sign-off required prior to production go-live.",
+  "controls": {
+    "low_risk_max_estimate_inr": "49999.99",
+    "fast_track_auto_approval_limit_inr": "25000.00",
+    "fast_track_assisted_limit_inr": "49999.99",
+    "significant_loss_threshold_inr": "250000.00",
+    "ctl_idv_ratio_threshold": "0.75",
+    "fraud_score_high_threshold": "0.650",
+    "fraud_score_never_auto_rejects": true,
+    "recalculate_on_new_evidence": true,
+    "preserve_evidence_on_high_risk": true
+  },
+  "operational_paths": {
+    "LOW": {
+      "path_code": "fast_track",
+      "label": "Fast-track claims",
+      "handling_mode": "Straight-through assisted processing",
+      "goal": "Minimize human touchpoints",
+      "criteria": [
+        "Minor damage",
+        "Complete documents",
+        "Valid policy",
+        "Low estimate (< INR 50,000)",
+        "No material anomalies",
+        "Eligible for predefined automated processing and approval limits (auto-limit <= INR 25,000)"
+      ]
+    },
+    "MEDIUM": {
+      "path_code": "standard",
+      "label": "Standard claims",
+      "handling_mode": "AI-assisted claims handling",
+      "goal": "Reduce handler effort and waiting time",
+      "criteria": [
+        "Damage requires inspection",
+        "Estimate discrepancies",
+        "Missing documents",
+        "Coverage clarification",
+        "Repair coordination"
+      ]
+    },
+    "HIGH": {
+      "path_code": "complex_investigation",
+      "label": "Complex / investigation claims",
+      "handling_mode": "Specialist and human-led handling",
+      "goal": "Improve investigative quality, preserve evidence and ensure controlled decisions",
+      "criteria": [
+        "Injury or third-party liability (including multiple vehicles)",
+        "Suspected fraud (advisory only — fraud score never auto-rejects)",
+        "Significant loss (>= INR 2,50,000, CTL, fire/flood/theft, airbags)",
+        "Conflicting evidence",
+        "EV battery damage",
+        "Legal or coverage disputes"
+      ]
+    }
+  }
+}
