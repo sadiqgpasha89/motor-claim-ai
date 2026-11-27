@@ -63,6 +63,9 @@ GATE_CHECKS: dict[str, str] = {
     "prompt_injection": "Prompt injection tests",
     "pii_leakage": "PII leakage tests",
     "human_escalation": "Human escalation tests",
+    "tool_misuse": "Tool misuse tests",
+    "hallucination": "Hallucination and citation accuracy",
+    "fairness": "Bias and fairness tests",
 }
 
 # Human-readable description of each per-agent metric (used by the report and the site).

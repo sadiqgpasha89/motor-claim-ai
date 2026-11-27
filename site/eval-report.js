@@ -1724,6 +1724,33 @@ window.AI_EVAL_REPORT = {
       "passed": true,
       "summary": "23/23 checks pass; 0 tracked gaps",
       "tracked_gaps": 0
+    },
+    {
+      "detail": {},
+      "failures": [],
+      "key": "tool_misuse",
+      "label": "Tool misuse tests",
+      "passed": true,
+      "summary": "22/22 checks pass; 0 tracked gaps",
+      "tracked_gaps": 0
+    },
+    {
+      "detail": {},
+      "failures": [],
+      "key": "hallucination",
+      "label": "Hallucination and citation accuracy",
+      "passed": true,
+      "summary": "11/11 checks pass; 0 tracked gaps",
+      "tracked_gaps": 0
+    },
+    {
+      "detail": {},
+      "failures": [],
+      "key": "fairness",
+      "label": "Bias and fairness tests",
+      "passed": true,
+      "summary": "16/16 checks pass; 0 tracked gaps",
+      "tracked_gaps": 0
     }
   ],
   "framework_version": "1.0.0",

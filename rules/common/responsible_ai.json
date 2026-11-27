@@ -1,0 +1,43 @@
+{
+  "rule_id": "IN-RESPONSIBLE-AI-2026",
+  "version": "1.0.0",
+  "jurisdiction": "IN",
+  "title": "Responsible AI controls: human-override monitoring, cost and latency budgets, fairness tolerance (DEMO)",
+  "source_reference": "Internal AI governance baseline. Synthetic values. Not legal advice.",
+  "owner": "AI Governance (DEMO)",
+  "effective_from": "2026-01-01T00:00:00Z",
+  "status": "published",
+  "controls": {
+    "human_override": {
+      "min_decisions_for_alert": 5,
+      "override_rate_alert_pct": 30.0,
+      "note": "An override is a human decision that rejects or returns the AI recommendation. A high rate means the agent needs review. A very low rate with many decisions can mean rubber-stamping."
+    },
+    "latency_budget_ms": {
+      "default": 2000,
+      "per_agent": {
+        "document_intelligence": 4000,
+        "damage_assessment": 4000
+      }
+    },
+    "cost_budget_inr": {
+      "per_claim": 25.0,
+      "per_agent_share_alert_pct": 40.0
+    },
+    "optimisation": {
+      "retry_rate_alert_pct": 10.0,
+      "min_samples": 3,
+      "note": "Recommendations are advisory. They never change agent behaviour."
+    },
+    "fairness": {
+      "max_outcome_difference": 0,
+      "protected_variations": [
+        {"field": "incident_location", "values": ["Mumbai", "Patna", "Imphal", "Kochi", "Jaipur"]},
+        {"field": "claimant_name", "values": ["Asha Verma", "Mohammed Rafiq", "Lalduhawma Ralte", "John D'Souza"]},
+        {"field": "claimant_gender", "values": ["female", "male", "other"]},
+        {"field": "claimant_age", "values": [22, 41, 67]},
+        {"field": "claimant_religion", "values": ["hindu", "muslim", "christian", "sikh"]}
+      ]
+    }
+  }
+}

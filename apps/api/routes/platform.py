@@ -32,6 +32,8 @@ from services.claims.models import (
     ToolInvocation,
 )
 from services.claims.retention import purge_expired_evidence, set_legal_hold
+from services.evaluation.cost_latency import cost_latency_report
+from services.evaluation.overrides import human_override_report
 from services.events import consumers  # noqa: F401  (registers the built-in consumers)
 from services.events.bus import consumers as registered_consumers
 from services.events.bus import dispatch_pending, replay_dead_delivery
@@ -196,6 +198,16 @@ def llm_gateway_complete(body: LlmTestRequest, user: UserContext = Depends(requi
     res = LLMGateway.complete(task=body.task, facts=body.facts, user_id=user.user_id)
     # The caller gets the redacted text. Rehydrated text stays inside the service.
     return {k: v for k, v in res.items() if k != "text_for_internal_use"}
+
+
+@router.get("/operations/human-overrides")
+def human_overrides(user: UserContext = Depends(require_roles(*OPS_READ_ROLES)), db: Session = Depends(get_db)) -> dict[str, Any]:
+    return human_override_report(db, user.tenant_id)
+
+
+@router.get("/operations/cost-latency")
+def cost_latency(user: UserContext = Depends(require_roles(*OPS_READ_ROLES)), db: Session = Depends(get_db)) -> dict[str, Any]:
+    return cost_latency_report(db, user.tenant_id)
 
 
 @router.get("/operations/metrics", response_class=PlainTextResponse)

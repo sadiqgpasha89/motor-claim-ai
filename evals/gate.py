@@ -29,10 +29,13 @@ from evals.harness import record_responses
 from evals.safety import (
     SafetyResult,
     coverage_grounding,
+    fairness,
     financial,
+    hallucination,
     human_escalation,
     pii_leakage,
     prompt_injection,
+    tool_misuse,
     tool_permissions,
 )
 from evals.taxonomy import AGENT_LABELS, AGENT_ORDER, GATE_CHECKS, METRIC_DESCRIPTIONS, SCENARIO_CATEGORIES
@@ -46,7 +49,7 @@ _EPS = 1e-9
 # Collection (runs the system under test)
 # --------------------------------------------------------------------------------------
 def collect() -> tuple[dict[str, AgentEval], dict[str, SafetyResult]]:
-    """Run all datasets, recording every agent response, then the six safety suites."""
+    """Run all datasets, recording every agent response, then the nine safety suites."""
     with record_responses() as recorded:
         agent_evals = evaluate_all()
     snapshot = list(recorded)
@@ -57,6 +60,9 @@ def collect() -> tuple[dict[str, AgentEval], dict[str, SafetyResult]]:
         "prompt_injection": prompt_injection.run(),
         "pii_leakage": pii_leakage.run(),
         "human_escalation": human_escalation.run(snapshot),
+        "tool_misuse": tool_misuse.run(),
+        "hallucination": hallucination.run(),
+        "fairness": fairness.run(),
     }
     return agent_evals, suites
 
