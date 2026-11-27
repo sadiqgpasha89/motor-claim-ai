@@ -29,6 +29,7 @@
         <a href="#damage-ai">Visual Damage AI</a>
         <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#tp-liability">TP Liability</a>
+        <a href="#agent-ops">Claim 360 &amp; Agent Ops</a>
         <a href="#sla-operations">Predictive SLA</a>
         <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
@@ -554,6 +555,26 @@ flowchart LR
     </section>
 
     <!-- SECTION 2G: PREDICTIVE SLA OPERATIONS -->
+    <section id="agent-ops">
+      <h2>2H. Claim 360, Agent Execution Timeline &amp; Agent Command Center</h2>
+      <p class="section-sub">
+        A claims officer must know <strong>what the AI did</strong>, not only the final claim status. This section shows a
+        <strong>real capture</strong> of one own-damage claim taken from <strong>FNOL to closure</strong> through the live API
+        (<code>scripts/od_claim_demo.py</code>), then the operations console computed from the same <strong>agent trace store</strong>.
+        Every agent execution records claim, workflow, agent and version, model, prompt version, input reference, tool calls and outputs,
+        start and end, tokens, latency, retries, outcome, confidence, errors, human intervention and final action.
+        Token counts are <strong>estimates</strong> and cost uses an illustrative rate card. All data is DEMO / SYNTHETIC.
+      </p>
+      <div id="aops-journey" class="state-strip" aria-label="OD demo journey"></div>
+      <div class="tabs" role="tablist" aria-label="Claim 360 views" id="aops-tabs"></div>
+      <div id="aops-body" class="card" style="margin-top:12px;"></div>
+      <p class="section-sub" style="margin-top:10px;">
+        Backend: <code>services/claims/claim360.py</code>, <code>services/observability/</code>,
+        <code>GET /api/v1/claims/{id}/claim-360</code>, <code>GET /api/v1/operations/agent-observability/dashboard</code>.
+        UI: <code>apps/web</code> routes <code>/claims/[id]/claim-360</code> and <code>/agent-command-center</code>.
+      </p>
+    </section>
+
     <section id="sla-operations">
       <h2>2G. Predictive SLA Operations &mdash; Rules Service, Dashboard &amp; Bounded SLA Agent</h2>
       <p class="section-sub">
@@ -1605,6 +1626,8 @@ classDiagram
   <script src="sla.js"></script>
   <script src="ev-claims.js"></script>
   <script src="settlement-workbench-data.js"></script>
+  <script src="claim360-data.js"></script>
+  <script src="agent-ops.js"></script>
   <script src="settlement-engine.js"></script>
   <script src="settlement-workbench.js"></script>
 </body>

@@ -48,6 +48,7 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
 - `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`
+- `GET /api/v1/claims/{claim_id}/claim-360` · `GET /api/v1/claims/{claim_id}/agent-timeline` · `GET /api/v1/operations/agent-observability/dashboard` · `GET /api/v1/operations/agent-observability/traces` · `GET /api/v1/operations/approval-queue` (see [agent-observability.md](agent-observability.md))
 
 ## Standard Error Codes (`packages/contracts/errors.py`)
 `VALIDATION_ERROR`, `NOT_AUTHORISED`, `NOT_FOUND`, `STATE_CONFLICT`, `DUPLICATE_REQUEST`, `DEPENDENCY_UNAVAILABLE`, `RATE_LIMITED`, `AI_UNAVAILABLE`, `HUMAN_REVIEW_REQUIRED`, `INTEGRATION_REJECTED`. All errors return `correlation_id` and strip stack traces/PII.

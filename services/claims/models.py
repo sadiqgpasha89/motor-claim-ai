@@ -715,6 +715,26 @@ class AgentExecutionRecord(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Agent trace store fields (feedback item 16): every execution is traceable end to end.
+    agent_version: Mapped[str] = mapped_column(String(24), default="2.0.0")
+    model_name: Mapped[str] = mapped_column(String(80), default="")
+    model_version: Mapped[str] = mapped_column(String(40), default="")
+    prompt_version: Mapped[str] = mapped_column(String(24), default="")
+    task_input_ref: Mapped[str] = mapped_column(String(160), default="")
+    tool_calls: Mapped[list] = mapped_column(JSON, default=list)
+    tool_outputs: Mapped[list] = mapped_column(JSON, default=list)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    tokens_input: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_output: Mapped[int] = mapped_column(Integer, default=0)
+    usage_source: Mapped[str] = mapped_column(String(16), default="estimated")
+    cost_inr: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("0.0000"))
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    outcome: Mapped[str] = mapped_column(String(32), default="success", index=True)
+    confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 3), nullable=True)
+    error_details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    human_intervention: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    final_action: Mapped[str] = mapped_column(String(160), default="")
 
 
 class DecisionRecord(Base):

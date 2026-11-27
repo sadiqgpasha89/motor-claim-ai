@@ -314,7 +314,16 @@ def seed_all(db: Session) -> None:
         email_masked="me***@demo.in",
         preferred_language="en-IN",
     )
-    db.add_all([cust1, cust2, cust_other, cust_ft])
+    cust_od = Customer(
+        id="cust-demo-od01",
+        tenant_id=t1.id,
+        name="Rohan Kulkarni (DEMO)",
+        phone_token="TOK-PH-98777",
+        phone_masked="******4402",
+        email_masked="ro***@demo.in",
+        preferred_language="en-IN",
+    )
+    db.add_all([cust1, cust2, cust_other, cust_ft, cust_od])
 
     users = [
         User(id="usr-policyholder", tenant_id=t1.id, email="policyholder@demo.in", name="Aarav Deshmukh (Customer)", role="policyholder", partner_id=cust1.id),
@@ -405,7 +414,22 @@ def seed_all(db: Session) -> None:
         cc_class="private_car_1000_to_1500cc",
         first_registration_date=now - timedelta(days=500),
     )
-    db.add_all([veh1, veh_ev, veh2, veh_other, veh_ft])
+    veh_od = Vehicle(
+        id="veh-demo-od01",
+        tenant_id=t1.id,
+        registration_number="MH04OD2026",
+        vin_chassis="MA3FHEB1S00441122",
+        engine_number="K12N441122",
+        make="Hyundai",
+        model="Venue SX",
+        year=2024,
+        vehicle_category="private_car",
+        fuel_type="petrol",
+        is_ev=False,
+        cc_class="private_car_1000_to_1500cc",
+        first_registration_date=now - timedelta(days=420),
+    )
+    db.add_all([veh1, veh_ev, veh2, veh_other, veh_ft, veh_od])
 
     pol1 = Policy(
         id="pol-demo-01",
@@ -488,7 +512,24 @@ def seed_all(db: Session) -> None:
         addons={"zero_depreciation": True, "consumables": True},
         endorsements=["IMT-22 Compulsory Deductible", "Zero Depreciation Add-on"],
     )
-    db.add_all([pol1, pol_ev, pol2, pol_other, pol_ft])
+    pol_od = Policy(
+        id="pol-demo-od01",
+        tenant_id=t1.id,
+        customer_id=cust_od.id,
+        vehicle_id=veh_od.id,
+        policy_number="POL-IN-DEMO-2026-OD01",
+        product_code="PRIVATE_CAR_PACKAGE",
+        uin="DEMO-IRDAI-PC-2024-V1",
+        period_start=now - timedelta(days=90),
+        period_end=now + timedelta(days=275),
+        status="active",
+        idv_inr=Decimal("720000.00"),
+        compulsory_deductible_inr=Decimal("1000.00"),
+        voluntary_deductible_inr=Decimal("0.00"),
+        addons={"zero_depreciation": True, "consumables": True},
+        endorsements=["IMT-22 Compulsory Deductible", "Zero Depreciation Add-on"],
+    )
+    db.add_all([pol1, pol_ev, pol2, pol_other, pol_ft, pol_od])
     db.flush()
 
     c1 = Claim(
