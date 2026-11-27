@@ -16,6 +16,7 @@ from services.agent_runtime.actions import ControlledActionExecutor
 from services.agent_runtime.base import BoundedAgent
 from services.agent_runtime.contracts import AGENT_CAPABILITY_CONTRACTS
 from services.agent_runtime.gateway import ModelGateway
+from services.damage_ai.assessor import assess_damage_from_evidence
 from services.document_ai.processor import reconcile_claim_documents
 from services.rules_engine.knowledge import HybridPolicyRetriever
 from services.rules_engine.loader import load_rule_files
@@ -845,7 +846,7 @@ class ClaimTriageAgent(BoundedAgent):
 
 class DamageAssessmentAgent(BoundedAgent):
     agent_name = "damage_assessment"
-    prompt_version = "damage-v2.0"
+    prompt_version = "damage-v3.0"
     allowed_tools = set(AGENT_CAPABILITY_CONTRACTS["damage_assessment"].allowed_tools)
 
     def _run(
@@ -857,43 +858,125 @@ class DamageAssessmentAgent(BoundedAgent):
         executor: ControlledActionExecutor,
     ) -> AgentInvocationResponse:
         ModelGateway.generate_structured_summary(task="damage_assessment", facts=request.minimised_facts)
-        res = dict(request.minimised_facts.get("assessment_payload", {}))
+        raw_payload = request.minimised_facts.get("assessment_payload")
+        if isinstance(raw_payload, dict) and raw_payload:
+            res = dict(raw_payload)
+        else:
+            res = assess_damage_from_evidence(
+                claim_description=str(request.minimised_facts.get("incident_description", "")),
+                is_ev=bool(request.minimised_facts.get("is_ev", False)),
+                ev_battery_impacted=bool(request.minimised_facts.get("ev_battery_impacted", False)),
+                image_records=list(request.minimised_facts.get("image_records", [])),
+                vehicle_info=request.minimised_facts.get("vehicle_info"),
+            )
+
         observations = list(res.get("observations", []))
         recapture = list(res.get("recapture_required_files", []))
+        poor_files = list(res.get("poor_quality_files", []))
         missing_angles = list(res.get("missing_angles", []))
         img_q_conf = float(res.get("image_quality_confidence", 0.45 if recapture else 0.88))
         damage_zones = res.get("damage_zones") or sorted({o.get("zone", "exterior") for o in observations})
         overall_sev = res.get("overall_severity", "moderate" if observations else "unassessed")
+        inconsistencies = list(res.get("inconsistencies", []))
+        additional_reqs = list(res.get("additional_photo_requests", []))
+        human_routing = dict(res.get("human_assessor_routing", {}))
+        route_to_human = bool(human_routing.get("route_to_human_assessor", bool(recapture)))
+        uncertain_components = list(human_routing.get("uncertain_components", []))
+        guardrail_triggered = bool(human_routing.get("confidence_guardrail_triggered", False))
+        recommended_role = str(human_routing.get("recommended_role", "surveyor"))
+        parts_labour = dict(res.get("parts_labour_estimate", {}))
 
         actions: list[AgentActionExecution] = []
-        tools_used = ["vision_model", "image_quality_check", "vehicle_taxonomy"]
-        if recapture or len(missing_angles) > 3:
-            doc_reqs = [f"Clear daylight photo ({a})" for a in (recapture or missing_angles[:3])]
+        tools_used = [
+            "vision_model",
+            "image_quality_check",
+            "vehicle_taxonomy",
+            "bbox_localizer",
+            "cross_photo_compare",
+            "parts_labour_estimator",
+        ]
+
+        high_or_med_photo_reqs = [r for r in additional_reqs if r.get("priority") in {"high", "medium"}]
+        if recapture or poor_files or len(missing_angles) > 3 or high_or_med_photo_reqs:
+            doc_reqs = [
+                f"{r.get('angle', 'closeup')} photo ({r.get('reason_code', 'PHOTO_REQ')})"
+                for r in (high_or_med_photo_reqs or additional_reqs[:3])
+            ] or [f"Clear daylight photo ({a})" for a in (recapture or missing_angles[:3])]
             actions.append(
                 executor.request_documents(
                     agent_name=self.agent_name,
-                    documents=doc_reqs,
-                    reason_code="RC_PHOTO_RECAPTURE_NEEDED",
+                    documents=doc_reqs[:4],
+                    reason_code="RC_PHOTO_RECAPTURE_NEEDED" if recapture else "RC_ADDITIONAL_PHOTOS_NEEDED",
                 )
             )
+            tools_used.append("request_documents")
+
+        if route_to_human:
+            reasons_text = "; ".join(human_routing.get("trigger_reasons", [])) or "Uncertain component repairability or image quality check."
+            actions.append(
+                executor.create_claim_task(
+                    agent_name=self.agent_name,
+                    task_type="human_damage_assessment",
+                    title=f"Human Assessor Visual Review ({len(uncertain_components)} uncertain, {len(inconsistencies)} conflicts)",
+                    description=reasons_text,
+                    assigned_role=recommended_role if recommended_role in {"surveyor", "claims_handler", "claims_manager"} else "surveyor",
+                    priority="high",
+                    reason_code="RC_HUMAN_DAMAGE_ASSESSOR_ROUTED",
+                    due_hours=12,
+                    metadata={
+                        "uncertain_components": uncertain_components,
+                        "inconsistencies": [i.get("type") for i in inconsistencies],
+                        "recapture_files": recapture,
+                    },
+                )
+            )
+            tools_used.append("create_claim_task")
+        elif len(missing_angles) > 3:
             actions.append(
                 executor.create_claim_task(
                     agent_name=self.agent_name,
                     task_type="photo_recapture",
-                    title="Guided Photo Recapture Required",
-                    description=f"Recapture files={recapture}; missing angles={missing_angles}",
+                    title="Collect remaining standard vehicle angle photos",
+                    description=f"Missing standard angles={missing_angles}",
                     assigned_role="policyholder",
-                    priority="high",
-                    reason_code="RC_LOW_IMAGE_QUALITY",
+                    priority="medium",
+                    reason_code="RC_MISSING_ANGLE_FOLLOWUP",
                     due_hours=24,
                 )
             )
-            tools_used.extend(["request_documents", "create_claim_task"])
+            tools_used.append("create_claim_task")
 
-        conf = round(min(0.92, max(0.45, img_q_conf)), 3) if observations else (0.58 if recapture else 0.78)
-        status = AgentStatus.NEEDS_HUMAN if recapture else AgentStatus.COMPLETED
-        routing = "request_photo_recapture" if recapture else "damage_localized_proceed_estimate"
-        reason_codes = ["RC_IMAGE_RECAPTURE_NEEDED" if recapture else "RC_IMAGE_QUALITY_PASS", "RC_VISIBLE_VS_INFERRED_SPLIT"]
+        # Overall response confidence reflects weakest component when uncertain, never inflating over component uncertainty
+        comp_confs = [float(o.get("component_confidence", o.get("confidence", img_q_conf))) for o in observations]
+        if comp_confs:
+            min_comp_conf = min(comp_confs)
+            avg_comp_conf = sum(comp_confs) / len(comp_confs)
+            conf = round(min(0.94, max(0.35, min_comp_conf if route_to_human else avg_comp_conf)), 3)
+        else:
+            conf = round(min(0.92, max(0.45, img_q_conf)), 3) if not recapture else 0.45
+
+        status = AgentStatus.NEEDS_HUMAN if route_to_human else AgentStatus.COMPLETED
+        routing = (
+            "request_photo_recapture"
+            if recapture
+            else (
+                "route_uncertain_to_human_assessor"
+                if route_to_human
+                else "damage_localized_proceed_estimate"
+            )
+        )
+        reason_codes = [
+            "RC_IMAGE_RECAPTURE_NEEDED" if recapture else ("RC_IMAGE_QUALITY_POOR" if poor_files else "RC_IMAGE_QUALITY_PASS"),
+            "RC_COMPONENT_CONFIDENCE_CALIBRATED",
+            "RC_VISIBLE_VS_INFERRED_SPLIT",
+            "RC_PARTS_LABOUR_ESTIMATED",
+        ]
+        if guardrail_triggered:
+            reason_codes.append("RC_COMPONENT_UNCERTAINTY_GUARDRAIL")
+        if inconsistencies:
+            reason_codes.append("RC_CROSS_PHOTO_INCONSISTENCY_DETECTED")
+        if route_to_human:
+            reason_codes.append("RC_HUMAN_ASSESSOR_ROUTED")
         if res.get("ev_safety_alerts"):
             reason_codes.append("RC_EV_HV_TEARDOWN_REQUIRED")
 
@@ -903,23 +986,52 @@ class DamageAssessmentAgent(BoundedAgent):
             "overall_severity": overall_sev,
             "image_quality_confidence": img_q_conf,
         }
+        comp_summary = "; ".join(
+            f"{o.get('damaged_component', o.get('component_name'))}={o.get('component_confidence', o.get('confidence'))} ({o.get('repairability')})"
+            for o in observations[:4]
+        )
         decision = DecisionIntelligence(
             decision_id=self._decision_id(self.agent_name),
             reason_codes=reason_codes,
             evidence=[
-                f"Observations={len(observations)}, Zones={damage_zones}",
-                f"Image quality confidence={img_q_conf}, Recapture files={recapture}",
+                f"Overall image quality={res.get('overall_image_quality', 'good')} ({img_q_conf}), Photos={len(res.get('per_image_quality', []))}",
+                f"Per-component confidence: {comp_summary or 'none'}",
+                f"Inconsistencies={len(inconsistencies)}, Parts+Labour est INR {parts_labour.get('total_recommended_inr', '0.00')}",
             ],
-            policy_rule_refs=["IMAGE-QUALITY-GATE-320X240", "VISIBLE-VS-INFERRED-PROVENANCE"],
+            policy_rule_refs=[
+                "IMAGE-QUALITY-GATE-320X240",
+                "COMPONENT-CONFIDENCE-GUARDRAIL-V3",
+                "VISIBLE-VS-INFERRED-PROVENANCE",
+                f"RATE_CARD:{parts_labour.get('rate_card_id', 'RC-IN-2026-DEMO-V1')}",
+            ],
             confidence=conf,
             confidence_band=self._band(conf),
             routing_outcome=routing,
             explanation=(
-                f"Localized damage across zones {damage_zones} (severity={overall_sev}, image_quality_conf={img_q_conf}). "
-                + ("Requested photo recapture due to low image quality." if recapture else "Separated visible_observed vs inferred_possible parts.")
+                f"Executed 10-step visual damage workflow for {res.get('vehicle', {}).get('display_label', 'vehicle')}: "
+                f"{len(observations)} component(s) classified ({comp_summary or 'unassessed'}). "
+                + (
+                    f"Routed to human assessor ({recommended_role}) because: {'; '.join(human_routing.get('trigger_reasons', [])[:2])}."
+                    if route_to_human
+                    else f"Estimated parts+labour INR {parts_labour.get('total_recommended_inr', '0.00')}; ready for estimate validation."
+                )
             ),
-            alternatives_considered=["confirm_hidden_damage_from_photos (prohibited; marked inferred_possible)"],
+            alternatives_considered=[
+                "confirm_hidden_damage_from_photos (prohibited; marked possible_hidden_damage)",
+                "force_replace_from_overall_image_confidence (prohibited; component-level confidence governs repairability)",
+            ],
         )
+
+        evidence_citations = [
+            EvidenceCitation(
+                source_type="damage_bbox",
+                source_id=str(ev.get("evidence_id") or "img"),
+                reference=f"{ev.get('filename', 'photo')} ({ev.get('angle', 'angle')}) bbox={ev.get('bbox')}",
+                excerpt=f"{obs.get('damaged_component')}: {obs.get('repairability')} (conf={obs.get('component_confidence')})",
+            )
+            for obs in observations[:4]
+            for ev in (obs.get("evidence") or [])[:1]
+        ]
 
         return AgentInvocationResponse(
             agent_name=self.agent_name,
@@ -928,15 +1040,25 @@ class DamageAssessmentAgent(BoundedAgent):
             published_result=enriched,
             confidence=conf,
             confidence_band=self._band(conf),
-            missing_information=[f"Missing photo angle: {a}" for a in missing_angles],
-            limitations=["Assistive visual output only; hidden structural/mechanical damage cannot be confirmed from photos."],
+            evidence_refs=evidence_citations,
+            contradictions=[i.get("summary", "") for i in inconsistencies],
+            missing_information=[
+                f"{r.get('angle')} photo: {r.get('reason')}" for r in additional_reqs[:4]
+            ],
+            limitations=[
+                "Assistive visual output only; component-level confidence governs repairability and hidden structural/mechanical damage cannot be confirmed from photos."
+            ],
             actions_executed=actions,
             decision=decision,
             model_id=model_id,
             model_version=model_version,
             prompt_version=self.prompt_version,
             rule_versions=request.rule_versions,
-            suggested_next_action="request_photo_recapture" if recapture else "validate_estimate",
+            suggested_next_action=(
+                "request_photo_recapture"
+                if recapture
+                else ("human_assessor_damage_review" if route_to_human else "validate_estimate")
+            ),
             tools_invoked=list(dict.fromkeys(tools_used)),
         )
 

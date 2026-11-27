@@ -48,9 +48,21 @@ export interface ClaimExecutionData {
     confidence: string;
     validation_status: string;
   }>;
+  damage_report?: {
+    overall_image_quality?: string;
+    image_quality_confidence?: number;
+    human_assessor_routing?: {
+      route_to_human_assessor?: boolean;
+      uncertain_components?: string[];
+    };
+    inconsistencies?: Array<{ type: string; summary: string }>;
+  } | null;
   damage_assessments: Array<{
     id: string;
     component_name: string;
+    damage_location?: string;
+    damage_severity?: string;
+    repairability?: string;
     observation_type: string;
     recommended_action: string;
     confidence: string;
@@ -229,20 +241,43 @@ export function ClaimExecutionChain({ data }: { data: ClaimExecutionData }) {
       key: "Assessment",
       index: 4,
       agent: "damage_assessment + estimate_validation",
-      primaryAgentKey: "estimate_validation",
-      status: latestEst?.anomalies?.length
+      primaryAgentKey: "damage_assessment",
+      status: data.damage_report?.human_assessor_routing?.route_to_human_assessor
+        ? "HUMAN_ASSESSOR"
+        : latestEst?.anomalies?.length
         ? "FLAGGED_ANOMALY"
         : data.damage_assessments.length > 0 || latestEst
         ? "COMPLETED"
         : "PENDING",
-      tone: latestEst?.anomalies?.length ? "amber" : data.damage_assessments.length > 0 ? "green" : "slate",
-      evidence: `${data.damage_assessments.length} vision obs · ${data.estimates.length} estimate(s)`,
+      tone:
+        data.damage_report?.human_assessor_routing?.route_to_human_assessor || latestEst?.anomalies?.length
+          ? "amber"
+          : data.damage_assessments.length > 0
+          ? "green"
+          : "slate",
+      evidence: `${data.damage_assessments.length} component(s) · ${
+        data.damage_report?.overall_image_quality ? `img=${data.damage_report.overall_image_quality}` : `${data.estimates.length} est`
+      } · ${data.estimates.length} estimate(s)`,
       output: latestEst
         ? `Claimed ₹${latestEst.total_claimed_inr} -> Rec ₹${latestEst.total_approved_inr} (${latestEst.anomalies.length} anomalies)`
+        : data.damage_report?.human_assessor_routing?.route_to_human_assessor
+        ? `Uncertain components (${data.damage_report.human_assessor_routing.uncertain_components?.length || 0}) routed to human assessor`
+        : data.damage_assessments.length > 0
+        ? "10-step Visual Damage AI complete with per-component confidence"
         : "Run Damage Vision & submit garage estimate",
-      confidence: latestEst?.anomalies?.length ? "74% (MEDIUM)" : data.damage_assessments.length > 0 ? "88% (HIGH)" : "-",
-      rules: "RC-IN-2026-DEMO-V1 (12% Variance Cap)",
-      nextAction: latestEst?.anomalies?.length
+      confidence: (() => {
+        if (data.damage_assessments.length > 0) {
+          const vals = data.damage_assessments.map((d) => Math.round(Number(d.confidence) * 100));
+          const minC = Math.min(...vals);
+          const maxC = Math.max(...vals);
+          return minC === maxC ? `${minC}% (Per-Comp)` : `${minC}%–${maxC}% (Per-Comp)`;
+        }
+        return latestEst?.anomalies?.length ? "74% (MEDIUM)" : "-";
+      })(),
+      rules: "Component-Confidence Guardrail · RC-IN-2026-DEMO-V1",
+      nextAction: data.damage_report?.human_assessor_routing?.route_to_human_assessor
+        ? "Human assessor reviews uncertain components & inconsistencies"
+        : latestEst?.anomalies?.length
         ? "Adjuster/Surveyor reviews flagged estimate lines"
         : "Proceed to Investigation & Survey",
     },

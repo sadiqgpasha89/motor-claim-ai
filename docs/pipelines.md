@@ -85,14 +85,23 @@ Implemented in `services/rules_engine/knowledge.py` (`HybridPolicyRetriever`):
 
 ---
 
-## 4. Damage Vision & Rate-Card Estimate Validation Pipeline
+## 4. Visual Damage Assessment (10-Step Pipeline) & Rate-Card Estimate Validation
 
-Implemented in `services/damage_ai/assessor.py`:
+Implemented in `services/damage_ai/assessor.py` & `agents/specialists.py` (`DamageAssessmentAgent`):
 
-1. **Image Coverage & Quality Gate:**
-   - Checks uploaded images across the 6 required views (`front`, `rear`, `left`, `right`, `odometer`, `closeup`) and flags files marked `recapture_needed` (blurry, dark, or resolution `< 320x240`).
-2. **Assistive Damage Observation Separation:**
-   - Emits `visible_observed` observations (e.g., `PRT-FRT-BMP-01` Front Bumper, `PRT-HL-LED-RH` Headlamp) separately from `inferred_possible` items (e.g., `PRT-RAD-SUP-01` Radiator Core Support, `PRT-EV-BAT-TRAY` EV Underbody Tray) with explicit limitations.
+1. **10-Step Visual Damage Workflow:**
+   1. Upload accident photos (`POST /api/v1/claims/{claim_id}/evidence`)
+   2. Validate image quality (`good` / `poor` / `recapture` via resolution, luminance & contrast checks)
+   3. Detect vehicle (`make`, `model`, `variant`) and localize visible damaged regions with bounding boxes
+   4. Classify damaged components (`Bumper`, `Headlight`, `Door`, `Fender`, `Windshield`, `Bonnet`, `Rear Bumper`, `Tail Lamp`, `EV Battery Tray`, `Radiator Core Support`)
+   5. Compare damage across photos (`corroborated`, `single_angle_only`, `conflicting`, `no_photo_coverage`)
+   6. Identify inconsistencies (FNOL-vs-photo location mismatch, duplicate SHA-256 photo hash, vehicle identity mismatch)
+   7. Generate `repair` / `replace` / `uncertain` recommendations governed by **per-component confidence** (high overall image quality never forces beyond-repair on an occluded/uncertain component)
+   8. Estimate parts (OEM & OES), labour, and paint via `RC-IN-2026-DEMO-V1`
+   9. Request additional photos where necessary (`request_documents`)
+   10. Route uncertain cases (`repairability == "uncertain"`, `component_confidence < 0.72`, inconsistencies, `poor`/`recapture` frames, EV HV impact) to a human assessor (`NEEDS_HUMAN` + `ClaimTask`)
+2. **Structured Output Fields:**
+   - Emits `vehicle`, `damage_location`, `damaged_component`, `damage_severity`, `repairability`, `visible_damage`, `possible_hidden_damage`, `image_quality`, per-component `component_confidence` + `confidence_factors`, and bounding-box `evidence` refs.
 3. **Estimate Line Validation (`validate_estimate_lines`):**
    - Compares each garage estimate line against `RC-IN-2026-DEMO-V1` (`knowledge/synthetic_policy_samples/rate_cards.json`):
      - **Duplicate Detection:** Repeated `(part_code, line_type)` triggers `DUPLICATE_LINE` anomaly and defaults recommended amount to `0.00` (without accusing fraud).

@@ -42,15 +42,34 @@ def classify_document(filename: str, mime_type: str, text_hint: str = "") -> tup
 def check_image_quality(filename: str, data: bytes) -> dict[str, Any]:
     lower = filename.lower()
     angle = "closeup"
-    for candidate in ["front", "rear", "left", "right", "odometer", "vin"]:
+    for candidate in ["front", "rear", "left", "right", "underbody", "odometer", "vin"]:
         if candidate in lower:
             angle = candidate
             break
 
-    if "blurry" in lower or "dark" in lower or "low_quality" in lower:
+    location_hint = angle
+    for loc_token, loc_val in [
+        ("front_left", "front_left"),
+        ("front-left", "front_left"),
+        ("fl_", "front_left"),
+        ("front_right", "front_right"),
+        ("front-right", "front_right"),
+        ("fr_", "front_right"),
+        ("rear_left", "rear_left"),
+        ("rear_right", "rear_right"),
+        ("underbody", "underbody"),
+        ("undercarriage", "underbody"),
+    ]:
+        if loc_token in lower:
+            location_hint = loc_val
+            break
+
+    if any(tok in lower for tok in ["blurry", "dark", "low_quality", "corrupt", "unreadable", "recapture"]):
         return {
             "angle": angle,
+            "location_hint": location_hint,
             "quality_status": "recapture_needed",
+            "normalized_quality": "recapture",
             "quality_score": 0.34,
             "issues": ["Low sharpness / underexposed frame detected"],
             "guidance": "Please retake photo in daylight with full panel visible and camera steady.",
@@ -62,23 +81,73 @@ def check_image_quality(filename: str, data: bytes) -> dict[str, Any]:
         if w < 320 or h < 240:
             return {
                 "angle": angle,
+                "location_hint": location_hint,
                 "quality_status": "recapture_needed",
+                "normalized_quality": "recapture",
                 "quality_score": 0.42,
                 "issues": [f"Resolution {w}x{h} below minimum 320x240"],
                 "guidance": "Capture higher-resolution photo closer to the vehicle.",
             }
+        gray = img.convert("L")
+        raw_pixels = gray.get_flattened_data() if hasattr(gray, "get_flattened_data") else gray.getdata()
+        pixels = list(raw_pixels)
+        mean_lum = sum(pixels) / max(len(pixels), 1)
+        variance = sum((p - mean_lum) ** 2 for p in pixels) / max(len(pixels), 1)
+        std_dev = variance ** 0.5
+        if mean_lum < 28 or std_dev < 8:
+            return {
+                "angle": angle,
+                "location_hint": location_hint,
+                "quality_status": "recapture_needed",
+                "normalized_quality": "recapture",
+                "quality_score": 0.39,
+                "resolution": f"{w}x{h}",
+                "issues": [f"Low illumination or flat contrast (luma={mean_lum:.1f}, std={std_dev:.1f})"],
+                "guidance": "Retake photo in clear daylight avoiding heavy shadows or camera smear.",
+            }
+        if (
+            w < 480
+            or h < 360
+            or mean_lum < 55
+            or std_dev < 18
+            or any(tok in lower for tok in ["shadow", "glare", "occluded", "cropped", "night", "dim", "rain", "poor"])
+        ):
+            return {
+                "angle": angle,
+                "location_hint": location_hint,
+                "quality_status": "poor",
+                "normalized_quality": "poor",
+                "quality_score": 0.66,
+                "resolution": f"{w}x{h}",
+                "issues": [f"Sub-optimal lighting/resolution ({w}x{h}, luma={mean_lum:.1f})"],
+                "guidance": "Recommended: upload closer high-res daylight frame for uncertain components.",
+            }
         return {
             "angle": angle,
+            "location_hint": location_hint,
             "quality_status": "acceptable",
+            "normalized_quality": "good",
             "quality_score": 0.92,
             "issues": [],
             "resolution": f"{w}x{h}",
         }
     except Exception:
+        if any(tok in lower for tok in ["shadow", "glare", "occluded", "cropped", "night", "dim", "rain", "poor"]):
+            return {
+                "angle": angle,
+                "location_hint": location_hint,
+                "quality_status": "poor",
+                "normalized_quality": "poor",
+                "quality_score": 0.61,
+                "issues": ["Partial occlusion, shadow, or glare reduces component-level visibility"],
+                "guidance": "Capture an unobstructed close-up perpendicular to the damaged panel.",
+            }
         return {
             "angle": angle,
+            "location_hint": location_hint,
             "quality_status": "acceptable",
-            "quality_score": 0.86,
+            "normalized_quality": "good",
+            "quality_score": 0.88,
             "issues": [],
             "note": "Synthetic image metadata accepted",
         }

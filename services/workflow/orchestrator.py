@@ -1330,25 +1330,41 @@ class ClaimOrchestrator:
         retry_history: list[dict[str, Any]],
         error_message: str | None = None,
     ) -> None:
-        if agent_name == "damage_assessment" and resp.status == AgentStatus.COMPLETED:
+        if agent_name == "damage_assessment" and resp.status in {AgentStatus.COMPLETED, AgentStatus.NEEDS_HUMAN}:
+            claim.damage_report = _json_safe(resp.result)
             obs_list = resp.result.get("observations", [])
             if obs_list:
                 self.db.query(DamageAssessment).filter(
                     DamageAssessment.claim_id == claim.id, DamageAssessment.reviewer_outcome == "pending"
                 ).delete()
                 for obs in obs_list:
+                    ev_refs = list(obs.get("evidence") or [])
+                    first_ev_id = ev_refs[0].get("evidence_id") if ev_refs else None
+                    cost = dict(obs.get("estimated_cost") or {})
                     self.db.add(
                         DamageAssessment(
                             tenant_id=claim.tenant_id,
                             claim_id=claim.id,
+                            evidence_id=str(first_ev_id) if first_ev_id else None,
                             component_name=obs["component_name"],
                             part_code=obs.get("part_code"),
+                            damage_location=str(obs.get("damage_location", obs.get("zone", "front_center"))),
+                            damage_severity=str(obs.get("damage_severity", "moderate")),
+                            repairability=str(obs.get("repairability", "repair")),
                             damage_class=obs["damage_class"],
                             observation_type=obs["observation_type"],
                             recommended_action=obs["recommended_action"],
-                            confidence=Decimal(str(obs["confidence"])),
+                            visible_damage=str(obs.get("visible_damage", "")),
+                            possible_hidden_damage=str(obs.get("possible_hidden_damage", "")),
+                            image_quality=str(obs.get("image_quality", "good")),
+                            confidence=Decimal(str(obs.get("component_confidence", obs["confidence"]))),
+                            confidence_factors=_json_safe(obs.get("confidence_factors") or {}),
+                            evidence_refs=_json_safe(ev_refs),
+                            estimated_parts_inr=Decimal(str(cost.get("parts_oem_inr", "0.00"))),
+                            estimated_labour_inr=Decimal(str(cost.get("labour_inr", "0.00"))),
+                            estimated_paint_inr=Decimal(str(cost.get("paint_inr", "0.00"))),
                             limitations=obs["limitations"],
-                            model_version=str(resp.result.get("model_version", "cv-adapter-stub-v2")),
+                            model_version=str(resp.result.get("model_version", "cv-damage-vision-v3")),
                         )
                     )
                 self.db.flush()
@@ -1501,12 +1517,22 @@ class ClaimOrchestrator:
 
         elif agent_name == "damage_assessment":
             if resp.status == AgentStatus.NEEDS_HUMAN:
+                recapture = resp.result.get("recapture_required_files", [])
+                reasons = resp.result.get("human_assessor_routing", {}).get("trigger_reasons", [])
                 self._safe_transition(
                     claim,
                     ClaimStatus.HUMAN_REVIEW.value,
-                    reason="Image quality gate flagged blurry/missing angles requiring photo recapture",
-                    trigger_event="ImageRecaptureRequired",
-                    next_expected_action="Customer to recapture daylight photos",
+                    reason=(
+                        "Image quality gate flagged blurry/missing angles requiring photo recapture"
+                        if recapture
+                        else f"Uncertain damage components or inconsistencies routed to human assessor: {'; '.join(reasons[:2])}"
+                    ),
+                    trigger_event="ImageRecaptureRequired" if recapture else "UncertainDamageRoutedToAssessor",
+                    next_expected_action=(
+                        "Customer to recapture daylight photos"
+                        if recapture
+                        else "Human assessor (surveyor) to review uncertain components & inconsistencies"
+                    ),
                 )
             elif resp.status == AgentStatus.COMPLETED:
                 self._safe_transition(
@@ -2552,15 +2578,36 @@ class ClaimOrchestrator:
 
         if agent_name == "damage_assessment":
             img_records = [
-                {"filename": ev.filename, "image_angle": ev.image_angle, "image_quality_status": ev.image_quality_status}
+                {
+                    "id": ev.id,
+                    "filename": ev.filename,
+                    "image_angle": ev.image_angle,
+                    "image_quality_status": ev.image_quality_status,
+                    "sha256": ev.sha256,
+                    "ocr_text": ev.ocr_text,
+                }
                 for ev in evidences
                 if ev.mime_type.startswith("image/")
             ]
+            veh_info = (
+                {
+                    "make": vehicle.make,
+                    "model": vehicle.model,
+                    "variant": vehicle.cc_class.replace("_", " ").title(),
+                    "year": vehicle.year,
+                    "registration_number": vehicle.registration_number,
+                    "is_ev": vehicle.is_ev,
+                    "fuel_type": vehicle.fuel_type,
+                }
+                if vehicle
+                else {"registration_number": claim.vehicle_reg_input, "is_ev": claim.ev_battery_impacted}
+            )
             payload = assess_damage_from_evidence(
                 claim_description=claim.incident_description,
                 is_ev=vehicle.is_ev if vehicle else claim.ev_battery_impacted,
                 ev_battery_impacted=claim.ev_battery_impacted,
                 image_records=img_records,
+                vehicle_info=veh_info,
             )
             return {"assessment_payload": payload}
 

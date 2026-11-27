@@ -75,6 +75,69 @@
       "oes_price": "2100.00",
       "std_labour_inr": "0.00",
       "paint_inr": "0.00"
+    },
+    {
+      "part_code": "PRT-HL-LED-LH",
+      "name": "Headlamp Assembly LED LH",
+      "category": "glass",
+      "oem_price": "18400.00",
+      "oes_price": "14900.00",
+      "std_labour_inr": "1200.00",
+      "paint_inr": "0.00"
+    },
+    {
+      "part_code": "PRT-FND-LH-01",
+      "name": "Front Fender Panel LH (Steel)",
+      "category": "metal",
+      "oem_price": "7800.00",
+      "oes_price": "6200.00",
+      "std_labour_inr": "2800.00",
+      "paint_inr": "3800.00"
+    },
+    {
+      "part_code": "PRT-DOOR-RH-01",
+      "name": "Front Door Shell RH (Steel)",
+      "category": "metal",
+      "oem_price": "19500.00",
+      "oes_price": "15800.00",
+      "std_labour_inr": "4200.00",
+      "paint_inr": "5400.00"
+    },
+    {
+      "part_code": "PRT-DOOR-LH-01",
+      "name": "Front Door Shell LH (Steel)",
+      "category": "metal",
+      "oem_price": "19500.00",
+      "oes_price": "15800.00",
+      "std_labour_inr": "4200.00",
+      "paint_inr": "5400.00"
+    },
+    {
+      "part_code": "PRT-ORVM-LH-01",
+      "name": "ORVM Wing Mirror Assembly LH (Power Fold)",
+      "category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "oem_price": "6400.00",
+      "oes_price": "4900.00",
+      "std_labour_inr": "850.00",
+      "paint_inr": "1100.00"
+    },
+    {
+      "part_code": "PRT-RR-BMP-01",
+      "name": "Rear Bumper Assembly (Primed)",
+      "category": "rubber_nylon_plastic_tyres_tubes_batteries_airbags",
+      "oem_price": "11800.00",
+      "oes_price": "9200.00",
+      "std_labour_inr": "2900.00",
+      "paint_inr": "4200.00"
+    },
+    {
+      "part_code": "PRT-TL-LED-01",
+      "name": "Tail Lamp Assembly LED",
+      "category": "glass",
+      "oem_price": "10400.00",
+      "oes_price": "8100.00",
+      "std_labour_inr": "950.00",
+      "paint_inr": "0.00"
     }
   ],
   "max_allowed_variance_pct": "12.00"
