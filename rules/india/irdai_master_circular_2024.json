@@ -21,7 +21,8 @@
     "grievance_resolution_days": 14,
     "allow_auto_reject_for_missing_documents": false,
     "allow_auto_reject_for_delayed_intimation": false,
-    "allow_ai_repudiation_without_human": false
+    "allow_ai_repudiation_without_human": false,
+    "allow_fraud_score_auto_rejection": false
   },
   "special_mandatory_survey_perils": [
     "theft",

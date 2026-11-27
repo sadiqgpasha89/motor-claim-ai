@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from packages.contracts.errors import DomainError, ErrorCode
 from packages.security.auth import Role, UserContext
 from services.rules_engine.loader import get_active_rule
+from services.workflow.risk_engine import assert_fraud_score_never_rejects
 
 
 def validate_approval_authority(
@@ -17,8 +18,16 @@ def validate_approval_authority(
     amount_inr: Decimal,
     active_conditions: list[str],
     maker_user_id: str | None = None,
+    decision: str = "approved",
+    rationale: str = "",
+    fraud_signal_score: Decimal | float | str | None = None,
 ) -> str:
-    """Enforces Delegation of Authority & Maker-Checker separation of duties."""
+    """Enforces Delegation of Authority, Maker-Checker separation, and fraud non-rejection."""
+    assert_fraud_score_never_rejects(
+        decision=decision,
+        fraud_signal_score=fraud_signal_score,
+        rationale=rationale,
+    )
     doa = get_active_rule(db, "IN-DOA-MATRIX-2026")
 
     if maker_user_id and doa.get("forbid_same_user_maker_checker", True):

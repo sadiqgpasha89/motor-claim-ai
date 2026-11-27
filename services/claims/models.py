@@ -138,6 +138,10 @@ class Claim(Base):
     intake_channel: Mapped[str] = mapped_column(String(32), default="web")
     status: Mapped[str] = mapped_column(String(40), default="INTIMATED", index=True)
     severity_band: Mapped[str] = mapped_column(String(24), default="medium")
+    risk_tier: Mapped[str] = mapped_column(String(16), default="MEDIUM", index=True)
+    operational_path: Mapped[str] = mapped_column(String(32), default="standard", index=True)
+    risk_score: Mapped[int] = mapped_column(Integer, default=35)
+    fraud_signal_score: Mapped[Decimal] = mapped_column(Numeric(4, 3), default=Decimal("0.000"))
     queue_name: Mapped[str] = mapped_column(String(64), default="fnol_intake", index=True)
 
     incident_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -156,9 +160,14 @@ class Claim(Base):
     police_involved: Mapped[bool] = mapped_column(Boolean, default=False)
     towing_needed: Mapped[bool] = mapped_column(Boolean, default=False)
     ev_battery_impacted: Mapped[bool] = mapped_column(Boolean, default=False)
+    multiple_vehicles_involved: Mapped[bool] = mapped_column(Boolean, default=False)
+    involved_vehicles_count: Mapped[int] = mapped_column(Integer, default=1)
+    legal_dispute: Mapped[bool] = mapped_column(Boolean, default=False)
 
     estimated_loss_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
     requires_mandatory_survey: Mapped[bool] = mapped_column(Boolean, default=False)
+    risk_assessment: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    risk_history: Mapped[list] = mapped_column(JSON, default=list)
     preferred_language: Mapped[str] = mapped_column(String(16), default="en-IN")
 
     assigned_handler_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
