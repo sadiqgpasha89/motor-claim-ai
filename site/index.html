@@ -28,6 +28,7 @@
         <a href="#risk-processing">Risk-Based Paths</a>
         <a href="#damage-ai">Visual Damage AI</a>
         <a href="#ecosystem">Ecosystem Dashboard</a>
+        <a href="#customer-experience">Customer Journey</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
         <a href="#visitors">Q&amp;A &amp; Failures</a>
@@ -465,6 +466,75 @@ flowchart LR
           </div>
           <div id="eco-sim-output" class="orch-lab-output" style="margin-top:12px;"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2E: CUSTOMER EXPERIENCE INTELLIGENCE & MOTOR CLAIM TRACKER -->
+    <section id="customer-experience">
+      <h2>2E. Customer Experience Intelligence &amp; Motor Claim Tracker</h2>
+      <p class="section-sub">
+        The upgraded <code>CustomerCommunicationAgent</code> (<code>agents/specialists.py</code> +
+        <code>services/workflow/customer_experience.py</code>) does not merely send blind template messages — it inspects
+        live claim state, missing documents, photo quality, surveyor SLAs, parts ETAs, Maker-Checker approvals, and UTR
+        payments to proactively synthesize contextual updates across <strong>10 lifecycle triggers</strong> and
+        <strong>5 Indian languages</strong> (<code>en-IN</code>, <code>hi-IN</code>, <code>mr-IN</code>,
+        <code>ta-IN</code>, <code>kn-IN</code>), enforcing <strong>WhatsApp opt-in consent</strong> and providing a
+        direct <strong>human specialist escalation path</strong>.
+      </p>
+
+      <div class="cx-shell">
+        <div class="cx-toolbar">
+          <div>
+            <h3 style="margin:0;">Interactive Motor Claim Tracker &amp; Proactive AI Communication Lab</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Switch claim journey stages, language, communication preference, and WhatsApp consent below to see the
+              live customer tracker and state-aware AI updates.
+            </p>
+          </div>
+          <div class="btn-row" id="cx-stage-presets">
+            <button type="button" class="btn btn-outline btn-sm" onclick="setCxDemoStage('registered_survey_pending')">1. Survey Pending (26 Nov)</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setCxDemoStage('docs_photos_needed')">2. Missing Docs &amp; Photos</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setCxDemoStage('surveyor_delayed')">3. Surveyor Delayed</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setCxDemoStage('repair_parts_delayed')">4. Estimate Approved &amp; Parts Delayed</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setCxDemoStage('settlement_payment_closed')">5. Settlement, Paid &amp; Closed</button>
+          </div>
+        </div>
+
+        <div class="cx-controls-bar">
+          <label class="cx-control-item">
+            <span>Language:</span>
+            <select id="cx-lang-select" onchange="renderCustomerExperienceLab()">
+              <option value="en-IN">English (en-IN)</option>
+              <option value="hi-IN">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368; (hi-IN)</option>
+              <option value="mr-IN">&#2350;&#2352;&#2366;&#2336;&#2368; (mr-IN)</option>
+              <option value="ta-IN">&#2980;&#2990;&#3007;&#2996;&#3021; (ta-IN)</option>
+              <option value="kn-IN">&#3221;&#3240;&#3277;&#3240;&#3233; (kn-IN)</option>
+            </select>
+          </label>
+          <label class="cx-control-item">
+            <span>Preferred Channel:</span>
+            <select id="cx-channel-select" onchange="renderCustomerExperienceLab()">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">Email</option>
+              <option value="sms">SMS</option>
+              <option value="portal">Customer Portal</option>
+            </select>
+          </label>
+          <label class="cx-consent-check">
+            <input type="checkbox" id="cx-wa-consent" checked onchange="renderCustomerExperienceLab()" />
+            <span>WhatsApp Opt-In Consent Active (Guardrail blocks WhatsApp if unchecked)</span>
+          </label>
+          <button type="button" class="btn btn-accent btn-sm" onclick="triggerCxHumanEscalation()">Escalate to Human Specialist (4h SLA)</button>
+        </div>
+
+        <div id="cx-tracker-box"></div>
+
+        <div>
+          <div class="kv-label" style="margin-bottom:8px;">10 Proactive State-Aware AI Communication Triggers (Click any trigger to inspect synthesized update)</div>
+          <div id="cx-triggers-grid" class="cx-triggers-grid"></div>
+        </div>
+
+        <div id="cx-message-preview" class="cx-preview-box"></div>
       </div>
     </section>
 
@@ -1070,6 +1140,11 @@ classDiagram
               <span><code>CLM-ECO-2026</code> — Claims Ecosystem Coordination (Surveyor Licence, Geography/Skill/SLA, Preference Guardrail, Parts &amp; Repair Completion)</span>
               <button type="button" class="btn btn-outline btn-sm"
                 onclick="loadScenarioIntoWorkflow('ecosystem-coord')">Inspect Flow</button>
+            </li>
+            <li class="scenario-jump-item">
+              <span><code>CLM-CX-2026</code> — Customer Experience Intelligence (5-Stage Motor Claim Tracker, 10 Proactive Triggers, Multilingual, WhatsApp Consent &amp; Human Escalation)</span>
+              <button type="button" class="btn btn-outline btn-sm"
+                onclick="loadScenarioIntoWorkflow('customer-experience')">Inspect Flow</button>
             </li>
             <li class="scenario-jump-item">
               <span><code>CLM-RISK-2026</code> — Dynamic Risk Processing (LOW Fast-Track &rarr; HIGH Multi-Vehicle / SIU, Non-Rejecting Fraud Score)</span>

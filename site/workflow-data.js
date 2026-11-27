@@ -59,6 +59,121 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
   ],
 
   scenarios: {
+    "customer-experience": {
+      id: "customer-experience",
+      claimNumber: "CLM-CX-2026",
+      tag: "Customer Experience Intelligence",
+      title: "Motor Claim Tracker, 10 State-Aware Proactive Triggers, Multilingual & WhatsApp Consent",
+      vehicle: "Maruti Suzuki Baleno Alpha (MH02DEMO1042)",
+      policy: "POL-IN-DEMO-2026-1001 (Active · Zero Dep + Consumables · WhatsApp Opted-In)",
+      claimedAmount: "₹48,700.00",
+      outcomeAmount: "Proactive Multilingual Updates + Human Escalation",
+      automationSplit: "5-Stage Motor Claim Tracker · 10 Proactive Triggers · 5 Languages · Consent Guardrail",
+      summary:
+        "Showcases Customer Experience Intelligence (services/workflow/customer_experience.py + CustomerCommunicationAgent): renders the live 5-stage Motor Claim Tracker (Claim registered -> Documents verified -> Vehicle inspection -> Repair approval -> Repair and settlement), detects claim state across 10 proactive triggers, synthesizes localized messages (en-IN, hi-IN, mr-IN, ta-IN, kn-IN), enforces WhatsApp opt-in consent, and provides a 4h SLA human specialist escalation path.",
+      steps: [
+        {
+          opKey: "FNOL",
+          stepCode: "01",
+          nodeTitle: "Motor Claim Tracker & Preferences Captured",
+          codeRef: "POST /claims/intimations + PATCH /customer-preferences",
+          actorType: "agent",
+          wakeTrigger: "26 Nov · Accident claim submitted; customer prefers hi-IN / WhatsApp (consent=true)",
+          executionStatus: "COMPLETED · Tracker Live",
+          statusKind: "green",
+          evidence: [
+            "Stage 1: Claim registered (26 Nov · Accident claim submitted)",
+            "Stage 2: Documents verified (Policy and RC validated; DL pending reminder queued)",
+            "WhatsApp Opt-In Consent verified (wamid delivery enabled)"
+          ],
+          dataRetrieved: ["Customer preferences", "Claim state snapshot", "Missing documents list"],
+          toolsInvoked: ["communication_preference", "claim_status_read", "send_customer_update"],
+          allowedDecisions: "Captures preferred language, channel, and explicit WhatsApp consent; blocks WhatsApp if opted out.",
+          agentOutput: "Customer portal displays 5-stage Motor Claim Tracker & sends localized missing-doc reminder.",
+          confidence: 0.96,
+          confidenceBand: "HIGH",
+          businessRules: ["IRDAI-POLICYHOLDER-COMM-2024", "WHATSAPP-OPTIN-CONSENT-2026"],
+          failureBehavior: "If consent_whatsapp=false, automatically routes to consented Email/Portal with RC_WHATSAPP_CONSENT_REQUIRED.",
+          humanReviewRequired: false,
+          nextAction: "Evaluate Photo Quality & Schedule Inspection"
+        },
+        {
+          opKey: "Assessment",
+          stepCode: "02",
+          nodeTitle: "Proactive Photo Recapture & Survey Delay Advisory",
+          codeRef: "dispatch_proactive_customer_update('photos_insufficient' / 'surveyor_delayed')",
+          actorType: "agent",
+          wakeTrigger: "Damage AI detects blurry front photo -> surveyor SLA breaches 24h",
+          executionStatus: "PROACTIVE · State-Aware Alerts Sent",
+          statusKind: "blue",
+          evidence: [
+            "Trigger 'photos_insufficient': asked customer for clear daylight front-right panel photo",
+            "Trigger 'survey_scheduled': notified R. K. Sharma inspection slot",
+            "Trigger 'surveyor_delayed': explained SLA delay & active priority escalation"
+          ],
+          dataRetrieved: ["DamageReport.recapture_required_files", "SurveyAssignment SLA timer", "EcosystemCoordination"],
+          toolsInvoked: ["claim_status_read", "approved_templates", "send_customer_update"],
+          allowedDecisions: "Reads live claim state and synthesizes specific guidance instead of generic templates.",
+          agentOutput: "Customer informed proactively at every blocker before needing to call support.",
+          confidence: 0.95,
+          confidenceBand: "HIGH",
+          businessRules: ["10-PROACTIVE-TRIGGER-CATALOG", "PROACTIVE-CUSTOMER-COMM"],
+          failureBehavior: "Deduplicates identical trigger+state messages so customers are never spammed.",
+          humanReviewRequired: false,
+          nextAction: "Notify Estimate Approval, Repair Start & Parts Delay"
+        },
+        {
+          opKey: "Investigation",
+          stepCode: "03",
+          nodeTitle: "Repair, Parts Delay & Human Specialist Escalation",
+          codeRef: "POST /claims/{id}/customer-escalation",
+          actorType: "human",
+          wakeTrigger: "OEM Radiator Support backordered (5d) -> Customer clicks Escalate to Human Specialist",
+          executionStatus: "ESCALATED · 4h Callback SLA Active",
+          statusKind: "amber",
+          evidence: [
+            "Trigger 'parts_delayed': sent exact part name + 5-day ETA via WhatsApp",
+            "Customer Escalation created high-priority ClaimTask (ESC-HUMAN) with 4-hour callback SLA",
+            "Immediate localized escalation confirmation sent to policyholder"
+          ],
+          dataRetrieved: ["EcosystemCoordination.parts_availability", "ClaimTask escalation ledger"],
+          toolsInvoked: ["create_claim_task", "send_customer_update"],
+          allowedDecisions: "Always provides direct human escalation path alongside automated updates.",
+          agentOutput: "Human specialist assigned with 4h callback SLA in customer's preferred language.",
+          confidence: 1.0,
+          confidenceBand: "HUMAN ESCALATION",
+          businessRules: ["CUSTOMER-HUMAN-ESCALATION-SLA-4H", "IRDAI-GRIEVANCE-2024"],
+          failureBehavior: "Never traps customer in an AI-only loop; human specialist task always available.",
+          humanReviewRequired: true,
+          nextAction: "Notify Settlement Approval, Payment UTR & Claim Closure"
+        },
+        {
+          opKey: "Closure",
+          stepCode: "04",
+          nodeTitle: "Settlement Awaiting, Payment UTR & Claim Closed",
+          codeRef: "dispatch_proactive_customer_update('payment_processed' / 'claim_closed')",
+          actorType: "agent",
+          wakeTrigger: "Maker-Checker approves ₹47,700 -> Finance confirms UTR -> QA closes claim",
+          executionStatus: "COMPLETED · Full Journey Closed",
+          statusKind: "green",
+          evidence: [
+            "Trigger 'settlement_awaiting_approval': notified ₹47,700 queued at Maker-Checker DoA",
+            "Trigger 'payment_processed': sent UTR reference PG-UTR-DEMO88412",
+            "Trigger 'claim_closed': confirmed 5/5 stages complete & archived audit trail"
+          ],
+          dataRetrieved: ["Settlement net_payable_inr", "Payment gateway_reference", "QA closure status"],
+          toolsInvoked: ["claim_status_read", "send_customer_update"],
+          allowedDecisions: "Synthesizes exact rupee amounts and UTR references in policyholder's language.",
+          agentOutput: "Motor Claim Tracker reaches 100% Complete across all 5 customer journey stages.",
+          confidence: 0.98,
+          confidenceBand: "HIGH",
+          businessRules: ["PROACTIVE-CLOSURE-NOTICE", "AUDIT-CHAIN-SHA256"],
+          failureBehavior: "Adverse / partial-decline communications remain gated behind human_comm_review.",
+          humanReviewRequired: false,
+          nextAction: "Journey complete; archive & feedback available"
+        }
+      ]
+    },
     "ecosystem-coord": {
       id: "ecosystem-coord",
       claimNumber: "CLM-ECO-2026",
@@ -1956,15 +2071,15 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
     {
       agentName: "customer_communication",
       displayName: "Customer Communication",
-      stage: "8. Proactive Updates",
-      enhancement: "Proactive status updates, document reminders, delays, next steps, multilingual support",
-      responsibility: "Sends proactive milestone updates, document reminders, delay advisories, and next steps in en-IN, hi-IN, mr-IN, ta-IN, and kn-IN.",
-      inputContract: "message_type, language, channel, claim_status, missing_documents, is_adverse",
-      outputContract: "language, channel, message_type, subject, draft_message, requires_human_review",
+      stage: "8. Proactive Updates & CX",
+      enhancement: "State-aware proactive updates (10 triggers), 5-stage Motor Claim Tracker, multilingual (5 languages), WhatsApp consent guardrail & human escalation",
+      responsibility: "Understands live claim state and proactively communicates meaningful updates across missing docs, photo recapture, survey scheduled/delayed, estimate approved, repair start, parts delay, settlement approval, payout UTR, and closure in en-IN, hi-IN, mr-IN, ta-IN, and kn-IN.",
+      inputContract: "trigger_event, claim_state, consent_whatsapp, message_type, language, channel, is_adverse",
+      outputContract: "trigger_event, language, effective_channel, whatsapp_blocked_no_consent, subject, draft_message, action_cta, human_escalation_available",
       authorisedActions: ["send_customer_update", "create_claim_task"],
-      dependsOn: ["claim_triage"],
+      dependsOn: ["fnol_concierge"],
       reworkTargets: [],
-      humanGate: "Adverse or partial-decline messages hold in pending_human_review."
+      humanGate: "Adverse notices hold in pending_human_review; WhatsApp blocked if consent_whatsapp=false; 4h human escalation always available."
     },
     {
       agentName: "qa_compliance",
@@ -2570,6 +2685,172 @@ window.MOTORCLAIM_WORKFLOW_DATA = {
         ],
         inconsistencies: [],
         photoRequests: ["Post-HV-isolation lift photo of underbody tray (HIGH)", "BMS diagnostic report PDF (HIGH)"]
+      }
+    }
+  },
+
+  customerExperienceLab: {
+    stageTitles: {
+      "en-IN": ["Claim registered", "Documents verified", "Vehicle inspection", "Repair approval", "Repair and settlement"],
+      "hi-IN": ["दावा पंजीकृत", "दस्तावेज़ सत्यापित", "वाहन निरीक्षण", "मरम्मत स्वीकृति", "मरम्मत और निपटान"],
+      "mr-IN": ["दावा नोंदणीकृत", "कागदपत्रे तपासली", "वाहन तपासणी", "दुरुस्ती मंजुरी", "दुरुस्ती व निपटारा"],
+      "ta-IN": ["கோரிக்கை பதிவு செய்யப்பட்டது", "ஆவணங்கள் சரிபார்க்கப்பட்டன", "வாகன ஆய்வு", "பழுதுபார்ப்பு ஒப்புதல்", "பழுது மற்றும் தீர்வு"],
+      "kn-IN": ["ಕ್ಲೈಮ್ ನೋಂದಾಯಿಸಲಾಗಿದೆ", "ದಾಖಲೆಗಳು ಪರಿಶೀಲಿಸಲ್ಪಟ್ಟಿವೆ", "ವಾಹನ ತಪಾಸಣೆ", "ದುರಸ್ತಿ ಅನುಮೋದನೆ", "ದುರಸ್ತಿ ಮತ್ತು ಇತ್ಯರ್ಥ"]
+    },
+    presets: {
+      registered_survey_pending: {
+        claimNumber: "CLM-DEMO-2026-0001",
+        vehicle: "Maruti Suzuki Baleno Alpha (MH02DEMO1042)",
+        progressPct: 45,
+        defaultTrigger: "survey_scheduled",
+        activeTriggers: ["survey_scheduled"],
+        stages: [
+          { status: "completed", detail: "26 Nov · Accident claim submitted", date: "26 Nov" },
+          { status: "completed", detail: "Policy and RC validated", date: "26 Nov" },
+          { status: "in_progress", detail: "Surveyor assignment in progress", date: "27 Nov" },
+          { status: "pending", detail: "Pending assessment", date: "" },
+          { status: "pending", detail: "Not yet started", date: "" }
+        ]
+      },
+      docs_photos_needed: {
+        claimNumber: "CLM-DEMO-2026-0004",
+        vehicle: "Maruti Suzuki Baleno Alpha (MH02DEMO1042)",
+        progressPct: 30,
+        defaultTrigger: "documents_missing",
+        activeTriggers: ["documents_missing", "photos_insufficient"],
+        stages: [
+          { status: "completed", detail: "26 Nov · Accident claim submitted", date: "26 Nov" },
+          { status: "action_required", detail: "Missing Driving Licence + blurry front-right photo", date: "26 Nov" },
+          { status: "pending", detail: "Awaiting clear photos", date: "" },
+          { status: "pending", detail: "Pending assessment", date: "" },
+          { status: "pending", detail: "Not yet started", date: "" }
+        ]
+      },
+      surveyor_delayed: {
+        claimNumber: "CLM-DEMO-2026-0006",
+        vehicle: "Hyundai Creta SX (MH04DEMO2211)",
+        progressPct: 52,
+        defaultTrigger: "surveyor_delayed",
+        activeTriggers: ["survey_scheduled", "surveyor_delayed"],
+        stages: [
+          { status: "completed", detail: "10 Nov · Accident claim submitted", date: "10 Nov" },
+          { status: "completed", detail: "Policy and RC validated", date: "10 Nov" },
+          { status: "delayed", detail: "Surveyor delayed — SLA follow-up #2 active", date: "26 Nov" },
+          { status: "pending", detail: "Pending assessment", date: "" },
+          { status: "pending", detail: "Not yet started", date: "" }
+        ]
+      },
+      repair_parts_delayed: {
+        claimNumber: "CLM-DEMO-2026-0007",
+        vehicle: "Maruti Suzuki Baleno Alpha (MH02DEMO1042)",
+        progressPct: 78,
+        defaultTrigger: "parts_delayed",
+        activeTriggers: ["estimate_approved", "repair_begins", "parts_delayed"],
+        stages: [
+          { status: "completed", detail: "24 Nov · Accident claim submitted", date: "24 Nov" },
+          { status: "completed", detail: "Policy and RC validated", date: "24 Nov" },
+          { status: "completed", detail: "Inspection completed · R. K. Sharma", date: "25 Nov" },
+          { status: "completed", detail: "Estimate approved (₹48,700.00)", date: "26 Nov" },
+          { status: "delayed", detail: "Parts delayed (OEM Radiator Support · ETA 5d)", date: "27 Nov" }
+        ]
+      },
+      settlement_payment_closed: {
+        claimNumber: "CLM-DEMO-2026-0009",
+        vehicle: "Maruti Suzuki Baleno Alpha (MH02DEMO1042)",
+        progressPct: 100,
+        defaultTrigger: "claim_closed",
+        activeTriggers: ["settlement_awaiting_approval", "payment_processed", "claim_closed"],
+        stages: [
+          { status: "completed", detail: "22 Nov · Accident claim submitted", date: "22 Nov" },
+          { status: "completed", detail: "Policy and RC validated", date: "22 Nov" },
+          { status: "completed", detail: "Inspection completed · R. K. Sharma", date: "23 Nov" },
+          { status: "completed", detail: "Settlement approved (₹47,700.00)", date: "25 Nov" },
+          { status: "completed", detail: "Payment processed (PG-UTR-DEMO88412) · Claim closed", date: "27 Nov" }
+        ]
+      }
+    },
+    triggers: [
+      { key: "documents_missing", label: "Documents are missing" },
+      { key: "photos_insufficient", label: "Photos are insufficient" },
+      { key: "survey_scheduled", label: "A survey is scheduled" },
+      { key: "surveyor_delayed", label: "The surveyor is delayed" },
+      { key: "estimate_approved", label: "The estimate is approved" },
+      { key: "repair_begins", label: "Repair work begins" },
+      { key: "parts_delayed", label: "Parts are delayed" },
+      { key: "settlement_awaiting_approval", label: "Settlement is awaiting approval" },
+      { key: "payment_processed", label: "Payment has been processed" },
+      { key: "claim_closed", label: "The claim is closed" }
+    ],
+    messages: {
+      documents_missing: {
+        "en-IN": { subject: "Action needed: Pending documents for {cn}", body: "Your motor claim {cn} is registered, but we still need your Driving Licence & Policy Schedule. Upload directly in the portal or reply on WhatsApp so verification completes without delay." },
+        "hi-IN": { subject: "आवश्यक कार्रवाई: {cn} के लिए लंबित दस्तावेज़", body: "आपका दावा {cn} पंजीकृत है, लेकिन सत्यापन के लिए ड्राइविंग लाइसेंस और पॉलिसी कॉपी अपलोड करें।" },
+        "mr-IN": { subject: "कृपया कागदपत्रे अपलोड करा: {cn}", body: "तुमचा दावा {cn} नोंदवला आहे; पडताळणी पूर्ण करण्यासाठी ड्रायव्हिंग लायसन्स अपलोड करा." },
+        "ta-IN": { subject: "ஆவணங்கள் தேவை: {cn}", body: "உங்கள் கோரிக்கை {cn} பதிவு செய்யப்பட்டது; சரிபார்ப்பை முடிக்க ஓட்டுநர் உரிமத்தை பதிவேற்றவும்." },
+        "kn-IN": { subject: "ದಾಖಲೆಗಳು ಬಾಕಿ ಇವೆ: {cn}", body: "ನಿಮ್ಮ ಕ್ಲೈಮ್ {cn} ನೋಂದಾಯಿಸಲಾಗಿದೆ; ದಯವಿಟ್ಟು ಡ್ರೈವಿಂಗ್ ಲೈಸೆನ್ಸ್ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ." }
+      },
+      photos_insufficient: {
+        "en-IN": { subject: "Photo recapture requested for {cn}", body: "Damage AI flagged low-light blur on front_right_img.jpg. Please retake 2 clear daylight photos showing the full damaged bumper & headlamp panel." },
+        "hi-IN": { subject: "{cn} के लिए स्पष्ट फ़ोटो पुनः अपलोड करें", body: "क्षति जांच के लिए कृपया दिन के उजाले में क्षतिग्रस्त बम्पर व हेडलाइट की 2 स्पष्ट फ़ोटो अपलोड करें।" },
+        "mr-IN": { subject: "{cn} साठी स्पष्ट फोटो पुन्हा अपलोड करा", body: "कृपया दिवसाच्या प्रकाशात नुकसान झालेल्या भागाचे 2 स्पष्ट फोटो अपलोड करा." },
+        "ta-IN": { subject: "{cn} கோரிக்கைக்கு தெளிவான புகைப்படங்கள் தேவை", body: "பகல் வெளிச்சத்தில் சேதமடைந்த பகுதியின் 2 தெளிவான புகைப்படங்களை பதிவேற்றவும்." },
+        "kn-IN": { subject: "{cn} ಗಾಗಿ ಸ್ಪಷ್ಟ ಫೋಟೋಗಳನ್ನು ಮರು-ಅಪ್‌ಲೋಡ್ ಮಾಡಿ", body: "ಹಗಲಿನ ಬೆಳಕಿನಲ್ಲಿ ಹಾನಿಗೊಳಗಾದ ಭಾಗದ 2 ಸ್ಪಷ್ಟ ಫೋಟೋಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ." }
+      },
+      survey_scheduled: {
+        "en-IN": { subject: "Vehicle inspection scheduled for {cn}", body: "Licensed IIISLA surveyor R. K. Sharma is assigned and your inspection is scheduled for 28 Nov, 11:30 AM at Garage A — Apex Motors." },
+        "hi-IN": { subject: "{cn} के लिए वाहन निरीक्षण निर्धारित", body: "सर्वेयर R. K. Sharma नियुक्त किए गए हैं और निरीक्षण 28 Nov सुबह 11:30 बजे Garage A पर निर्धारित है।" },
+        "mr-IN": { subject: "{cn} साठी वाहन तपासणी नियोजित", body: "सर्वेक्षक R. K. Sharma यांची नेमणूक झाली असून तपासणी 28 Nov रोजी नियोजित आहे." },
+        "ta-IN": { subject: "{cn} வாகன ஆய்வு நேரம் உறுதி செய்யப்பட்டது", body: "ஆய்வாளர் R. K. Sharma நியமிக்கப்பட்டு 28 Nov அன்று ஆய்வு திட்டமிடப்பட்டுள்ளது." },
+        "kn-IN": { subject: "{cn} ವಾಹನ ತಪಾಸಣೆ ನಿಗದಿಯಾಗಿದೆ", body: "ಸರ್ವೇಯರ್ R. K. Sharma ನೇಮಕಗೊಂಡಿದ್ದು, ತಪಾಸಣೆ 28 Nov ರಂದು ನಿಗದಿಯಾಗಿದೆ." }
+      },
+      surveyor_delayed: {
+        "en-IN": { subject: "Surveyor delay advisory & priority escalation: {cn}", body: "We noticed a delay on R. K. Sharma's inspection report. Automated SLA follow-up #2 is active and a human specialist will update you within 24 hours." },
+        "hi-IN": { subject: "सर्वेयर विलंब सूचना व प्राथमिकता एस्केलेशन: {cn}", body: "सर्वेयर रिपोर्ट में देरी देखी गई है। हमने SLA फॉलो-अप सक्रिय कर दिया है; 24 घंटे में अपडेट मिलेगा।" },
+        "mr-IN": { subject: "सर्वेक्षक विलंब सूचना: {cn}", body: "सर्वेक्षक अहवालात विलंब झाला आहे; प्राधान्याने पाठपुरावा सुरू आहे." },
+        "ta-IN": { subject: "ஆய்வாளர் தாமத அறிவிப்பு: {cn}", body: "ஆய்வாளர் அறிக்கையில் தாமதம் கண்டறியப்பட்டது; முன்னுரிமை நடவடிக்கை எடுக்கப்பட்டுள்ளது." },
+        "kn-IN": { subject: "ಸರ್ವೇಯರ್ ವಿಳಂಬ ಮಾಹಿತಿ: {cn}", body: "ಸರ್ವೇಯರ್ ವರದಿಯಲ್ಲಿ ವಿಳಂಬ ಕಂಡುಬಂದಿದೆ; ಆದ್ಯತೆಯ SLA ಫಾಲೋ-ಅಪ್ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ." }
+      },
+      estimate_approved: {
+        "en-IN": { subject: "Repair estimate approved for {cn} (₹48,700.00)", body: "Your repair estimate at Garage A — Apex Motors is validated against OEM rate cards and approved for ₹48,700.00." },
+        "hi-IN": { subject: "{cn} का मरम्मत अनुमान स्वीकृत (₹48,700.00)", body: "Garage A पर आपके वाहन का मरम्मत अनुमान ₹48,700.00 के लिए स्वीकृत हो गया है।" },
+        "mr-IN": { subject: "{cn} साठी दुरुस्ती अंदाज मंजूर (₹48,700.00)", body: "Garage A येथील दुरुस्ती अंदाज ₹48,700.00 साठी मंजूर झाला आहे." },
+        "ta-IN": { subject: "{cn} பழுது மதிப்பீடு ஒப்புதல் (₹48,700.00)", body: "Garage A-இல் உங்கள் பழுது மதிப்பீடு ₹48,700.00-க்கு ஒப்புதல் அளிக்கப்பட்டது." },
+        "kn-IN": { subject: "{cn} ದುರಸ್ತಿ ಅಂದಾಜು ಅನುಮೋದಿತವಾಗಿದೆ (₹48,700.00)", body: "Garage A ನಲ್ಲಿ ನಿಮ್ಮ ದುರಸ್ತಿ ಅಂದಾಜು ₹48,700.00 ಗೆ ಅನುಮೋದನೆಗೊಂಡಿದೆ." }
+      },
+      repair_begins: {
+        "en-IN": { subject: "Repair work has begun on {cn}", body: "Garage A — Apex Motors has started bodywork & mechanical repairs (milestone: body & paint in progress). We will notify you once QC is ready." },
+        "hi-IN": { subject: "{cn} की मरम्मत शुरू हो गई है", body: "Garage A ने वाहन की मरम्मत शुरू कर दी है (चरण: बॉडी और पेंट प्रगति पर)। QC होते ही हम आपको सूचित करेंगे।" },
+        "mr-IN": { subject: "{cn} चे दुरुस्ती काम सुरू झाले", body: "Garage A येथे दुरुस्ती काम सुरू झाले आहे (टप्पा: बॉडी व पेंट)." },
+        "ta-IN": { subject: "{cn} பழுதுபார்க்கும் பணி தொடங்கியது", body: "Garage A-இல் பழுதுபார்க்கும் பணி தொடங்கியுள்ளது." },
+        "kn-IN": { subject: "{cn} ದುರಸ್ತಿ ಕಾರ್ಯ ಪ್ರಾರಂಭವಾಗಿದೆ", body: "Garage A ನಲ್ಲಿ ದುರಸ್ತಿ ಕಾರ್ಯ ಆರಂಭವಾಗಿದೆ." }
+      },
+      parts_delayed: {
+        "en-IN": { subject: "Parts delay update for {cn} (ETA ~5 days)", body: "Garage A reported an OEM supply wait for Radiator Core Support (estimated arrival in 5 days). Our ecosystem team is expediting dispatch." },
+        "hi-IN": { subject: "{cn} के स्पेयर पार्ट्स में देरी (अनुमानित 5 दिन)", body: "Radiator Core Support की OEM आपूर्ति में लगभग 5 दिनों की प्रतीक्षा है। हमारी टीम इसे ट्रैक कर रही है।" },
+        "mr-IN": { subject: "{cn} साठी सुटे भाग येण्यास विलंब (अंदाजे 5 दिवस)", body: "Radiator Core Support साठी सुमारे 5 दिवसांची प्रतीक्षा आहे." },
+        "ta-IN": { subject: "{cn} உதிரி பாகங்கள் தாமதம் (சுமார் 5 நாட்கள்)", body: "Radiator Core Support வர சுமார் 5 நாட்கள் ஆகும்; குழு கண்காணிக்கிறது." },
+        "kn-IN": { subject: "{cn} ಬಿಡಿಭಾಗಗಳ ವಿಳಂಬ ಮಾಹಿತಿ (ಅಂದಾಜು 5 ದಿನಗಳು)", body: "Radiator Core Support ಪೂರೈಕೆಗೆ ಸುಮಾರು 5 ದಿನಗಳು ಬೇಕಾಗಬಹುದು." }
+      },
+      settlement_awaiting_approval: {
+        "en-IN": { subject: "Settlement of ₹47,700.00 awaiting final approval ({cn})", body: "Your itemized settlement of ₹47,700.00 (Zero Dep waiver ₹7,030 applied) is queued for Maker-Checker sign-off; payout releases immediately after." },
+        "hi-IN": { subject: "{cn} का ₹47,700.00 निपटान अंतिम स्वीकृति के लिए प्रतीक्षारत", body: "₹47,700.00 की गणना पूरी हो चुकी है और Maker-Checker स्वीकृति के लिए कतार में है।" },
+        "mr-IN": { subject: "{cn} साठी ₹47,700.00 निपटारा अंतिम मंजुरीच्या प्रतीक्षेत", body: "₹47,700.00 रक्कम अंतिम मंजुरीच्या प्रतीक्षेत आहे." },
+        "ta-IN": { subject: "{cn} தீர்வுத் தொகை ₹47,700.00 இறுதி ஒப்புதலுக்காகக் காத்திருக்கிறது", body: "₹47,700.00 கணக்கிடப்பட்டு இறுதி ஒப்புதலுக்காக உள்ளது." },
+        "kn-IN": { subject: "{cn} ಇತ್ಯರ್ಥ ಮೊತ್ತ ₹47,700.00 ಅಂತಿಮ ಅನುಮೋದನೆಗೆ ಬಾಕಿ ಇದೆ", body: "₹47,700.00 ಲೆಕ್ಕಾಚಾರ ಪೂರ್ಣಗೊಂಡಿದ್ದು ಅಂತಿಮ ಅನುಮೋದನೆಗೆ ಕಾಯುತ್ತಿದೆ." }
+      },
+      payment_processed: {
+        "en-IN": { subject: "Payment processed for {cn}: ₹47,700.00 (PG-UTR-DEMO88412)", body: "Payment of ₹47,700.00 has been processed and confirmed (Ref: PG-UTR-DEMO88412). Final QC check and handover are underway." },
+        "hi-IN": { subject: "{cn} का भुगतान पूरा हुआ: ₹47,700.00 (PG-UTR-DEMO88412)", body: "₹47,700.00 का भुगतान सफलतापूर्वक प्रोसेस हो गया है (Ref: PG-UTR-DEMO88412)।" },
+        "mr-IN": { subject: "{cn} साठी पेमेंट पूर्ण: ₹47,700.00 (PG-UTR-DEMO88412)", body: "₹47,700.00 चे पेमेंट यशस्वीरित्या पूर्ण झाले आहे (Ref: PG-UTR-DEMO88412)." },
+        "ta-IN": { subject: "{cn} பணம் செலுத்தப்பட்டது: ₹47,700.00 (PG-UTR-DEMO88412)", body: "₹47,700.00 வெற்றிகரமாகச் செலுத்தப்பட்டது (Ref: PG-UTR-DEMO88412)." },
+        "kn-IN": { subject: "{cn} ಪಾವತಿ ಪೂರ್ಣಗೊಂಡಿದೆ: ₹47,700.00 (PG-UTR-DEMO88412)", body: "₹47,700.00 ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಿ ಪ್ರಕ್ರಿಯೆಗೊಂಡಿದೆ (Ref: PG-UTR-DEMO88412)." }
+      },
+      claim_closed: {
+        "en-IN": { subject: "Claim {cn} is closed — Thank you", body: "Your motor claim {cn} is now officially closed with all QA checks, repair confirmation, and UTR payment archived. Human specialist help remains available anytime." },
+        "hi-IN": { subject: "दावा {cn} बंद कर दिया गया है — धन्यवाद", body: "आपका दावा {cn} सभी QA जांच व भुगतान मिलान के साथ सफलतापूर्वक बंद हो गया है।" },
+        "mr-IN": { subject: "दावा {cn} बंद करण्यात आला आहे — धन्यवाद", body: "तुमचा दावा {cn} सर्व तपासण्या पूर्ण करून बंद करण्यात आला आहे." },
+        "ta-IN": { subject: "கோரிக்கை {cn} மூடப்பட்டது — நன்றி", body: "உங்கள் கோரிக்கை {cn} அனைத்து சோதனைகளுடன் வெற்றிகரமாக மூடப்பட்டது." },
+        "kn-IN": { subject: "ಕ್ಲೈಮ್ {cn} ಮುಚ್ಚಲಾಗಿದೆ — ಧನ್ಯವಾದಗಳು", body: "ನಿಮ್ಮ ಕ್ಲೈಮ್ {cn} ಎಲ್ಲಾ ಪರಿಶೀಲನೆಗಳೊಂದಿಗೆ ಯಶಸ್ವಿಯಾಗಿ ಮುಚ್ಚಲಾಗಿದೆ." }
       }
     }
   }

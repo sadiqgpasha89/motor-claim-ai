@@ -209,3 +209,36 @@ class IntegrationAdapterRegistry:
             "status": "scheduled",
             "adapter": "MOCK_ROADSIDE_LOGISTICS",
         }
+
+    @staticmethod
+    def send_whatsapp_message(
+        *,
+        phone_masked: str,
+        language: str,
+        template_id: str,
+        body: str,
+        consent_whatsapp: bool,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        if not consent_whatsapp:
+            return {
+                "delivered": False,
+                "status": "blocked_no_consent",
+                "consent_verified": False,
+                "whatsapp_message_id": None,
+                "reason": "Customer has not consented to WhatsApp notifications (opt-in required).",
+                "provider": "MOCK_WHATSAPP_BUSINESS_API",
+                "checked_at": now.isoformat(),
+            }
+        return {
+            "delivered": True,
+            "status": "delivered_whatsapp_mock",
+            "consent_verified": True,
+            "whatsapp_message_id": f"wamid.DEMO-{uuid.uuid4().hex[:12].upper()}",
+            "phone_masked": phone_masked,
+            "language": language,
+            "template_id": template_id,
+            "body_preview": body[:160],
+            "provider": "MOCK_WHATSAPP_BUSINESS_API",
+            "sent_at": now.isoformat(),
+        }

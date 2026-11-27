@@ -15,6 +15,8 @@ from apps.api.schemas import (
     ClaimAssignRequest,
     CommunicationCreateRequest,
     CompensationRequest,
+    CustomerEscalationRequest,
+    CustomerPreferencesUpdateRequest,
     DamageReviewRequest,
     EcosystemLogisticsRequest,
     EstimateLineReviewRequest,
@@ -30,6 +32,7 @@ from apps.api.schemas import (
     OrchestrationRecoverRequest,
     PartsAvailabilityRequest,
     PaymentInitiateRequest,
+    ProactiveUpdateRequest,
     ProviderCoordinateRequest,
     RepairCompletionConfirmRequest,
     RepairMilestoneRequest,
@@ -101,6 +104,13 @@ from services.integrations.adapters import IntegrationAdapterRegistry
 from services.rules_engine.loader import get_active_rule
 from services.settlement.authority import validate_approval_authority
 from services.settlement.calculator import SettlementCalculator, SettlementLineInput
+from services.workflow.customer_experience import (
+    build_customer_claim_journey,
+    dispatch_proactive_customer_update,
+    escalate_to_human_specialist,
+    inspect_claim_communication_context,
+    update_customer_communication_preferences,
+)
 from services.workflow.ecosystem import (
     coordinate_claim_ecosystem,
     get_or_create_ecosystem_coordination,
@@ -131,6 +141,25 @@ def _get_claim_for_user(db: Session, claim_id: str, user: UserContext) -> Claim:
         raise DomainError(ErrorCode.NOT_FOUND, f"Claim '{claim_id}' not found", status_code=404)
     enforce_claim_abac(user, claim)
     return claim
+
+
+def _safe_proactive_notify(
+    db: Session,
+    claim: Claim,
+    user: UserContext,
+    trigger_event: str,
+) -> None:
+    """Dispatch state-aware proactive customer update when a lifecycle milestone occurs."""
+    customer = db.query(Customer).filter(Customer.id == claim.customer_id).first() if claim.customer_id else None
+    if customer is not None and not customer.proactive_updates_enabled:
+        return
+    dispatch_proactive_customer_update(
+        db,
+        claim,
+        actor=user,
+        trigger_event=trigger_event,
+        force=False,
+    )
 
 
 def _build_agent_req(
@@ -326,6 +355,8 @@ def create_fnol_intimation(
         estimated_loss_inr=body.estimated_loss_inr,
         requires_mandatory_survey=req_survey,
         preferred_language=body.preferred_language,
+        preferred_channel=body.preferred_channel,
+        whatsapp_consent=body.whatsapp_consent,
         assigned_garage_id=body.preferred_garage_id,
         missing_documents=missing_docs,
         duplicate_candidate_claim_id=dup.id if dup else None,
@@ -552,6 +583,11 @@ def get_claim_360(
             "phone_masked": customer.phone_masked,
             "email_masked": customer.email_masked,
             "preferred_language": customer.preferred_language,
+            "preferred_channel": customer.preferred_channel,
+            "consent_whatsapp": customer.consent_whatsapp,
+            "consent_sms": customer.consent_sms,
+            "consent_email": customer.consent_email,
+            "proactive_updates_enabled": customer.proactive_updates_enabled,
         }
 
     siu_visible = user.role in SIU_ALLOWED_ROLES
@@ -672,6 +708,9 @@ def get_claim_360(
             "workflow_state": claim.workflow_state,
             "duplicate_candidate_claim_id": claim.duplicate_candidate_claim_id,
             "assigned_handler_id": claim.assigned_handler_id,
+            "preferred_language": claim.preferred_language,
+            "preferred_channel": claim.preferred_channel,
+            "whatsapp_consent": bool(claim.whatsapp_consent),
         },
         "risk_assessment": safe_risk_assessment,
         "risk_history": safe_risk_history,
@@ -861,14 +900,22 @@ def get_claim_360(
                 "id": cm.id,
                 "channel": cm.channel,
                 "language": cm.language,
+                "template_id": cm.template_id,
+                "trigger_event": cm.trigger_event,
+                "claim_state_snapshot": cm.claim_state_snapshot,
                 "subject": cm.subject,
                 "body": cm.body,
                 "requires_human_review": cm.requires_human_review,
                 "delivery_status": cm.delivery_status,
+                "consent_verified": bool(cm.consent_verified),
+                "whatsapp_message_id": cm.whatsapp_message_id,
+                "context_summary": cm.context_summary,
                 "created_at": cm.created_at.isoformat(),
             }
             for cm in comms
         ],
+        "customer_journey": build_customer_claim_journey(db, claim),
+        "customer_experience": inspect_claim_communication_context(db, claim),
         "grievances": [
             {
                 "id": g.id,
@@ -1487,6 +1534,8 @@ def run_damage_assessment(
             "route_to_human_assessor": payload["human_assessor_routing"]["route_to_human_assessor"],
         },
     )
+    if payload.get("recapture_required_files") or payload.get("poor_quality_files"):
+        _safe_proactive_notify(db, claim, user, "photos_insufficient")
     db.commit()
     return {"observations": saved, "damage_report": agent_res.result, "agent_response": agent_res.model_dump()}
 
@@ -1615,6 +1664,8 @@ def submit_and_validate_estimate(
         object_id=est.id,
         details={"claimed": str(est.total_claimed_inr), "recommended": str(est.total_approved_inr), "anomalies": len(val["anomalies"])},
     )
+    if not val["anomalies"]:
+        _safe_proactive_notify(db, claim, user, "estimate_approved")
     db.commit()
     return {
         "estimate_id": est.id,
@@ -1798,6 +1849,7 @@ def assign_surveyor_and_garage(
         coord.customer_preferred_garage_id = coord.customer_preferred_garage_id or claim.assigned_garage_id
     coord.inspection_status = "scheduled"
     coord.inspection_scheduled_at = sa.appointment_at or (datetime.now(timezone.utc) + timedelta(hours=12))
+    _safe_proactive_notify(db, claim, user, "survey_scheduled")
     db.commit()
     return {"assignment_id": sa.id, "surveyor_name": surveyor.name, "report_due_at": due_at.isoformat()}
 
@@ -2178,6 +2230,7 @@ def recommend_settlement(
     claim.next_expected_action = f"Authorised checker approval required for INR {calc.net_payable_inr}"
 
     complete_stage_sla_timer(db, claim_id=claim.id, stage="claim_decision")
+    _safe_proactive_notify(db, claim, user, "settlement_awaiting_approval")
     emit_outbox_event(
         db,
         tenant_id=claim.tenant_id,
@@ -2403,6 +2456,8 @@ def initiate_payment(
         object_id=pmt.id,
         after_state={"status": pmt.status, "amount_inr": str(pmt.amount_inr), "ref": pmt.gateway_reference},
     )
+    if pmt.status == "confirmed":
+        _safe_proactive_notify(db, claim, user, "payment_processed")
     db.commit()
     return {"idempotent_replay": False, "payment_id": pmt.id, "status": pmt.status, "gateway_reference": pmt.gateway_reference}
 
@@ -2447,6 +2502,7 @@ def reconcile_payment(
         object_id=pmt.id,
         after_state={"status": pmt.status, "utr": pmt.gateway_reference},
     )
+    _safe_proactive_notify(db, claim, user, "payment_processed")
     db.commit()
     return {"payment_id": pmt.id, "status": pmt.status, "gateway_reference": pmt.gateway_reference}
 
@@ -2488,6 +2544,7 @@ def update_repair_milestone(
         object_id=claim.id,
         details={"milestone": body.milestone, "notes": body.notes, "completion_confirmed": coord.repair_completion_confirmed},
     )
+    _safe_proactive_notify(db, claim, user, "repair_begins")
     db.commit()
     return {
         "claim_status": claim.status,
@@ -2559,6 +2616,7 @@ def close_claim(
         object_type="claim",
         object_id=claim.id,
     )
+    _safe_proactive_notify(db, claim, user, "claim_closed")
     db.commit()
     return {"claim_status": claim.status, "qa_compliance": qa_res.model_dump()}
 
@@ -3291,6 +3349,7 @@ def trigger_surveyor_followup(
         notes=body.notes,
         escalate_to_manager=body.escalate_to_manager,
     )
+    _safe_proactive_notify(db, claim, user, "surveyor_delayed")
     db.commit()
     return serialize_ecosystem_coordination(db, coord)
 
@@ -3311,6 +3370,8 @@ def check_or_update_ecosystem_parts(
         parts_items=body.parts_items,
         notify_customer=body.notify_customer,
     )
+    if body.notify_customer and coord.parts_status in {"partial_backorder", "backordered"}:
+        _safe_proactive_notify(db, claim, user, "parts_delayed")
     db.commit()
     return serialize_ecosystem_coordination(db, coord)
 
@@ -3575,3 +3636,118 @@ def recalculate_claim_risk(
         "risk_assessment": sanitize_risk_payload_for_user(assessment, siu_visible=siu_visible),
         "risk_history": raw_hist if siu_visible else [{**h, "fraud_signal_score": None} for h in raw_hist],
     }
+
+
+@router.get("/claims/{claim_id}/customer-experience")
+def get_customer_experience_view(
+    claim_id: str,
+    language: Optional[str] = None,
+    trigger: Optional[str] = None,
+    user: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    comms = (
+        db.query(Communication)
+        .filter(Communication.claim_id == claim.id)
+        .order_by(Communication.created_at.desc())
+        .all()
+    )
+    return {
+        "journey": build_customer_claim_journey(db, claim, language_override=language),
+        "intelligence": inspect_claim_communication_context(
+            db,
+            claim,
+            trigger_override=trigger,
+            language_override=language,
+        ),
+        "communications": [
+            {
+                "id": cm.id,
+                "channel": cm.channel,
+                "language": cm.language,
+                "template_id": cm.template_id,
+                "trigger_event": cm.trigger_event,
+                "claim_state_snapshot": cm.claim_state_snapshot,
+                "subject": cm.subject,
+                "body": cm.body,
+                "requires_human_review": cm.requires_human_review,
+                "delivery_status": cm.delivery_status,
+                "consent_verified": bool(cm.consent_verified),
+                "whatsapp_message_id": cm.whatsapp_message_id,
+                "context_summary": cm.context_summary,
+                "created_at": cm.created_at.isoformat(),
+            }
+            for cm in comms
+        ],
+    }
+
+
+@router.patch("/claims/{claim_id}/customer-preferences")
+def patch_customer_preferences(
+    claim_id: str,
+    body: CustomerPreferencesUpdateRequest,
+    user: UserContext = Depends(require_roles(Role.POLICYHOLDER, *INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    prefs = update_customer_communication_preferences(
+        db,
+        claim,
+        actor=user,
+        preferred_language=body.preferred_language,
+        preferred_channel=body.preferred_channel,
+        consent_whatsapp=body.consent_whatsapp,
+        consent_sms=body.consent_sms,
+        consent_email=body.consent_email,
+        proactive_updates_enabled=body.proactive_updates_enabled,
+    )
+    db.commit()
+    return {
+        "claim_id": claim.id,
+        "preferences": prefs,
+        "journey": build_customer_claim_journey(db, claim),
+        "intelligence": inspect_claim_communication_context(db, claim),
+    }
+
+
+@router.post("/claims/{claim_id}/proactive-updates", status_code=201)
+def trigger_proactive_customer_update(
+    claim_id: str,
+    body: ProactiveUpdateRequest = ProactiveUpdateRequest(),
+    user: UserContext = Depends(require_roles(Role.POLICYHOLDER, *INTERNAL_ROLES, Role.SURVEYOR, Role.GARAGE)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    res = dispatch_proactive_customer_update(
+        db,
+        claim,
+        actor=user,
+        trigger_event=body.trigger_event,
+        language=body.language,
+        channel=body.channel,
+        force=body.force,
+    )
+    db.commit()
+    return res
+
+
+@router.post("/claims/{claim_id}/customer-escalation", status_code=201)
+def request_customer_human_escalation(
+    claim_id: str,
+    body: CustomerEscalationRequest,
+    user: UserContext = Depends(require_roles(Role.POLICYHOLDER, *INTERNAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    claim = _get_claim_for_user(db, claim_id, user)
+    res = escalate_to_human_specialist(
+        db,
+        claim,
+        actor=user,
+        reason_category=body.reason_category,
+        notes=body.notes,
+        preferred_language=body.preferred_language,
+        preferred_channel=body.preferred_channel,
+    )
+    db.commit()
+    return res

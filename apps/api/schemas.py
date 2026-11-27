@@ -39,6 +39,8 @@ class FNOLCreateRequest(BaseModel):
     estimated_loss_inr: Decimal = Decimal("0.00")
     preferred_garage_id: Optional[str] = None
     preferred_language: str = "en-IN"
+    preferred_channel: str = "whatsapp"
+    whatsapp_consent: bool = True
     auto_send_ack: bool = False
 
 
@@ -269,3 +271,26 @@ class RiskContextUpdateRequest(BaseModel):
     new_evidence_summary: Optional[str] = None
     fraud_signal_score_override_attempt: Optional[Decimal] = None
     decision_requested: Optional[str] = None
+
+
+class CustomerPreferencesUpdateRequest(BaseModel):
+    preferred_language: Optional[str] = None
+    preferred_channel: Optional[str] = None
+    consent_whatsapp: Optional[bool] = None
+    consent_sms: Optional[bool] = None
+    consent_email: Optional[bool] = None
+    proactive_updates_enabled: Optional[bool] = None
+
+
+class ProactiveUpdateRequest(BaseModel):
+    trigger_event: Optional[str] = None
+    language: Optional[str] = None
+    channel: Optional[str] = None
+    force: bool = True
+
+
+class CustomerEscalationRequest(BaseModel):
+    reason_category: str = "callback_request"
+    notes: str = ""
+    preferred_language: Optional[str] = None
+    preferred_channel: Optional[str] = None
