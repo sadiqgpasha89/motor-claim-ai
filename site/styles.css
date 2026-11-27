@@ -1292,6 +1292,84 @@ footer {
   padding: 14px;
 }
 
+
+/* Third-Party (TP) Liability Section */
+.tp-col.od {
+  border-top: 4px solid var(--blue);
+}
+
+.tp-col.tpc {
+  border-top: 4px solid var(--rose);
+}
+
+.tp-steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.tp-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tp-step-no {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tp-step-no.tp {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+
+.tp-lab-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tp-lab-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tp-lab-form label.risk-check-label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.tp-lab-form select,
+.tp-lab-form input[type="number"] {
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--surface);
+}
+
+.tp-sum-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
 /* Customer Experience Intelligence & Motor Claim Tracker */
 .cx-shell {
   background: var(--surface);

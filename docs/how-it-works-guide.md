@@ -42,7 +42,7 @@ In the top-right header of the web portal (`Active Persona` dropdown), you can i
 | `garage@demo.in` | `garage` | Sees only claims assigned to their workshop (`prov-gar-01`), submits estimates/supplements, updates repair milestones. Customer contact PII & SIU alerts are hidden. |
 | `siu@demo.in` | `siu_investigator` | Accesses restricted SIU Fraud Desk (`/siu`), entity relationship graphs, and records alert dispositions (`substantiated` / `not_substantiated` / etc.). |
 | `manager@demo.in` | `claims_manager` | Queue oversight, L2 approval up to ₹5,00,000 (including claims with open fraud alerts/EV), SLA monitoring, rule simulation, AI outage toggle. |
-| `legal@demo.in` | `legal_tp` | Accesses restricted Third-Party bodily injury/medical party records (`CLM-DEMO-2026-0010`), L3 authority up to ₹15,00,000. |
+| `legal@demo.in` | `legal_tp` | Accesses restricted Third-Party bodily injury/medical party records (`CLM-DEMO-2026-0010`), owns the legal stages of the TP workflow (legal review, advocates, medical review), second approver at TP-L2, L3 authority up to ₹15,00,000. |
 | `finance@demo.in` | `finance_approver` | Releases payments (`POST /payments`), validates bank penny-drop, reconciles gateway timeouts (`POST /reconcile`). |
 | `auditor@demo.in` | `auditor` | Read-only audit trail, rule publication (`POST /rules/{id}/publish`), analytics, SLA & SIU oversight. |
 | `admin@demo.in` | `admin` | Full governance, rule publishing, AI outage simulation, and demo seed reset (`POST /api/v1/operations/seed-reset`). |
@@ -79,7 +79,7 @@ In the top-right header of the web portal (`Active Persona` dropdown), you can i
 | `CLM-DEMO-2026-0007` | **Hidden Structural Damage Supplement:** Radiator core support found during teardown while in `REPAIR_IN_PROGRESS`. | Claim 360 → Estimate |
 | `CLM-DEMO-2026-0008` | **Fraud Alert Cleared (`not_substantiated`):** Early inception alert cleared after dashcam/NCB verification; claim approved. | SIU Desk (`/siu`) |
 | `CLM-DEMO-2026-0009` | **Payment Timeout Awaiting Safe Reconciliation:** `timeout_reconcile_pending`; Finance reconciles safely without double payout. | Claim 360 → Settlement |
-| `CLM-DEMO-2026-0010` | **Third-Party Bodily Injury:** Routed to `legal_tp_specialist`; medical/FIR party record masked unless logged in as `legal@demo.in` / authorised handler. | Claim 360 → Overview |
+| `CLM-DEMO-2026-0010` | **Third-Party Bodily Injury:** Runs on the dedicated TP lifecycle (`GET /api/v1/claims/clm-demo-0010/tp`), seeded at `LIABILITY_INVESTIGATION` with queue `tp_liability_investigation`. OD settlement/approval/payment endpoints refuse it (`409`); medical/FIR party record masked unless logged in as `legal@demo.in` / authorised handler. | Claim 360 → Overview, `/api/v1/tp/queues` |
 | `CLM-DEMO-2026-0011` | **EV Traction Battery Impact:** Tata Nexon EV routed to `ev_specialist` & EV-certified garage (`VoltCare`), HV isolation warning triggered; showcases `LOW -> HIGH` risk transition in `risk_history`. | Claim 360 → Damage & Risk |
 | `CLM-DEMO-2026-0012` | **LOW RISK Fast-Track Auto-Approved (`₹16,500`):** Minor scuff, complete docs, valid policy, zero anomalies; straight-through auto-approved within `<= ₹25,000` limit (`IN-RISK-PROCESSING-2026`). | Claim 360 → Overview & Settlement |
 | `CLM-OTH-2026-0001` | **Cross-Tenant Isolation:** Lives in `tenant-other-demo`; invisible and returns `403` to all `tenant-in-demo` users. | API / Security Tests |

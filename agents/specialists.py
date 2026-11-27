@@ -1607,6 +1607,42 @@ class SettlementRecommendationAgent(BoundedAgent):
     ) -> AgentInvocationResponse:
         ModelGateway.generate_structured_summary(task="settlement_recommendation", facts=request.minimised_facts)
         facts = request.minimised_facts
+        if request.claim_type == "third_party" or facts.get("tp_workflow_required"):
+            # Third-Party liability is never settled by the OD calculator / auto-approval logic (IN-TP-LIABILITY-2026).
+            tp_result = {
+                "auto_approved": False,
+                "tp_workflow_required": True,
+                "approval_mode": "tp_legal_dual_control",
+                "required_doa_tier": "legal_tp",
+                "message": "Third-Party liability claims are settled only through the dedicated TP workflow with legal review and dual-control approval.",
+            }
+            return AgentInvocationResponse(
+                agent_name=self.agent_name,
+                status=AgentStatus.NEEDS_HUMAN,
+                result=tp_result,
+                published_result=tp_result,
+                confidence=1.0,
+                confidence_band=ConfidenceBand.HIGH,
+                limitations=["OD settlement calculation and auto-approval do not apply to Third-Party liability claims."],
+                actions_executed=[],
+                decision=DecisionIntelligence(
+                    decision_id=self._decision_id(self.agent_name),
+                    reason_codes=["RC_TP_LIABILITY_LEGAL_WORKFLOW_REQUIRED", "RC_NO_AUTONOMOUS_TP_SETTLEMENT"],
+                    evidence=["claim_type=third_party", "IN-TP-LIABILITY-2026 controls.autonomous_settlement_allowed=false"],
+                    policy_rule_refs=["IN-TP-LIABILITY-2026:1.0.0"],
+                    confidence=1.0,
+                    confidence_band=ConfidenceBand.HIGH,
+                    routing_outcome="route_to_tp_legal_workflow",
+                    explanation="Routed to the Third-Party legal workflow; no OD settlement, approval request or payment instruction was created.",
+                    alternatives_considered=[],
+                ),
+                model_id=model_id,
+                model_version=model_version,
+                prompt_version=self.prompt_version,
+                rule_versions=request.rule_versions,
+                suggested_next_action="route_to_tp_legal_workflow",
+                tools_invoked=["policy_facts_read"],
+            )
         calc = dict(facts.get("calculation", {}))
         scenarios = list(facts.get("scenarios") or calc.get("scenarios") or [])
         net_str = str(calc.get("net") or calc.get("net_payable_inr") or "0.00")

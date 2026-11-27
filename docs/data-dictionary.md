@@ -9,6 +9,7 @@ All tables use UUID string primary keys (never PAN, phone, policy number, or reg
 - `policies`: Policy number, UIN, period, `idv_inr`, deductibles, `addons`, `endorsements`.
 - `providers`: Verified surveyors (IIISLA licence) and network/EV garages.
 - `claims`: Canonical claim record, `idempotency_key`, workflow state, severity, queue, missing docs.
+- `tp_claim_cases`: Third-Party liability case (1:1 with a `third_party` claim): `stage` (`TPStage`), `queue_name`, `stage_history`, third parties (restricted medical flag), accident facts & evidence, police/FIR, liability assessment, legal documents, tribunal, advocates, medical review, legal review, `reserve_inr` + history, settlement proposals with approvals, payment authorisation, closure. Created by `services/workflow/tp_liability.py`.
 - `claim_parties`: Insured, driver, third-party (`is_restricted_tp_medical` flag).
 - `evidence` & `extracted_facts`: Immutable file SHA-256, malware status, prompt-injection flag, OCR fields with provenance & human verification status.
 - `damage_assessments`: Assistive visual findings (`visible_observed` vs `inferred_possible`) + reviewer outcome.

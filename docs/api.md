@@ -26,6 +26,13 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
 - `POST /api/v1/claims/{claim_id}/rework`
 - `GET /api/v1/claims/{claim_id}/tasks` · `PATCH .../tasks/{task_id}` · `GET .../decisions`
 - `POST /api/v1/claims/{claim_id}/provider-coordination` · `GET /api/v1/claims/{claim_id}/ecosystem` · `POST .../ecosystem/inspection/reschedule` · `POST .../ecosystem/surveyor-followup` · `POST .../ecosystem/parts-check` · `POST .../ecosystem/logistics` · `POST .../ecosystem/repair-completion` · `POST .../payments/agent-release`
+- **Third-Party (TP) liability workflow** (`IN-TP-LIABILITY-2026`; human-only, no autonomous endpoint):
+  - `GET /api/v1/tp/lifecycle` · `GET /api/v1/tp/queues` · `GET /api/v1/tp/cases`
+  - `POST /api/v1/claims/{claim_id}/tp/open` · `POST .../tp/exposures` (OD claim raises a separate linked TP claim) · `GET .../tp`
+  - Intake & investigation: `POST .../tp/coverage-check` · `.../tp/third-parties` · `.../tp/facts` · `.../tp/police-report` · `.../tp/liability-assessment`
+  - Legal: `POST .../tp/legal-documents` · `.../tp/tribunal` · `.../tp/advocates` · `.../tp/medical-review` · `.../tp/legal-review` · `.../tp/reserve`
+  - Control: `POST .../tp/advance` · `.../tp/settlement-proposals` · `.../tp/settlement-proposals/{proposal_id}/decision` · `.../tp/payment-authorisation` (+ `/reconcile`) · `.../tp/close`
+  - OD-only endpoints (`settlement-recommendations`, `approvals`, `payments`, `payments/agent-release`, `close`) return `409 HUMAN_REVIEW_REQUIRED` for TP claims.
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
 - `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`

@@ -404,6 +404,48 @@ class EcosystemCoordination(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class TPClaimCase(Base):
+    """Third-Party (TP) liability case: its own lifecycle, queues and controls, separate from Own Damage (OD) settlement."""
+
+    __tablename__ = "tp_claim_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), unique=True, index=True)
+    case_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    linked_od_claim_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
+    tp_category: Mapped[str] = mapped_column(String(24), default="bodily_injury", index=True)
+    stage: Mapped[str] = mapped_column(String(40), default="INTAKE", index=True)
+    queue_name: Mapped[str] = mapped_column(String(64), default="tp_intake", index=True)
+    stage_history: Mapped[list] = mapped_column(JSON, default=list)
+
+    coverage_status: Mapped[str] = mapped_column(String(24), default="unchecked")
+    coverage_notes: Mapped[str] = mapped_column(Text, default="")
+
+    third_parties: Mapped[list] = mapped_column(JSON, default=list)
+    accident_facts: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_items: Mapped[list] = mapped_column(JSON, default=list)
+    police_report: Mapped[dict] = mapped_column(JSON, default=dict)
+    liability_assessment: Mapped[dict] = mapped_column(JSON, default=dict)
+    legal_documents: Mapped[list] = mapped_column(JSON, default=list)
+    tribunal: Mapped[dict] = mapped_column(JSON, default=dict)
+    advocates: Mapped[list] = mapped_column(JSON, default=list)
+    medical_review: Mapped[dict] = mapped_column(JSON, default=dict)
+    legal_review: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    reserve_inr: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    reserve_history: Mapped[list] = mapped_column(JSON, default=list)
+    settlement_proposals: Mapped[list] = mapped_column(JSON, default=list)
+    approved_proposal_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    payment_authorisation: Mapped[dict] = mapped_column(JSON, default=dict)
+    closure: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    created_by: Mapped[str] = mapped_column(String(36), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class FraudAlert(Base):
     __tablename__ = "fraud_alerts"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

@@ -28,6 +28,7 @@
         <a href="#risk-processing">Risk-Based Paths</a>
         <a href="#damage-ai">Visual Damage AI</a>
         <a href="#ecosystem">Ecosystem Dashboard</a>
+        <a href="#tp-liability">TP Liability</a>
         <a href="#customer-experience">Customer Journey</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
@@ -469,6 +470,84 @@ flowchart LR
       </div>
     </section>
 
+    <!-- SECTION 2E: THIRD-PARTY (TP) LIABILITY WORKFLOW -->
+    <section id="tp-liability">
+      <h2>2E. Third-Party (TP) Liability Workflow &mdash; Distinct from Own Damage (IN-TP-LIABILITY-2026)</h2>
+      <p class="section-sub">
+        Own Damage (OD) and Third-Party (TP) are <strong>not two variations of one workflow</strong>. OD is arithmetic on a
+        repair estimate; TP is a <strong>legal-liability claim</strong> by someone who is not the insured. TP claims run on
+        their own lifecycle (<code>services/workflow/tp_liability.py</code>, <code>TPClaimCase</code>), dedicated task
+        queues, legal and medical document controls, a reserve discipline and <strong>dual-control settlement</strong>.
+        They are <strong>never routed through the OD auto-settlement logic</strong>: every OD settlement, approval, payment
+        and closure endpoint refuses TP claims, the settlement agent returns <code>NEEDS_HUMAN</code>, and the risk engine
+        never marks a TP claim straight-through eligible.
+      </p>
+
+      <div id="tp-compare" class="grid-2" style="margin-bottom:18px;"></div>
+
+      <div class="eco-shell">
+        <div class="eco-toolbar">
+          <div>
+            <h3 style="margin:0;">TP Claims Lifecycle &amp; Dedicated Task Queues</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              12 stages, each with its own queue, owner role, SLA and exit gate. Stages advance only by an explicit human
+              action once the gate is clear; software output (document completeness, reserve band) is advisory and non-binding.
+            </p>
+          </div>
+        </div>
+        <div id="tp-stage-strip" class="state-strip"></div>
+        <div id="tp-stage-inspector"></div>
+
+        <div class="eco-sim-box">
+          <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <h3 style="margin:0;">TP Controls Lab &mdash; Path, Reserve, Approval Tier &amp; Legal Gates</h3>
+              <p class="section-sub" style="margin:4px 0 0;">
+                Change the case and see which stages apply, who must approve, and what is blocked. Mirrors
+                <code>rules/india/tp_liability_controls.json</code> (synthetic; legal sign-off required before production).
+              </p>
+            </div>
+          </div>
+          <div class="tp-lab-form">
+            <label>TP category
+              <select id="tp-category" onchange="runTpLab()">
+                <option value="bodily_injury">Bodily injury</option>
+                <option value="property_damage">Property damage</option>
+                <option value="fatality">Fatality</option>
+              </select>
+            </label>
+            <label>Injury severity (bodily injury)
+              <select id="tp-severity" onchange="runTpLab()">
+                <option value="minor">Minor</option>
+                <option value="moderate">Moderate</option>
+                <option value="grievous" selected>Grievous</option>
+                <option value="permanent_disability">Permanent disability</option>
+              </select>
+            </label>
+            <label>Settlement amount (&#8377;)
+              <input id="tp-amount" type="number" value="950000" step="50000" min="0" oninput="runTpLab()" />
+            </label>
+            <label>Legal decision
+              <select id="tp-decision" onchange="runTpLab()">
+                <option value="negotiate_settlement">Negotiate settlement</option>
+                <option value="contest_liability">Contest liability</option>
+                <option value="pay_and_recover">Pay and recover</option>
+              </select>
+            </label>
+            <label class="risk-check-label"><input type="checkbox" id="tp-defence" onchange="runTpLab()" /> Policy defence recorded (e.g. no valid licence)</label>
+            <label class="risk-check-label"><input type="checkbox" id="tp-police" onchange="runTpLab()" /> Police involved (property damage)</label>
+            <label class="risk-check-label"><input type="checkbox" id="tp-litigation" onchange="runTpLab()" /> MACT claim petition filed</label>
+          </div>
+          <div id="tp-lab-summary"></div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="runTpLab()">Evaluate case</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="tpAutonomyDemo('od_endpoint')">Try OD settlement endpoint on a TP claim</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="tpAutonomyDemo('agent')">Settlement agent on a TP claim</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="tpAutonomyDemo('od_spawns_tp')">OD claim raises TP exposure</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="tpAutonomyDemo('self_approval')">Dual-control walkthrough</button>
+          </div>
+          <div id="tp-lab-output" class="orch-lab-output"></div>
+        </div>
     <!-- SECTION 2E: CUSTOMER EXPERIENCE INTELLIGENCE & MOTOR CLAIM TRACKER -->
     <section id="customer-experience">
       <h2>2E. Customer Experience Intelligence &amp; Motor Claim Tracker</h2>
@@ -1236,6 +1315,7 @@ classDiagram
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script src="workflow-data.js"></script>
   <script src="app.js"></script>
+  <script src="tp-liability.js"></script>
 </body>
 
 </html>
