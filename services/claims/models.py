@@ -446,6 +446,45 @@ class TPClaimCase(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class EVClaimCase(Base):
+    """Electric-vehicle claim case: its own safety-first lifecycle, queues and controls (IN-EV-CLAIMS-2026).
+
+    Runs alongside the OD claim: it holds back OD settlement/approval/payment until a human technical sign-off,
+    and it never infers that the vehicle is safe from photographs.
+    """
+
+    __tablename__ = "ev_claim_cases"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    claim_id: Mapped[str] = mapped_column(String(36), ForeignKey("claims.id"), unique=True, index=True)
+    case_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+
+    stage: Mapped[str] = mapped_column(String(40), default="INTAKE_TRIAGE", index=True)
+    queue_name: Mapped[str] = mapped_column(String(64), default="ev_triage_intake", index=True)
+    stage_history: Mapped[list] = mapped_column(JSON, default=list)
+    risk_class: Mapped[str] = mapped_column(String(24), default="hv_suspected", index=True)
+    operation_status: Mapped[str] = mapped_column(String(48), default="hold_do_not_operate_pending_inspection")
+
+    triage: Mapped[dict] = mapped_column(JSON, default=dict)
+    safety_escalations: Mapped[list] = mapped_column(JSON, default=list)
+    thermal_watch: Mapped[dict] = mapped_column(JSON, default=dict)
+    recovery: Mapped[dict] = mapped_column(JSON, default=dict)
+    survey: Mapped[dict] = mapped_column(JSON, default=dict)
+    diagnostics: Mapped[dict] = mapped_column(JSON, default=dict)
+    disposition: Mapped[dict] = mapped_column(JSON, default=dict)
+    benchmark: Mapped[dict] = mapped_column(JSON, default=dict)
+    technical_signoff: Mapped[dict] = mapped_column(JSON, default=dict)
+    settlement_clearance: Mapped[dict] = mapped_column(JSON, default=dict)
+    recertification: Mapped[dict] = mapped_column(JSON, default=dict)
+    salvage: Mapped[dict] = mapped_column(JSON, default=dict)
+    closure: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    created_by: Mapped[str] = mapped_column(String(36), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class FraudAlert(Base):
     __tablename__ = "fraud_alerts"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

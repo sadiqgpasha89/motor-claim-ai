@@ -29,6 +29,7 @@
         <a href="#damage-ai">Visual Damage AI</a>
         <a href="#ecosystem">Ecosystem Dashboard</a>
         <a href="#tp-liability">TP Liability</a>
+        <a href="#ev-claims">EV Claims</a>
         <a href="#customer-experience">Customer Journey</a>
         <a href="#capabilities">Actions &amp; Decisions</a>
         <a href="#lifecycle">Execution Chain</a>
@@ -548,6 +549,127 @@ flowchart LR
           </div>
           <div id="tp-lab-output" class="orch-lab-output"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2F: ELECTRIC-VEHICLE (EV) CLAIMS WORKFLOW -->
+    <section id="ev-claims">
+      <h2>2F. EV Claims Workflow &mdash; Safety-First, Never Cleared from Photographs (IN-EV-CLAIMS-2026)</h2>
+      <p class="section-sub">
+        An electric vehicle is <strong>not ordinary vehicle damage</strong>. Battery, high-voltage and thermal hazards are
+        invisible in photos and can surface days later, so EV claims run on a dedicated lifecycle
+        (<code>services/workflow/ev_claims.py</code>, <code>EVClaimCase</code>) that opens automatically at FNOL with an
+        <strong>HV safety hold</strong>. The hard rule: <strong>the system never infers that an EV is safe to operate from
+        external photographs</strong>. Potential battery damage is routed to a specialist surveyor, flatbed recovery, OEM
+        diagnostics and a human technical sign-off; every OD settlement, approval, payment and closure endpoint returns
+        <code>409 HUMAN_REVIEW_REQUIRED</code> until then, the settlement agent returns <code>NEEDS_HUMAN</code>, and the
+        risk engine never marks an EV straight-through eligible.
+      </p>
+
+      <div id="ev-compare" class="grid-2" style="margin-bottom:18px;"></div>
+
+      <div class="eco-shell">
+        <div class="eco-toolbar">
+          <div>
+            <h3 style="margin:0;">EV Claims Lifecycle &amp; Dedicated Task Queues</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              11 stages, each with its own queue, owner role, SLA and exit gate. Safety escalations (emergency: thermal;
+              urgent: HV or charging) can be raised by the policyholder at any time and block every stage until a manager
+              resolves them with evidence. Software output (impact band, repair-versus-replace, cost benchmark) is advisory.
+            </p>
+          </div>
+        </div>
+        <div id="ev-stage-strip" class="state-strip"></div>
+        <div id="ev-stage-inspector"></div>
+
+        <div class="eco-sim-box">
+          <div>
+            <h3 style="margin:0;">EV Safety Lab &mdash; Impact Detection, Thermal Risk &amp; Specialist Routing</h3>
+            <p class="section-sub" style="margin:4px 0 0;">
+              Tick the signals reported at FNOL or found later, and see the risk class, thermal level, escalation and which
+              stages apply. There is deliberately <strong>no &ldquo;safe&rdquo; outcome</strong>: with no signals the band is
+              still &ldquo;battery impact not excluded&rdquo;. Mirrors <code>rules/india/ev_claims_controls.json</code>
+              (synthetic thresholds; OEM and EV safety-officer sign-off required before production).
+            </p>
+          </div>
+          <div class="btn-row" style="margin:10px 0;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('glass')">Glass-only claim</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('pothole')">Pothole / underbody strike</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('smoke')">Smoke after impact</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evPreset('flood')">Flooded EV</button>
+          </div>
+          <div class="tp-lab-form">
+            <label>Peril
+              <select id="ev-peril" onchange="runEvLab()">
+                <option value="road_accident">Road accident</option>
+                <option value="flood">Flood</option>
+                <option value="fire">Fire</option>
+                <option value="ev_high_voltage">EV high-voltage event</option>
+                <option value="glass_damage">Glass damage</option>
+              </select>
+            </label>
+            <label class="risk-check-label"><input type="checkbox" id="ev-flagged" onchange="runEvLab()" /> Claim flagged &ldquo;traction battery impacted&rdquo;</label>
+          </div>
+          <div id="ev-signal-picker" class="ev-picker"></div>
+          <div id="ev-lab-summary"></div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="runEvLab()">Evaluate case</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('photo_only')">Photo-only clearance attempt</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('od_endpoint')">Try OD settlement endpoint on an EV</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('agent')">Settlement agent on an EV</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('thermal')">Thermal escalation walkthrough</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="evAutonomyDemo('salvage')">Salvage &amp; disposal chain</button>
+          </div>
+          <div id="ev-lab-output" class="orch-lab-output"></div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="eco-sim-box" style="margin:0;">
+            <h3 style="margin:0;">OEM Diagnostics &amp; Battery Disposition</h3>
+            <p class="section-sub" style="margin:4px 0 10px;">A reported result is checked against the measured value; a critical failure bars in-place repair.</p>
+            <div class="tp-lab-form">
+              <label>Insulation resistance (ohm/V)
+                <input id="ev-insulation" type="number" value="180" min="0" step="10" oninput="runEvDiag()" />
+              </label>
+              <label>Result reported by the workshop
+                <select id="ev-reported" onchange="runEvDiag()">
+                  <option value="fail">fail</option>
+                  <option value="pass">pass</option>
+                </select>
+              </label>
+            </div>
+            <div id="ev-diag-output" class="orch-lab-output"></div>
+          </div>
+          <div class="eco-sim-box" style="margin:0;">
+            <h3 style="margin:0;">EV Parts Cost Benchmark</h3>
+            <p class="section-sub" style="margin:4px 0 10px;">EV and HV labour bands (synthetic, INR). Flagged lines need a manager review note.</p>
+            <div class="tp-lab-form">
+              <label>EV part
+                <select id="ev-part" onchange="runEvBenchmark()">
+                  <option value="PRT-EV-BAT-TRAY">Battery underbody shield &amp; tray</option>
+                  <option value="PRT-EV-PACK-FULL">Traction battery pack (complete)</option>
+                  <option value="PRT-EV-MODULE">Battery module (each)</option>
+                  <option value="PRT-EV-BMS">Battery management system</option>
+                  <option value="PRT-EV-HV-JB">HV junction box / PDU</option>
+                  <option value="PRT-EV-HV-HARNESS">Orange HV cable harness</option>
+                  <option value="PRT-EV-INVERTER">Inverter / motor controller</option>
+                  <option value="PRT-EV-MOTOR">Drive motor assembly</option>
+                  <option value="PRT-EV-DCDC">DC-DC converter</option>
+                  <option value="PRT-EV-OBC" selected>Onboard charger</option>
+                  <option value="PRT-EV-CHG-PORT">Charge port / inlet</option>
+                  <option value="PRT-EV-COOLANT-PLATE">Battery cooling plate kit</option>
+                </select>
+              </label>
+              <label>Quoted unit price (INR)
+                <input id="ev-quote" type="number" value="140000" min="0" step="1000" oninput="runEvBenchmark()" />
+              </label>
+            </div>
+            <div id="ev-bench-output" class="orch-lab-output"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- SECTION 2E: CUSTOMER EXPERIENCE INTELLIGENCE & MOTOR CLAIM TRACKER -->
     <section id="customer-experience">
       <h2>2E. Customer Experience Intelligence &amp; Motor Claim Tracker</h2>
@@ -1316,6 +1438,7 @@ classDiagram
   <script src="workflow-data.js"></script>
   <script src="app.js"></script>
   <script src="tp-liability.js"></script>
+  <script src="ev-claims.js"></script>
 </body>
 
 </html>

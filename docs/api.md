@@ -33,6 +33,14 @@ Interactive OpenAPI 3.1 schema is served at `GET /openapi.json` and `GET /docs`.
   - Legal: `POST .../tp/legal-documents` · `.../tp/tribunal` · `.../tp/advocates` · `.../tp/medical-review` · `.../tp/legal-review` · `.../tp/reserve`
   - Control: `POST .../tp/advance` · `.../tp/settlement-proposals` · `.../tp/settlement-proposals/{proposal_id}/decision` · `.../tp/payment-authorisation` (+ `/reconcile`) · `.../tp/close`
   - OD-only endpoints (`settlement-recommendations`, `approvals`, `payments`, `payments/agent-release`, `close`) return `409 HUMAN_REVIEW_REQUIRED` for TP claims.
+- **Electric-vehicle (EV) claims workflow** (`IN-EV-CLAIMS-2026`; human-gated, never cleared from photographs):
+  - `GET /api/v1/ev/lifecycle` · `GET /api/v1/ev/queues` · `GET /api/v1/ev/cases`
+  - `POST /api/v1/claims/{claim_id}/ev/open` (also opened automatically at FNOL for an EV, an EV high-voltage peril or `ev_battery_impacted`) · `GET .../ev` (policyholders receive only a customer safety view)
+  - Safety: `POST .../ev/triage` · `.../ev/safety-escalations` (raisable by the policyholder) · `.../ev/safety-escalations/{escalation_id}/acknowledge` · `.../resolve` (evidence reference + thermal-stable confirmation; resolver differs from raiser) · `.../ev/thermal-watch/clear`
+  - Specialist path: `POST .../ev/recovery` (flatbed, EV-HV qualified provider, HV isolation, quarantine) · `.../ev/specialist-survey` (physical inspection by an EV-HV certified surveyor) · `.../ev/oem-diagnostics` · `.../ev/battery-disposition` (OEM engineer reference required)
+  - Cost & sign-off: `POST .../ev/cost-benchmark` · `.../ev/cost-benchmark/review` · `.../ev/technical-sign-off` (the only call that lifts the settlement hold)
+  - After settlement: `POST .../ev/recertification` · `.../ev/salvage-events` · `.../ev/advance` · `.../ev/close`
+  - OD-only endpoints (`settlement-recommendations`, `approvals`, `payments`, `payments/agent-release`) return `409 HUMAN_REVIEW_REQUIRED` for an EV claim until technical sign-off, and `close` until the EV case is closed. The error `details` carry `rule_id`, `ev_workflow_url` and the `blockers`.
 - `GET /api/v1/rules` · `POST /api/v1/rules/{rule_id}/simulate` · `POST .../publish`
 - `GET /api/v1/knowledge/search` · `GET /api/v1/providers` · `GET /api/v1/ecosystem/dashboard`
 - `GET /api/v1/operations/sla` · `GET /api/v1/operations/integrations` · `GET /api/v1/operations/analytics`

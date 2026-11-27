@@ -334,6 +334,19 @@ def classify_claim_risk_from_facts(
             }
         )
 
+    is_ev_vehicle = bool(facts.get("is_ev_vehicle", False))
+    if is_ev_vehicle and not ev_battery:
+        # An electric vehicle's HV condition cannot be read from photographs: never LOW / straight-through (IN-EV-CLAIMS-2026).
+        drivers.append(
+            {
+                "code": "MEDIUM_EV_HV_SCREENING",
+                "tier": "MEDIUM",
+                "category": "EV high-voltage screening",
+                "points": 22,
+                "summary": "Electric vehicle: an OEM HV health screening is mandatory; battery safety is never inferred from photographs.",
+            }
+        )
+
     if estimate_anomalies or clerical_est_alerts or estimate_overcharge > Decimal("0.00") or is_supplement_est:
         drivers.append(
             {
@@ -439,6 +452,7 @@ def classify_claim_risk_from_facts(
         and all(low_criteria.values())
         and claim_type != "third_party"
         and peril not in {"tp_bodily_injury", "tp_fatality", "tp_property_damage"}
+        and not is_ev_vehicle
     )
     within_auto_limit = straight_through_eligible and effective_loss <= auto_limit
 

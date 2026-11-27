@@ -424,3 +424,132 @@ class CustomerEscalationRequest(BaseModel):
     notes: str = ""
     preferred_language: Optional[str] = None
     preferred_channel: Optional[str] = None
+
+
+# ---- Electric-vehicle (EV) claims workflow (IN-EV-CLAIMS-2026) ----
+class EVTriageRequest(BaseModel):
+    signals: list[str] = []
+    notes: str = ""
+    customer_declared_drivable: Optional[bool] = None
+    charging_in_progress: bool = False
+    vehicle_location: str = ""
+
+
+class EVSafetyEscalationRequest(BaseModel):
+    signals: list[str] = []
+    description: str
+    level: Optional[str] = None
+
+
+class EVEscalationAcknowledgeRequest(BaseModel):
+    actions_taken: str
+
+
+class EVEscalationResolveRequest(BaseModel):
+    resolution: str
+    evidence_ref: str = ""
+    thermal_stable_confirmed: bool = False
+
+
+class EVRecoveryRequest(BaseModel):
+    provider_id: Optional[str] = None
+    tow_method: str
+    hv_isolation_method: str = ""
+    hv_isolation_verified: bool = False
+    quarantine_location: str = ""
+    quarantine_clearance_m: Optional[Decimal] = None
+    notes: str = ""
+
+
+class EVSpecialistSurveyRequest(BaseModel):
+    surveyor_provider_id: Optional[str] = None
+    inspection_mode: str
+    hv_isolation_verified: bool = False
+    pack_findings: list[str] = []
+    hv_system_findings: list[str] = []
+    charging_system_findings: list[str] = []
+    thermal_indicators_observed: bool = False
+    pack_removal_required: bool = False
+    report_ref: str = ""
+    notes: str = ""
+
+
+class EVDiagnosticTest(BaseModel):
+    test: str
+    result: str
+    value: Optional[Decimal] = None
+    unit: str = ""
+    note: str = ""
+
+
+class EVOemDiagnosticsRequest(BaseModel):
+    provider_id: Optional[str] = None
+    tool: str = ""
+    report_ref: str = ""
+    tests: list[EVDiagnosticTest]
+
+
+class EVDispositionRequest(BaseModel):
+    decision: str
+    rationale: str
+    oem_engineer_name: str = ""
+    oem_engineer_ref: str = ""
+    oem_engineer_org: str = ""
+
+
+class EVBenchmarkLine(BaseModel):
+    kind: str = "part"
+    part_code: str = ""
+    description: str = ""
+    quantity: Decimal = Decimal("1")
+    unit_quoted_inr: Optional[Decimal] = None
+    hours: Optional[Decimal] = None
+    rate_inr: Optional[Decimal] = None
+
+
+class EVBenchmarkRequest(BaseModel):
+    lines: list[EVBenchmarkLine]
+
+
+class EVBenchmarkReviewRequest(BaseModel):
+    note: str = ""
+
+
+class EVThermalWatchClearRequest(BaseModel):
+    basis: str
+    oem_reference: str
+
+
+class EVTechnicalSignOffRequest(BaseModel):
+    notes: str = ""
+
+
+class EVRecertificationRequest(BaseModel):
+    provider_id: Optional[str] = None
+    insulation_resistance_ohm_per_volt: Decimal
+    dtc_cleared: bool = False
+    hv_interlock_ok: bool = False
+    charge_test_ok: bool = False
+    thermal_scan_ok: bool = False
+    physical_road_test_done: bool = False
+    oem_certificate_ref: str = ""
+    notes: str = ""
+
+
+class EVSalvageEventRequest(BaseModel):
+    event: str
+    battery_serial: str
+    location: str = ""
+    performed_by_provider_id: Optional[str] = None
+    recycler_registration_no: str = ""
+    transport_dg_compliant: bool = False
+    certificate_ref: str = ""
+    note: str = ""
+
+
+class EVAdvanceRequest(BaseModel):
+    note: str = ""
+
+
+class EVCloseRequest(BaseModel):
+    closure_notes: str
