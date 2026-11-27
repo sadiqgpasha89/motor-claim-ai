@@ -24,6 +24,7 @@ An enterprise, human-accountable motor-insurance claims platform implementing th
 |---|---|---|
 | **GitHub Pages Showcase** | [sadiqgpasha89.github.io/motor-claim-ai](https://sadiqgpasha89.github.io/motor-claim-ai/) | First-class Claim Orchestration Engine showcase: 15-state deterministic workflow, 3-tier Risk-Based Claim Processing (Fast-Track / Standard / Complex-SIU) & Dynamic Escalation Lab, 10-step Visual Damage Assessment AI & Per-Component Confidence Lab, Claims Ecosystem Coordination Dashboard & Authorization Guardrail Lab, Third-Party (TP) Liability Workflow & Controls Lab, Customer Experience Intelligence (5-stage Motor Claim Tracker, 10 proactive triggers, 5 languages, WhatsApp consent & 4h human escalation), Post-FNOL parallel/conditional DAG scheduler, DLQ/Saga/Pause-Resume Resilience Lab, 11-agent capability matrix, and multi-scenario simulator |
 | **TP Liability Workflow** | [docs/claims-lifecycle.md](docs/claims-lifecycle.md#6-third-party-tp-liability-lifecycle-in-tp-liability-2026-servicesworkflowtp_liabilitypy) | Third-Party claims run on their own 12-stage lifecycle with dedicated queues, legal/medical controls, reserve discipline, dual-control settlement and no autonomous settlement; OD paths refuse TP claims |
+| **AI Evaluation & Release Gate** | [docs/ai-evaluation.md](docs/ai-evaluation.md) | 250 golden cases over 17 scenario categories, per-agent metrics for all 11 agents, an independent settlement oracle, six safety suites, a CI release gate and a registry of defects the framework found |
 | **System Design** | [docs/architecture.md](docs/architecture.md) | Layered system design, C4/deployment Mermaid diagrams, invariants, and ADRs |
 | **Solution Engineering** | [docs/solution-engineering.md](docs/solution-engineering.md) | Two-plane architecture, `Decimal` math, RBAC/ABAC, prompt-injection defense, idempotency |
 | **Class Diagrams** | [docs/class-diagrams.md](docs/class-diagrams.md) | Mermaid UML class diagrams for domain models, 11 agents, settlement, and security |
@@ -69,8 +70,12 @@ docker compose up --build
 .venv/bin/pytest -v
 
 # Backend lint & type check
-.venv/bin/ruff check apps services packages agents scripts tests
-.venv/bin/mypy --explicit-package-bases apps packages services agents
+.venv/bin/ruff check apps services packages agents scripts tests evals
+.venv/bin/mypy --explicit-package-bases apps packages services agents evals
+
+# AI release gate: 250 golden cases, 6 safety suites, thresholds and drift baseline (exit 1 = release blocked)
+.venv/bin/python -m evals.gate
+.venv/bin/pytest tests/evals -q
 
 # Frontend typecheck, lint & production build
 cd apps/web && npm run typecheck && npm run lint && npm run build

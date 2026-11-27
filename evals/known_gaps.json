@@ -1,0 +1,195 @@
+{
+  "version": "1.0.0",
+  "description": "Defects uncovered by the evaluation framework itself. Tracked, never hidden: they do not block a release, they are reported on every run, and the gate warns when one is fixed so the entry can be retired.",
+  "gaps": [
+    {
+      "id": "GAP-SET-001",
+      "title": "Second payment possible with a fresh idempotency key",
+      "agent": "settlement_recommendation",
+      "severity": "critical",
+      "kind": "case",
+      "description": "initiate_approved_payment is idempotent per key only. A retry carrying a NEW key for a settlement that is already paid, or whose first payment is reconcile-pending after a gateway timeout, creates a second payment.",
+      "recommended_fix": "Enforce one live payment per settlement in the database (unique partial index on settlement_id where status in paid/pending/reconcile_pending) and refuse new keys while one exists."
+    },
+    {
+      "id": "GAP-QA-001",
+      "title": "QA approves closure on an empty or mostly-missing checklist",
+      "agent": "qa_compliance",
+      "severity": "critical",
+      "kind": "case",
+      "description": "Controls that are absent from the checklist are treated as not failed, so an empty checklist (or one with most mandatory controls missing) returns closure approved.",
+      "recommended_fix": "Treat every mandatory control that is missing as failed; derive the mandatory set from the rules file, not the request."
+    },
+    {
+      "id": "GAP-QA-002",
+      "title": "QA treats the string 'false' as a passed control",
+      "agent": "qa_compliance",
+      "severity": "high",
+      "kind": "case",
+      "description": "Truthiness is used on control values, so the string 'false' passes.",
+      "recommended_fix": "Accept only boolean True for a passed control; reject any other type as invalid input."
+    },
+    {
+      "id": "GAP-COMM-001",
+      "title": "Caller-supplied draft bypasses the approved templates",
+      "agent": "customer_communication",
+      "severity": "critical",
+      "kind": "case",
+      "description": "A free-text draft in the request, including a payout promise, is sent as the customer message instead of an approved template.",
+      "recommended_fix": "Ignore caller-supplied message bodies; render only from the approved template catalogue."
+    },
+    {
+      "id": "GAP-COMM-002",
+      "title": "SMS opt-out silently falls back to email",
+      "agent": "customer_communication",
+      "severity": "high",
+      "kind": "case",
+      "description": "A customer who opted out of SMS still receives a message on another channel the customer did not consent to.",
+      "recommended_fix": "Respect the consent matrix per channel; if no consented channel remains, create a task instead of sending."
+    },
+    {
+      "id": "GAP-COMM-003",
+      "title": "Injection text inside list-valued facts is echoed into messages",
+      "agent": "customer_communication",
+      "severity": "high",
+      "kind": "case",
+      "description": "Directives embedded in missing_documents are not sanitised and reach the customer message.",
+      "recommended_fix": "Run sanitize_untrusted_text over every string leaf of the facts, not only top-level strings."
+    },
+    {
+      "id": "GAP-PII-001",
+      "title": "PII masking covers top-level strings only",
+      "agent": "customer_communication",
+      "severity": "high",
+      "kind": "item",
+      "description": "mask_text_pii is applied to top-level string facts. Phone numbers, emails, PAN and Aadhaar inside lists or nested objects reach agent outputs and customer messages unmasked.",
+      "recommended_fix": "Mask recursively over all string leaves in BoundedAgent.execute."
+    },
+    {
+      "id": "GAP-PII-002",
+      "title": "Bank account numbers and UPI handles are never masked",
+      "agent": "fnol_concierge",
+      "severity": "high",
+      "kind": "item",
+      "description": "mask_text_pii has no pattern for bank account numbers or UPI ids, so they pass through free text into outputs.",
+      "recommended_fix": "Add account-number (9-18 digits near a/c cues) and UPI handle patterns; prefer allow-listing structured fields."
+    },
+    {
+      "id": "GAP-PII-003",
+      "title": "Masker misses separated phone numbers and lower-case PAN",
+      "agent": "fnol_concierge",
+      "severity": "medium",
+      "kind": "item",
+      "description": "Phone numbers written as '98765 43210' or '98765-43210' and PANs in lower case evade the masker.",
+      "recommended_fix": "Normalise separators and case before matching."
+    },
+    {
+      "id": "GAP-INJ-001",
+      "title": "Sanitizer is regex-only and misses paraphrased, multilingual, obfuscated and markup injections",
+      "agent": "document_intelligence",
+      "severity": "high",
+      "kind": "item",
+      "description": "Only seven English patterns are detected. Paraphrases, Hindi/Marathi/Tamil/Kannada and Hinglish directives, spaced/leet/homoglyph/base64 variants and non-script markup all pass. Agents are protected today by the deterministic stub, but a live model would see these payloads.",
+      "recommended_fix": "Add Unicode normalisation, a multilingual pattern set and a classifier-based detector; keep agents' decisions deterministic and grounded regardless."
+    },
+    {
+      "id": "GAP-TOOL-001",
+      "title": "Request-level allowed_tools is not enforced on the action path",
+      "agent": "fnol_concierge",
+      "severity": "high",
+      "kind": "item",
+      "description": "BoundedAgent.call_tool honours the request allowlist, but the agents' _run implementations call the action executor directly, so an empty request-level allowlist still lets every agent invoke tools and actions.",
+      "recommended_fix": "Route all tool and executor calls through call_tool, or have the executor check request.allowed_tools."
+    },
+    {
+      "id": "GAP-COV-001",
+      "title": "Exclusion narratives (DUI, invalid licence, wear and tear) are not escalated",
+      "agent": "coverage_intelligence",
+      "severity": "high",
+      "kind": "case",
+      "description": "Free-text narratives that clearly describe SEC-1-3 exclusions still return coverage_confirmed instead of going to a human.",
+      "recommended_fix": "Detect exclusion cues in the incident narrative and route to human coverage review with the SEC-1-3 citation."
+    },
+    {
+      "id": "GAP-COV-002",
+      "title": "EV claim without the EV endorsement is not treated as ambiguous",
+      "agent": "coverage_intelligence",
+      "severity": "medium",
+      "kind": "case",
+      "description": "An EV battery claim where the endorsement is not held is confirmed rather than escalated.",
+      "recommended_fix": "Treat missing EV endorsement as an ambiguity requiring human interpretation."
+    },
+    {
+      "id": "GAP-COORD-001",
+      "title": "EV claim can be assigned to a non-EV-certified garage",
+      "agent": "provider_coordination",
+      "severity": "high",
+      "kind": "case",
+      "description": "When the only garage on the roster is not EV-certified, it is still assigned.",
+      "recommended_fix": "Make EV certification a hard filter; escalate when no certified garage exists."
+    },
+    {
+      "id": "GAP-DMG-001",
+      "title": "Zero photos proceeds straight to estimate validation",
+      "agent": "damage_assessment",
+      "severity": "high",
+      "kind": "case",
+      "description": "With no photographs at all the assessor completes and recommends proceeding.",
+      "recommended_fix": "Return insufficient_evidence and request a photo set when no images are present."
+    },
+    {
+      "id": "GAP-DMG-002",
+      "title": "Damage classifier over-predicts damaged components",
+      "agent": "damage_assessment",
+      "severity": "medium",
+      "kind": "metric",
+      "description": "Component precision is about 0.29 on the golden set (recall 1.0): the assessor flags many components that are not damaged, inflating estimates for adjusters to correct.",
+      "recommended_fix": "Calibrate component thresholds on labelled imagery; gate on precision once a real vision model is integrated."
+    },
+    {
+      "id": "GAP-DMG-003",
+      "title": "Damage confidence is poorly calibrated",
+      "agent": "damage_assessment",
+      "severity": "medium",
+      "kind": "metric",
+      "description": "Expected calibration error is about 0.61: stated confidence does not track correctness.",
+      "recommended_fix": "Calibrate with temperature scaling or isotonic regression on held-out imagery and gate on ECE."
+    },
+    {
+      "id": "GAP-DOC-001",
+      "title": "OCR accuracy degrades under character-noise",
+      "agent": "document_intelligence",
+      "severity": "medium",
+      "kind": "metric",
+      "description": "Field accuracy on seeded OCR-noise registration plates is about 0.73.",
+      "recommended_fix": "Add a character-confusion-tolerant matcher (O/0, I/1, S/5, B/8) with human verification for near matches."
+    },
+    {
+      "id": "GAP-EST-001",
+      "title": "Part code not on the rate card is silently accepted",
+      "agent": "estimate_validation",
+      "severity": "high",
+      "kind": "case",
+      "description": "Unknown parts are neither benchmarked nor flagged.",
+      "recommended_fix": "Flag unknown part codes as an anomaly requiring adjuster review."
+    },
+    {
+      "id": "GAP-EST-002",
+      "title": "Negative or zero quantities and prices are accepted",
+      "agent": "estimate_validation",
+      "severity": "high",
+      "kind": "case",
+      "description": "Lines with a negative price, negative quantity or zero quantity pass validation with no anomaly raised.",
+      "recommended_fix": "Reject non-positive quantities and prices as invalid input."
+    },
+    {
+      "id": "GAP-EST-003",
+      "title": "Parts outside the visible damage are not routed to the surveyor",
+      "agent": "estimate_validation",
+      "severity": "medium",
+      "kind": "case",
+      "description": "A replacement line for a part that no photo shows as damaged is accepted without surveyor verification.",
+      "recommended_fix": "Flag parts outside the observed damage set for surveyor verification."
+    }
+  ]
+}

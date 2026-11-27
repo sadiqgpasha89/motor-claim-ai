@@ -35,6 +35,7 @@
         <a href="#visitors">Q&amp;A &amp; Failures</a>
         <a href="#architecture">System Design</a>
         <a href="#agents">11-Agent Matrix</a>
+        <a href="#ai-evals">AI Evaluation</a>
         <a href="#pipelines">Pipelines</a>
         <a href="#calculator">Settlement Sim</a>
       </nav>
@@ -1004,6 +1005,26 @@ flowchart TB
       </div>
     </section>
 
+    <!-- SECTION: AI EVALUATION FRAMEWORK & RELEASE GATE -->
+    <section id="ai-evals">
+      <h2>AI Evaluation Framework &amp; Release Gate</h2>
+      <p class="section-sub">Agents are only credible if they are reliable, safe and measurable. Every AI or prompt
+        change runs 250 golden cases across 17 scenario categories, per-agent metrics, six safety suites and a
+        release gate in CI. Figures below are generated from the real run (<code>python -m evals.gate</code>).</p>
+      <div id="ai-eval-verdict" class="card" aria-live="polite"></div>
+      <h3>AI release gate</h3>
+      <div id="ai-eval-gate" class="card"></div>
+      <h3>Per-agent metrics</h3>
+      <div class="tabs" id="ai-eval-agent-tabs" role="tablist"></div>
+      <div id="ai-eval-metrics" class="card"></div>
+      <h3>Scenario coverage</h3>
+      <div id="ai-eval-categories" class="chip-row"></div>
+      <h3>Tracked findings from the evaluation</h3>
+      <p class="section-sub">Real defects the framework uncovered. They are reported on every run and never hidden;
+        they do not block a release until fixed, but any regression beyond them does.</p>
+      <div id="ai-eval-gaps" class="card"></div>
+    </section>
+
     <!-- SECTION 7: PIPELINES -->
     <section id="pipelines">
       <h2>7. Core Operational &amp; Security Pipelines</h2>
@@ -1316,6 +1337,8 @@ classDiagram
   <script src="workflow-data.js"></script>
   <script src="app.js"></script>
   <script src="tp-liability.js"></script>
+  <script src="eval-report.js"></script>
+  <script src="ai-evals.js"></script>
 </body>
 
 </html>

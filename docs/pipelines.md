@@ -148,3 +148,15 @@ Triggered on every push to `main` / `feat/**` and on pull requests to `main`:
 |---|---|---|
 | `backend-checks` | `pip install -e ".[dev]"` -> `ruff check` -> `mypy --explicit-package-bases` -> `pytest -v` (unit, integration, security, model_eval) | Python 3.12 |
 | `frontend-checks` | `npm ci` -> `npm run typecheck` (`tsc --noEmit`) -> `npm run lint` (`next lint`) -> `npm run build` | Node 20 / Next.js 14 |
+
+## 7. AI Release Gate Pipeline (`.github/workflows/ai-release-gate.yml`)
+
+Triggered on pushes and pull requests that touch agents, the agent runtime, prompts, contracts, security helpers, rules or `evals/`:
+
+| Step | What it does |
+|---|---|
+| `pytest tests/evals` | Framework tests, including mutation tests proving the gate blocks sabotaged metrics, suites and registries |
+| `python -m evals.gate --json --markdown` | Runs all datasets and six safety suites; writes the verdict to the job summary; exits 1 when the release is blocked |
+| Site snapshot check | Fails if `site/eval-report.js` is out of sync with the gate output |
+
+Details: [ai-evaluation.md](ai-evaluation.md).
