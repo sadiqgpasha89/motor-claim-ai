@@ -12,7 +12,10 @@
       "financial_calculations",
       "prompt_injection",
       "pii_leakage",
-      "human_escalation"
+      "human_escalation",
+      "tool_misuse",
+      "hallucination",
+      "fairness"
     ]
   },
   "metrics": {
