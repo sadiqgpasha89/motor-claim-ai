@@ -47,3 +47,12 @@ def test_framework_rule_is_consistent():
     spec = product_framework()
     assert [d["claim_number"] for d in spec["demos"]] == [f"CLM-DEMO-2026-{n:04d}" for n in (12, 1, 8, 11, 10)]
     assert all(k["measure"] is None or isinstance(k["measure"], str) for k in spec["kpis"])
+
+
+def test_seed_runs_agents_on_demos_two_to_five(client):
+    hdr = auth_headers(client, "manager@demo.in")
+    demos = {d["id"]: d for d in client.get("/api/v1/portal/demos", headers=hdr).json()["demos"]}
+    for demo_id in ("demo-2", "demo-3", "demo-4", "demo-5"):
+        answers = client.get(f"/api/v1/claims/{demos[demo_id]['claim_id']}/claim-360", headers=hdr).json()["answers"]
+        assert answers["what_did_ai_do"], demo_id
+    assert demos["demo-1"]["status"] == "APPROVED"

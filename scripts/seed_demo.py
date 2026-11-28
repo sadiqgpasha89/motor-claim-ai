@@ -1639,8 +1639,34 @@ def seed_all(db: Session) -> None:
     _seed_tp_liability_case(db, t1.id)
     _seed_ev_claim_case(db, t1.id)
     _seed_sla_scenarios(db, t1.id, now)
-
     db.commit()
+    _orchestrate_demo_claims(db, t1.id)
+
+
+GUIDED_DEMO_CLAIMS = ("clm-demo-0001", "clm-demo-0008", "clm-demo-0011", "clm-demo-0010")
+
+
+def _orchestrate_demo_claims(db: Session, tenant_id: str) -> None:
+    """Run the agents once on four guided-demo claims, so Claim 360 shows real agent activity.
+
+    Demo 1 (clm-demo-0012) is left out on purpose. It is seeded already approved by the low-risk fast track,
+    and a run would send it back to document verification. Start it with scripts/od_claim_demo.py.
+    The run stops at the first human gate. A failure on one claim must not stop the seed.
+    """
+    from packages.security.auth import Role, UserContext
+    from services.claims.models import Claim as _Claim
+    from services.workflow.orchestrator import ClaimOrchestrator
+
+    manager = UserContext(user_id="usr-manager", tenant_id=tenant_id, email="manager@demo.in", name="Sunita Iyer (Claims Manager)", role=Role.CLAIMS_MANAGER)
+    for claim_id in GUIDED_DEMO_CLAIMS:
+        claim = db.get(_Claim, claim_id)
+        if claim is None:
+            continue
+        try:
+            ClaimOrchestrator(db, manager).orchestrate_claim(claim, stop_on_human_gate=True)
+            db.commit()
+        except Exception:  # noqa: BLE001 - demo seed only
+            db.rollback()
 
 
 def _seed_tp_liability_case(db: Session, tenant_id: str) -> None:

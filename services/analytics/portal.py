@@ -204,7 +204,7 @@ def guided_demos(db: Session, tenant_id: str) -> dict[str, Any]:
             "risk_tier": claim.risk_tier if claim else None,
             "claim_360_path": f"/claims/{claim.id}/claim-360" if claim else None,
         })
-    return {"demos": demos, "note": "Demo claims are seeded synthetic data. A seeded claim has no agent run until you start one with POST /api/v1/claims/{id}/orchestrate, or use scripts/od_claim_demo.py. Run the seed reset to restore the claims."}
+    return {"demos": demos, "note": "Demo claims are seeded synthetic data. Demos 2 to 5 are seeded with one agent run that stops at the first human gate. Demo 1 is seeded already approved. Start a new run with POST /api/v1/claims/{id}/orchestrate, or use scripts/od_claim_demo.py. Run the seed reset to restore the claims."}
 
 
 def capability_model(db: Session) -> dict[str, Any]:
