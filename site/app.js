@@ -632,7 +632,9 @@
   window.loadScenarioIntoWorkflow = function (scenarioId) {
     selectScenario(scenarioId);
     var section = el("workflow");
-    if (section) {
+    if (window.MCPager && window.MCPager.reveal("workflow", true)) {
+      if (location.hash !== "#workflow") history.pushState(null, "", "#workflow");
+    } else if (section) {
       section.scrollIntoView({ behavior: "smooth" });
     }
   };

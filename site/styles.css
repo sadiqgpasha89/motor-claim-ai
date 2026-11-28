@@ -1909,3 +1909,495 @@ tr.swb-row-active td:first-child {
     width: 110px;
   }
 }
+
+/* ==========================================================================
+   Paginated chapters, plain-English layer, home page & glossary
+   ========================================================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+header .nav-wrap {
+  padding: 10px 20px 4px;
+  flex-wrap: nowrap;
+}
+
+.nav-gh {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chapter-tabs {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+.chapter-tabs-inner {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chapter-tabs-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.chapter-tabs a {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+}
+
+.chapter-tabs a:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.chapter-tabs a.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+section,
+.page {
+  scroll-margin-top: 120px;
+}
+
+.page > section:first-of-type,
+.chapter-intro + section {
+  margin-top: 28px;
+}
+
+.page > section + section {
+  padding-top: 36px;
+  border-top: 1px solid var(--border);
+}
+
+/* chapter intro */
+.chapter-intro {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.chapter-intro h1 {
+  margin: 4px 0 8px;
+  font-size: clamp(26px, 3.4vw, 34px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  font-size: 17px;
+  color: var(--muted);
+  max-width: 760px;
+  margin: 0 0 20px;
+}
+
+.hero .lead {
+  color: #cbd5e1;
+  font-size: 17px;
+}
+
+.hero .lead strong {
+  color: #ffffff;
+}
+
+.toc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.toc-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.toc-card:hover {
+  text-decoration: none;
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.toc-card strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.toc-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+.toc-num {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.intro-h3 {
+  margin: 26px 0 10px;
+}
+
+.chapter-intro .hero-lifecycle-strip {
+  background: var(--ink);
+}
+
+.chapter-intro .grid-4 {
+  margin: 16px 0 0;
+}
+
+/* section heading layer */
+.tech-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.plain {
+  border-left: 4px solid var(--emerald);
+  background: var(--emerald-soft);
+  border-radius: 0 10px 10px 0;
+  padding: 12px 16px;
+  margin: 0 0 18px;
+  max-width: 900px;
+}
+
+.plain p {
+  margin: 4px 0 0;
+  font-size: 15.5px;
+  color: #064e3b;
+}
+
+.plain-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--emerald);
+}
+
+.plain + .section-sub {
+  font-size: 13.5px;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.dot-green { background: #16a34a; }
+.dot-amber { background: #f59e0b; }
+.dot-red { background: #e11d48; }
+
+/* prev / next */
+.page-pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 48px;
+}
+
+.pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.pager-link span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pager-link strong {
+  font-size: 16px;
+}
+
+.pager-link.next {
+  text-align: right;
+  grid-column: 2;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.pager-link.next span {
+  color: #cbd5e1;
+}
+
+.pager-link:hover {
+  text-decoration: none;
+  border-color: var(--blue);
+}
+
+/* home */
+.home-hero {
+  padding: 44px 36px;
+}
+
+.home-hero h1 {
+  max-width: 820px;
+}
+
+.home-block {
+  margin-top: 40px;
+}
+
+.journey {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  counter-reset: none;
+}
+
+.journey li {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.journey strong {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.journey small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.j-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.who {
+  align-self: flex-start;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.who-ai { background: var(--indigo-soft); color: var(--indigo); }
+.who-rules { background: var(--blue-soft); color: var(--blue-ink); }
+.who-human { background: var(--amber-soft); color: var(--amber); }
+
+.role-card {
+  border-radius: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.role-card h3 {
+  margin: 8px 0 6px;
+  font-size: 18px;
+}
+
+.role-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.role-icon {
+  font-size: 22px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-ai .role-icon { background: var(--indigo-soft); color: var(--indigo); }
+.role-rules .role-icon { background: var(--blue-soft); color: var(--blue); }
+.role-human .role-icon { background: var(--amber-soft); color: var(--amber); }
+
+.num-card .stat-num {
+  font-size: 30px;
+}
+
+.num-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.path-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.path-card small {
+  color: var(--muted);
+  font-size: 13.5px;
+  flex: 1;
+}
+
+.path-card span {
+  font-weight: 700;
+  color: var(--blue);
+  font-size: 14px;
+}
+
+.path-card:hover {
+  text-decoration: none;
+  border-color: var(--blue);
+  box-shadow: 0 6px 18px -10px rgba(29, 78, 216, 0.45);
+}
+
+/* glossary */
+.gloss-search input {
+  width: 100%;
+  max-width: 480px;
+  padding: 11px 14px;
+  font-size: 15px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  font-family: inherit;
+}
+
+.gloss-group {
+  margin-top: 28px;
+}
+
+.gloss-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.gloss-list > div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.gloss-list dt {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.gloss-list dt small {
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.gloss-list dd {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .chapter-intro {
+    padding: 20px 16px;
+  }
+
+  .home-hero {
+    padding: 28px 20px;
+  }
+
+  .page-pager {
+    grid-template-columns: 1fr;
+  }
+
+  .pager-link.next {
+    grid-column: 1;
+    order: -1;
+  }
+
+  .gloss-list {
+    grid-template-columns: 1fr;
+  }
+
+  .chapter-tabs a {
+    font-size: 13px;
+    padding: 9px 10px;
+  }
+}
