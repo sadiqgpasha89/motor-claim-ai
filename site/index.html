@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MotorClaim AI — Car insurance claims, handled by AI with people in charge</title>
+  <title>MotorClaim AI — Faster, governed motor claims: AI agents do the work, people keep control</title>
   <meta name="description"
-    content="Interactive claim-centric business automation showcase for MotorClaim AI: 8 autonomous claims operations from FNOL to Closure, 12 tool-permissioned agents, predictive SLA operations, IRDAI 2024 rules, failure fallbacks, and deterministic settlement." />
+    content="MotorClaim AI cuts motor-insurance claim time, cost and manual effort with a governed multi-agent architecture: a central orchestration engine coordinates 12 specialised AI agents and deterministic services, while human reviewers keep control of high-risk, disputed and financially sensitive decisions. Every action is explainable, traceable and auditable." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -38,21 +38,158 @@
     <div class="page" id="page-start" data-title="Start here">
       <div class="hero home-hero">
         <span class="pill">Working demo &middot; India motor insurance</span>
-        <h1>Car insurance claims, handled by AI &mdash; with people firmly in charge</h1>
+        <h1>Faster, cheaper motor claims &mdash; AI agents do the legwork, people keep control</h1>
         <p class="lead">
-          MotorClaim AI shows how an insurer could use AI to settle car-insurance claims faster and more fairly,
-          from the moment you report an accident to the moment money reaches your bank.
-          <strong>AI does the paperwork-heavy steps, fixed rules do the maths, and people approve anything important.</strong>
+          Claims handling is a chain of disconnected, paper-heavy activities that insurers still run largely by hand.
+          MotorClaim AI replaces that chain with a <strong>governed multi-agent system</strong>: a central engine coordinates
+          specialised AI agents and fixed business rules, and <strong>people decide anything high-risk, disputed or financially sensitive</strong>.
+          Every action is explainable, traceable and auditable.
         </p>
         <div class="btn-row">
-          <a class="btn btn-primary" href="#page-see-it">Take the tour &rarr;</a>
+          <a class="btn btn-primary" href="#the-problem">The business problem &darr;</a>
+          <a class="btn btn-secondary" href="#page-see-it">Take the tour &rarr;</a>
           <a class="btn btn-secondary" href="#workflow">Watch a claim play out</a>
-          <a class="btn btn-secondary" href="#page-glossary">What do these terms mean?</a>
         </div>
       </div>
 
+      <section id="the-problem" class="home-block">
+        <span class="eyebrow">The problem</span>
+        <h2>Claim processing is many disconnected activities, each done by hand</h2>
+        <p class="section-sub">
+          A single motor claim passes through ten separate activities, usually across different teams, systems, emails and spreadsheets.
+        </p>
+        <ol class="activity-chain" aria-label="Ten activities in a motor claim">
+          <li>First Notice of Loss (FNOL)</li>
+          <li>Document collection</li>
+          <li>Policy verification</li>
+          <li>Damage assessment</li>
+          <li>Surveyor coordination</li>
+          <li>Fraud investigation</li>
+          <li>Repair estimation</li>
+          <li>Settlement calculation</li>
+          <li>Approvals</li>
+          <li>Payment reconciliation</li>
+        </ol>
+        <div class="grid-4 pain-grid">
+          <div class="card pain-card"><h3>Substantial manual effort</h3><p>Staff re-key details, read documents and compare quotes line by line.</p></div>
+          <div class="card pain-card"><h3>Repeated verification</h3><p>The same licence, policy and estimate are checked again at each hand-off.</p></div>
+          <div class="card pain-card"><h3>Many stakeholders</h3><p>Customer, handler, surveyor, garage, investigator and approver all need chasing.</p></div>
+          <div class="card pain-card"><h3>Extensive paperwork</h3><p>Evidence and decisions are scattered, so slow claims and weak audit trails follow.</p></div>
+        </div>
+      </section>
+
+      <section id="our-answer" class="home-block">
+        <span class="eyebrow">The answer</span>
+        <h2>A governed multi-agent architecture, with people in charge of the risky calls</h2>
+        <div class="answer-grid">
+          <div class="answer-card">
+            <span class="answer-num">1</span>
+            <h3>Specialised AI agents automate the evidence-heavy work</h3>
+            <p>Evidence processing, policy intelligence, claim triage, damage assessment, investigation support, estimate validation, operational coordination and customer communication.</p>
+          </div>
+          <div class="answer-card">
+            <span class="answer-num">2</span>
+            <h3>One orchestration engine coordinates everything</h3>
+            <p>It runs the agents together with deterministic business services (rules, settlement maths), adapts as new evidence arrives, and executes only <em>authorised</em> workflow actions.</p>
+          </div>
+          <div class="answer-card answer-human">
+            <span class="answer-num">3</span>
+            <h3>Humans keep control of high-stakes decisions</h3>
+            <p>High-risk, disputed and financially sensitive decisions always go to a reviewer. The AI can never reject a claim by itself.</p>
+          </div>
+          <div class="answer-card">
+            <span class="answer-num">4</span>
+            <h3>Every action is explainable, traceable, auditable</h3>
+            <p>Each agent step records its inputs, the rules applied, its confidence and who approved what, in a tamper-evident audit trail.</p>
+          </div>
+        </div>
+        <p class="objective"><strong>The objective:</strong> reduce claim processing time, operating cost and manual intervention, while improving accuracy, transparency and customer experience.</p>
+      </section>
+
+      <section id="what-is-automated" class="home-block">
+        <span class="eyebrow">Automation scope</span>
+        <h2>What is automated, and what still needs a person?</h2>
+        <p class="section-sub">Each claim activity, how it is done today, how MotorClaim AI handles it, and where a human stays in the loop.</p>
+        <div class="table-scroll">
+          <table class="scope-table">
+            <thead><tr><th>Claim activity</th><th>Today (manual)</th><th>With MotorClaim AI</th><th>A person still&hellip;</th></tr></thead>
+            <tbody>
+              <tr><td>FNOL registration</td><td>Call-centre or form keying</td><td>FNOL Concierge captures and validates the report</td><td>Handles incomplete or unusual reports</td></tr>
+              <tr><td>Document collection &amp; checks</td><td>Read and re-check each file</td><td>OCR, classification and tamper checks</td><td>Reviews low-confidence or suspicious documents</td></tr>
+              <tr><td>Policy verification</td><td>Manual lookup of terms</td><td>Rules plus cited policy clauses</td><td>Rules on disputed cover; every rejection</td></tr>
+              <tr><td>Claim triage</td><td>Manual routing</td><td>Three risk tiers: fast-track, standard, complex/SIU</td><td>Handles standard and complex claims; fast-track stays within the auto-limit</td></tr>
+              <tr><td>Damage assessment</td><td>Physical inspection for all</td><td>Photo-based assessment; surveyor required above &#8377;50,000</td><td>Surveys; an EV is never cleared from photos</td></tr>
+              <tr><td>Repair estimation</td><td>Line-by-line quote review</td><td>Benchmarked against rate cards, anomalies flagged</td><td>Resolves flagged variances</td></tr>
+              <tr><td>Fraud investigation</td><td>Reactive, case by case</td><td>Relationship graph and signals open an SIU lead</td><td>Investigators decide; the score never rejects</td></tr>
+              <tr><td>Surveyor &amp; garage coordination</td><td>Phone calls and chasing</td><td>Automated allocation, reminders and follow-ups</td><td>Handles exceptions and escalations</td></tr>
+              <tr><td>Settlement calculation</td><td>Spreadsheets</td><td>Exact, repeatable rule-based calculation</td><td>Checks the result before it is approved</td></tr>
+              <tr><td>Approvals &amp; payment</td><td>Email chains, manual reconciliation</td><td>Routed to the right authority; payments reconciled once</td><td>Approves every payout above the auto-limit (&#8377;25,000)</td></tr>
+              <tr><td>Customer updates</td><td>Reactive, on request</td><td>Proactive updates in 5 languages</td><td>Answers escalations (4-hour target)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine-print">Third-party (injury and liability) claims never settle autonomously. They run on their own lifecycle with legal and medical controls and dual-control approval.</p>
+      </section>
+
+      <section id="business-impact" class="home-block">
+        <span class="eyebrow">Business impact</span>
+        <h2>What improvement should an insurer expect?</h2>
+        <p class="section-sub">These are the platform's five outcome targets. They are <strong>illustrative ambition levels, not measured results</strong>; the demo uses synthetic data.</p>
+        <div class="impact-list">
+          <div class="impact-row"><span class="impact-name">Manual effort</span><span class="impact-bar"><i style="width:45%"></i></span><span class="impact-val">&minus;45%</span></div>
+          <div class="impact-row"><span class="impact-name">Processing time</span><span class="impact-bar"><i style="width:50%"></i></span><span class="impact-val">&minus;50%</span></div>
+          <div class="impact-row"><span class="impact-name">Customer effort</span><span class="impact-bar"><i style="width:40%"></i></span><span class="impact-val">&minus;40%</span></div>
+          <div class="impact-row"><span class="impact-name">SLA breaches</span><span class="impact-bar"><i style="width:35%"></i></span><span class="impact-val">&minus;35%</span></div>
+          <div class="impact-row"><span class="impact-name">Rework</span><span class="impact-bar"><i style="width:30%"></i></span><span class="impact-val">&minus;30%</span></div>
+        </div>
+        <p class="fine-print">
+          The platform tracks 17 KPIs. 12 are computed from the demo database; the other 5 are shown as &ldquo;not measured&rdquo; rather than made up.
+          See the live <a href="#product-portal">KPI framework</a>.
+        </p>
+      </section>
+
+      <section id="agents-collaborate" class="home-block">
+        <span class="eyebrow">How the agents work together</span>
+        <h2>One engine, twelve specialists, and fixed rules for the money</h2>
+        <div class="collab">
+          <div class="collab-engine">
+            <strong>Claim Orchestration Engine</strong>
+            <small>Plans the work, runs agents in parallel where safe, re-plans when evidence changes, retries failures and pauses for people.</small>
+          </div>
+          <div class="collab-groups">
+            <div class="collab-group"><h4>Evidence</h4><span>FNOL concierge</span><span>Document intelligence</span></div>
+            <div class="collab-group"><h4>Policy &amp; triage</h4><span>Coverage intelligence</span><span>Claim triage</span></div>
+            <div class="collab-group"><h4>Assessment</h4><span>Damage assessment</span><span>Estimate validation</span></div>
+            <div class="collab-group"><h4>Investigation</h4><span>Fraud intelligence</span></div>
+            <div class="collab-group"><h4>Coordination</h4><span>Provider coordination</span><span>SLA intelligence</span></div>
+            <div class="collab-group"><h4>Outcome</h4><span>Settlement recommendation</span><span>Customer communication</span></div>
+            <div class="collab-group"><h4>Governance</h4><span>QA &amp; compliance</span></div>
+          </div>
+          <div class="collab-services">
+            <strong>Deterministic services</strong>
+            <small>Rules engine &middot; settlement maths &middot; authorised-action executor &middot; audit trail</small>
+          </div>
+        </div>
+        <ul class="collab-points">
+          <li><strong>Shared contracts.</strong> Each agent has a fixed input and output and a short tool allow-list. It cannot change claim state directly.</li>
+          <li><strong>Hand-offs and rework.</strong> A downstream agent can send work back, for example when an estimate does not match the photos.</li>
+          <li><strong>Authorised actions only.</strong> Agents recommend; the engine executes only actions the claim's risk tier and the user's authority allow.</li>
+          <li><strong>Adapts to new evidence.</strong> A late photo or a fraud signal re-routes the claim to a higher tier instead of waiting for a person to notice.</li>
+        </ul>
+      </section>
+
+      <section id="human-control" class="home-block">
+        <span class="eyebrow">Where humans stay in control</span>
+        <h2>Always a person, never the AI alone</h2>
+        <div class="grid-3">
+          <div class="role-card role-human"><h3>High-risk</h3><p>Suspected fraud, injury and third-party liability, EV battery and safety cases, and total-loss questions.</p></div>
+          <div class="role-card role-human"><h3>Disputed</h3><p>Contested cover, disagreement on damage or estimate, and every proposed rejection.</p></div>
+          <div class="role-card role-human"><h3>Financially sensitive</h3><p>Payouts above the auto-limit and maker-checker approval of every settlement that is not fast-tracked.</p></div>
+        </div>
+      </section>
+
       <section id="how-it-works" class="home-block">
-        <h2>A claim in six simple steps</h2>
+        <h2>The claim journey in six simple steps</h2>
         <p class="section-sub">This is the journey every claim follows. The label under each step shows who does the work.</p>
         <ol class="journey">
           <li><span class="j-num">1</span><strong>Report the accident</strong><small>The customer tells the insurer what happened, online or by phone.</small><span class="who who-ai">AI helps</span></li>
@@ -86,7 +223,7 @@
       </section>
 
       <section id="key-numbers" class="home-block">
-        <h2>The key numbers, explained</h2>
+        <h2>Platform numbers, explained</h2>
         <div class="grid-4">
           <div class="card num-card"><div class="stat-num">12</div><p>AI helpers, each limited to its own small task and set of tools.</p></div>
           <div class="card num-card"><div class="stat-num">&#8377;50,000</div><p>Above this estimate, the rules require a qualified surveyor to inspect the car.</p></div>
@@ -116,6 +253,7 @@
         <span class="eyebrow">Chapter 1 of 5</span>
         <h1>See a claim in action</h1>
         <p class="lead">Start here if you're new. Play through real example claims, see what the customer is told, and find out exactly how the payout is calculated.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>Here the agents, rules and people work one claim from report to payout.</span></p>
         <div class="toc-grid" aria-label="On this page">
           <a class="toc-card" href="#workflow"><span class="toc-num">1</span><span><strong>Watch a claim move, step by step</strong><small>Press play and follow one claim from accident to payout.</small></span></a>
           <a class="toc-card" href="#scenarios"><span class="toc-num">2</span><span><strong>More example claims to try</strong><small>Load tricky real-world cases into the player.</small></span></a>
@@ -423,6 +561,7 @@
         <span class="eyebrow">Chapter 2 of 5</span>
         <h1>Different kinds of claims</h1>
         <p class="lead">A dented bumper, a battery fire risk and an injured pedestrian are very different problems. Here's how the system adapts to each one.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>Risk tiers decide how much AI automation a claim gets, and when a person must step in.</span></p>
         <div class="toc-grid" aria-label="On this page">
           <a class="toc-card" href="#risk-processing"><span class="toc-num">1</span><span><strong>Simple claims go fast, risky ones get extra care</strong><small>Three tracks: fast, standard and complex.</small></span></a>
           <a class="toc-card" href="#damage-ai"><span class="toc-num">2</span><span><strong>Reading damage from photos</strong><small>Part-by-part damage with an honest confidence level.</small></span></a>
@@ -802,6 +941,7 @@ flowchart LR
         <span class="eyebrow">Chapter 3 of 5</span>
         <h1>Running claims day to day</h1>
         <p class="lead">What claims teams and managers use every day: coordinating garages and surveyors, keeping to deadlines, and seeing exactly what the AI did.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>Operations show the engine keeping claims on time, with people handling the exceptions.</span></p>
         <div class="toc-grid" aria-label="On this page">
           <a class="toc-card" href="#ecosystem"><span class="toc-num">1</span><span><strong>Coordinating surveyors, garages &amp; towing</strong><small>Picking and managing surveyors, garages and tow trucks.</small></span></a>
           <a class="toc-card" href="#sla-operations"><span class="toc-num">2</span><span><strong>Hitting deadlines before they're missed</strong><small>Predicting late claims before they breach.</small></span></a>
@@ -1096,6 +1236,7 @@ flowchart LR
         <span class="eyebrow">Chapter 4 of 5</span>
         <h1>Trust, safety &amp; people in charge</h1>
         <p class="lead">Worried about letting AI near money and customers? This chapter shows the guard-rails: where humans decide, how the AI is tested and how the platform is secured.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>Governance is how every AI action stays explainable, traceable and auditable.</span></p>
         <div class="toc-grid" aria-label="On this page">
           <a class="toc-card" href="#visitors"><span class="toc-num">1</span><span><strong>Common questions, and what happens when things go wrong</strong><small>FAQs, plus the safety net for failures.</small></span></a>
           <a class="toc-card" href="#capabilities"><span class="toc-num">2</span><span><strong>How the AI is kept on a short leash</strong><small>Strict limits, rework loops and explained decisions.</small></span></a>
@@ -1324,6 +1465,7 @@ flowchart LR
         <span class="eyebrow">Chapter 5 of 5</span>
         <h1>Under the hood</h1>
         <p class="lead">For engineers, architects and hiring managers: the orchestration engine, system design, agent contracts, pipelines and data model.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>The architecture behind the orchestration engine and its twelve bounded agents.</span></p>
         <div class="toc-grid" aria-label="On this page">
           <a class="toc-card" href="#orchestrator"><span class="toc-num">1</span><span><strong>The conductor: who decides what happens next</strong><small>The rule-based engine that runs every claim.</small></span></a>
           <a class="toc-card" href="#lifecycle"><span class="toc-num">2</span><span><strong>The full claim journey (diagram)</strong><small>One diagram, end to end.</small></span></a>
@@ -1858,6 +2000,7 @@ classDiagram
         <span class="eyebrow">Reference</span>
         <h1>Jargon buster</h1>
         <p class="lead">Insurance and AI are full of acronyms. Here's what the ones on this site mean, in everyday words.</p>
+        <p class="mission-strip"><strong>The idea:</strong> MotorClaim AI cuts claim time, cost and manual effort with governed AI agents, while people keep control of high-risk, disputed and financially sensitive decisions. <span>Plain-English definitions of the terms used across the site.</span></p>
         <label class="gloss-search">
           <span class="sr-only">Search terms</span>
           <input type="search" id="gloss-filter" placeholder="Search a term, e.g. FNOL, surveyor, SLA&hellip;" autocomplete="off" />

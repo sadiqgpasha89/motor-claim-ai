@@ -4,6 +4,25 @@
 > **Live Project Site (GitHub Pages):** https://sadiqgpasha89.github.io/motor-claim-ai/  
 > **Data Mode:** `DEMO / SYNTHETIC` — All seeded customers, policies, vehicles, garages, surveyors, rate cards, and payments are synthetic test data.
 
+
+## The business problem
+
+Motor insurance claim processing involves multiple disconnected activities, including First Notice of Loss (FNOL), document collection, policy verification, damage assessment, surveyor coordination, fraud investigation, repair estimation, settlement calculation, approvals and payment reconciliation.
+
+These activities often require substantial manual effort, repeated verification, coordination between multiple stakeholders and extensive paperwork.
+
+MotorClaim AI addresses this challenge through a governed multi-agent AI architecture that automates evidence processing, policy intelligence, claim triage, damage assessment, investigation support, estimate validation, operational coordination and customer communication.
+
+A central orchestration engine coordinates specialised AI agents and deterministic business services to process claims intelligently, dynamically adapt to changing evidence, and execute authorised workflow actions.
+
+Human reviewers retain control over high-risk, disputed and financially sensitive decisions, while every action remains explainable, traceable and auditable.
+
+**Objective:** reduce claim processing time, operational costs and manual intervention while improving accuracy, transparency and customer experience.
+
+Expected improvement (illustrative targets, not measured results; see `rules/common/product_framework.json`): manual effort -45%, processing time -50%, customer effort -40%, SLA breaches -35%, rework -30%.
+
+## What the platform implements
+
 An enterprise, human-accountable motor-insurance claims platform implementing the full vertical slice from FNOL intake to evidence vault, OCR extraction, policy-clause RAG coverage verification, IRDAI 2024 triage & SLA timers, assistive damage & rate-card estimate validation, explainable SIU fraud governance, deterministic `Decimal` settlement calculation, maker-checker approvals, idempotent payment reconciliation, and immutable audit trails.
 
 ## Architecture & Repository Layout

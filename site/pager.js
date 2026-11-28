@@ -56,7 +56,7 @@
       }
     });
     var label = page.getAttribute("data-title");
-    document.title = label && page.id !== "page-start" ? label + " · " + baseTitle : baseTitle + " — Car insurance claims, handled by AI with people in charge";
+    document.title = label && page.id !== "page-start" ? label + " · " + baseTitle : baseTitle + " — Faster, governed motor claims: AI agents do the work, people keep control";
     current = page;
     if (document.readyState !== "loading") renderDiagrams(page);
     return true;
