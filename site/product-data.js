@@ -11,18 +11,18 @@ window.PRODUCT_DEMO = {
    "EVIDENCE_PENDING": 3,
    "CLARIFICATION_REQUESTED": 1,
    "TRIAGED": 1,
-   "SURVEY_ASSIGNED": 3,
+   "SURVEY_ASSIGNED": 2,
    "REPAIR_IN_PROGRESS": 3,
-   "APPROVED": 2,
+   "HUMAN_REVIEW": 3,
    "PAYMENT_INITIATED": 1,
-   "HUMAN_REVIEW": 1,
+   "APPROVED": 1,
    "SURVEY_REQUIRED": 1,
    "CLOSED": 2
   },
   "by_risk_tier": {
-   "MEDIUM": 14,
-   "LOW": 4,
-   "HIGH": 4
+   "HIGH": 5,
+   "MEDIUM": 13,
+   "LOW": 4
   },
   "by_claim_type": {
    "cashless": 12,
@@ -31,9 +31,9 @@ window.PRODUCT_DEMO = {
    "third_party": 1
   },
   "settlement_net_total_inr": 213700.0,
-  "fraud_alerts_open": 1,
-  "fraud_alerts_total": 2,
-  "human_tasks_open": 12,
+  "fraud_alerts_open": 2,
+  "fraud_alerts_total": 3,
+  "human_tasks_open": 18,
   "headline_kpis": [
    {
     "id": "avg_processing_time",
@@ -55,9 +55,9 @@ window.PRODUCT_DEMO = {
     "direction": "higher",
     "traditional_illustrative": 0,
     "agentic_target_illustrative": 30,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: claims with AI activity and no human task or approval"
+    "value": 0.0,
+    "n": 4,
+    "basis": "claims with AI activity and no human task or approval"
    },
    {
     "id": "sla_breach_rate",
@@ -67,8 +67,8 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": 15,
     "agentic_target_illustrative": 8,
-    "value": 50.0,
-    "n": 2,
+    "value": 25.0,
+    "n": 4,
     "basis": "SLA timers in breached state"
    },
    {
@@ -79,9 +79,9 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": 12,
     "agentic_target_illustrative": 6,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: human tasks plus approvals per claim with AI activity"
+    "value": 4.5,
+    "n": 4,
+    "basis": "human tasks plus approvals per claim with AI activity"
    },
    {
     "id": "ai_cost_per_claim",
@@ -91,9 +91,9 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": null,
     "agentic_target_illustrative": 25,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: estimated token cost from the trace store"
+    "value": 1.4844,
+    "n": 4,
+    "basis": "estimated token cost from the trace store"
    },
    {
     "id": "rework_rate",
@@ -103,9 +103,9 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": null,
     "agentic_target_illustrative": null,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: agent executions that requested rework"
+    "value": 0.0,
+    "n": 14,
+    "basis": "agent executions that requested rework"
    }
   ],
   "note": "Computed live from DEMO / SYNTHETIC data. Targets are illustrative."
@@ -192,9 +192,9 @@ window.PRODUCT_DEMO = {
     "direction": "higher",
     "traditional_illustrative": 0,
     "agentic_target_illustrative": 30,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: claims with AI activity and no human task or approval"
+    "value": 0.0,
+    "n": 4,
+    "basis": "claims with AI activity and no human task or approval"
    },
    {
     "id": "human_touchpoints",
@@ -204,9 +204,9 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": 12,
     "agentic_target_illustrative": 6,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: human tasks plus approvals per claim with AI activity"
+    "value": 4.5,
+    "n": 4,
+    "basis": "human tasks plus approvals per claim with AI activity"
    },
    {
     "id": "sla_breach_rate",
@@ -216,8 +216,8 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": 15,
     "agentic_target_illustrative": 8,
-    "value": 50.0,
-    "n": 2,
+    "value": 25.0,
+    "n": 4,
     "basis": "SLA timers in breached state"
    },
    {
@@ -300,9 +300,9 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": null,
     "agentic_target_illustrative": 25,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: estimated token cost from the trace store"
+    "value": 1.4844,
+    "n": 4,
+    "basis": "estimated token cost from the trace store"
    },
    {
     "id": "rework_rate",
@@ -312,12 +312,12 @@ window.PRODUCT_DEMO = {
     "direction": "lower",
     "traditional_illustrative": null,
     "agentic_target_illustrative": null,
-    "value": null,
-    "n": 0,
-    "basis": "not measured: agent executions that requested rework"
+    "value": 0.0,
+    "n": 14,
+    "basis": "agent executions that requested rework"
    }
   ],
-  "measured_count": 8,
+  "measured_count": 12,
   "total_count": 17,
   "outcome_targets": [
    {
@@ -472,7 +472,7 @@ window.PRODUCT_DEMO = {
     "available": true,
     "claim_id": "clm-demo-0001",
     "status": "ESTIMATE_REVIEW",
-    "risk_tier": "MEDIUM",
+    "risk_tier": "HIGH",
     "claim_360_path": "/claims/clm-demo-0001/claim-360"
    },
    {
@@ -492,7 +492,7 @@ window.PRODUCT_DEMO = {
     "portal_sections": "Fraud and SIU",
     "available": true,
     "claim_id": "clm-demo-0008",
-    "status": "APPROVED",
+    "status": "HUMAN_REVIEW",
     "risk_tier": "LOW",
     "claim_360_path": "/claims/clm-demo-0008/claim-360"
    },
@@ -513,7 +513,7 @@ window.PRODUCT_DEMO = {
     "portal_sections": "Claim 360 and Human Review",
     "available": true,
     "claim_id": "clm-demo-0011",
-    "status": "SURVEY_ASSIGNED",
+    "status": "HUMAN_REVIEW",
     "risk_tier": "HIGH",
     "claim_360_path": "/claims/clm-demo-0011/claim-360"
    },
@@ -539,7 +539,7 @@ window.PRODUCT_DEMO = {
     "claim_360_path": "/claims/clm-demo-0010/claim-360"
    }
   ],
-  "note": "Demo claims are seeded synthetic data. A seeded claim has no agent run until you start one with POST /api/v1/claims/{id}/orchestrate, or use scripts/od_claim_demo.py. Run the seed reset to restore the claims."
+  "note": "Demo claims are seeded synthetic data. Demos 2 to 5 are seeded with one agent run that stops at the first human gate. Demo 1 is seeded already approved. Start a new run with POST /api/v1/claims/{id}/orchestrate, or use scripts/od_claim_demo.py. Run the seed reset to restore the claims."
  },
  "demo_claim_360_answers": {
   "demo-1": {
@@ -566,19 +566,29 @@ window.PRODUCT_DEMO = {
     "Conditional Damage + Parallel Fraud wave",
     "Garage estimate submitted for benchmarking"
    ],
-   "what_is_happening_now": "State ESTIMATE_VALIDATION; queue estimate_discrepancy_queue",
+   "what_is_happening_now": "State ESTIMATE_VALIDATION; queue siu_investigation",
    "what_is_blocked": [
     "FRAUD_REVIEW_OPEN",
     "TASK_ESTIMATE_REVIEW",
-    "TASK_SIU_INVESTIGATION"
+    "TASK_SIU_INVESTIGATION",
+    "TASK_RISK_ESCALATION"
    ],
    "why_blocked": [
-    "1 fraud signal(s) need SIU review",
+    "2 fraud signal(s) need SIU review",
     "Review duplicated Front Bumper line & +38.5% Fender rate variance",
-    "SIU Review: FRD-EST-ANOMALY (Alert-only lead)"
+    "SIU Review: FRD-EST-ANOMALY (Alert-only lead)",
+    "Risk Escalated (MEDIUM -> HIGH): Specialist Investigation Required"
    ],
-   "what_did_ai_do": [],
-   "what_did_ai_find": [],
+   "what_did_ai_do": [
+    "customer_communication: dispatch_notification (success)",
+    "fraud_intelligence: refer_to_siu_queue (escalated_to_human)"
+   ],
+   "what_did_ai_find": [
+    "customer_communication: RC_COMM_REPAIR_BEGINS",
+    "customer_communication: RC_COMM_STATUS_UPDATE",
+    "fraud_intelligence: FRD-EST-ANOMALY",
+    "fraud_intelligence: FRD-REPEAT-VEHICLE"
+   ],
    "next_action": "Adjuster/Surveyor to review duplicated estimate line and generate settlement recommendation",
    "do_i_need_to_act": {
     "required": false,
@@ -588,14 +598,33 @@ window.PRODUCT_DEMO = {
   },
   "demo-3": {
    "what_has_happened": [
-    "Claim registered"
+    "Document extraction detected conflict, prompt injection, or missing core docs"
    ],
-   "what_is_happening_now": "State APPROVED; queue siu_cleared",
-   "what_is_blocked": [],
-   "why_blocked": [],
-   "what_did_ai_do": [],
-   "what_did_ai_find": [],
-   "next_action": "Proceed to Finance payment release (SIU alert marked not_substantiated)",
+   "what_is_happening_now": "State HUMAN_REVIEW; queue siu_cleared",
+   "what_is_blocked": [
+    "DOCUMENTS_MISSING",
+    "TASK_DOCUMENT_REQUEST"
+   ],
+   "why_blocked": [
+    "Missing: policy_schedule, registration_certificate, driving_licence",
+    "Collect missing evidence: policy_schedule, registration_certificate, driving_licence"
+   ],
+   "what_did_ai_do": [
+    "fnol_concierge: run_document_intelligence (success)",
+    "document_intelligence: human_fact_verification (escalated_to_human)",
+    "coverage_intelligence: run_triage (success)",
+    "customer_communication: dispatch_notification (success)"
+   ],
+   "what_did_ai_find": [
+    "fnol_concierge: RC_CHANNEL_WEB",
+    "fnol_concierge: RC_LOCALE_EN_IN",
+    "document_intelligence: RC_NO_EXTRACTED_FACTS",
+    "coverage_intelligence: RC_HYBRID_POLICY_RAG_CITED",
+    "coverage_intelligence: RC_POLICY_ACTIVE_IN_PERIOD",
+    "customer_communication: RC_COMM_STATUS_UPDATE",
+    "customer_communication: RC_COMM_STATUS_UPDATE"
+   ],
+   "next_action": "Human adjuster to verify RC/Policy facts or quarantine notice",
    "do_i_need_to_act": {
     "required": false,
     "role": "claims_manager",
@@ -604,22 +633,41 @@ window.PRODUCT_DEMO = {
   },
   "demo-4": {
    "what_has_happened": [
-    "Claim registered"
+    "Document extraction detected conflict, prompt injection, or missing core docs"
    ],
-   "what_is_happening_now": "State SURVEY_REQUIRED; queue ev_oem_diagnostics",
+   "what_is_happening_now": "State HUMAN_REVIEW; queue ev_oem_diagnostics",
    "what_is_blocked": [
+    "DOCUMENTS_MISSING",
     "TASK_EV_CASE_STAGE_SAFE_RECOVERY_ISOLATION",
     "TASK_EV_CASE_STAGE_SPECIALIST_SURVEY",
-    "TASK_EV_CASE_STAGE_OEM_DIAGNOSTICS"
+    "TASK_EV_CASE_STAGE_OEM_DIAGNOSTICS",
+    "TASK_TOWING_DISPATCH",
+    "TASK_DOCUMENT_REQUEST"
    ],
    "why_blocked": [
+    "Missing: policy_schedule, registration_certificate, driving_licence",
     "[EV] Flatbed recovery, HV isolation & quarantine - EV-DEMO-2026-0011",
     "[EV] EV-HV certified physical survey - EV-DEMO-2026-0011",
-    "[EV] OEM diagnostic scan & HV tests - EV-DEMO-2026-0011"
+    "[EV] OEM diagnostic scan & HV tests - EV-DEMO-2026-0011",
+    "Dispatch EV Flatbed Recovery to BKC, Mumbai",
+    "Collect missing evidence: policy_schedule, registration_certificate, driving_licence"
    ],
-   "what_did_ai_do": [],
-   "what_did_ai_find": [],
-   "next_action": "EV OEM diagnostic scan & HV tests: garage action required (human-gated, queue ev_oem_diagnostics); vehicle on HV hold - do not drive or charge",
+   "what_did_ai_do": [
+    "fnol_concierge: run_document_intelligence (success)",
+    "document_intelligence: human_fact_verification (escalated_to_human)",
+    "coverage_intelligence: run_triage (success)",
+    "customer_communication: dispatch_notification (success)"
+   ],
+   "what_did_ai_find": [
+    "fnol_concierge: RC_CHANNEL_WEB",
+    "fnol_concierge: RC_LOCALE_EN_IN",
+    "document_intelligence: RC_NO_EXTRACTED_FACTS",
+    "coverage_intelligence: RC_HYBRID_POLICY_RAG_CITED",
+    "coverage_intelligence: RC_POLICY_ACTIVE_IN_PERIOD",
+    "customer_communication: RC_COMM_PARTS_DELAYED",
+    "customer_communication: RC_COMM_DELAY_ADVISORY"
+   ],
+   "next_action": "Human adjuster to verify RC/Policy facts or quarantine notice",
    "do_i_need_to_act": {
     "required": false,
     "role": "claims_manager",
@@ -632,18 +680,37 @@ window.PRODUCT_DEMO = {
    ],
    "what_is_happening_now": "State HUMAN_REVIEW; queue tp_liability_investigation",
    "what_is_blocked": [
+    "DOCUMENTS_MISSING",
     "TASK_TP_EVIDENCE_AND_FACTS",
     "TASK_TP_POLICE_FIR",
-    "TASK_TP_LIABILITY_INVESTIGATION"
+    "TASK_TP_LIABILITY_INVESTIGATION",
+    "TASK_DOCUMENT_REQUEST",
+    "TASK_COVERAGE_REVIEW"
    ],
    "why_blocked": [
+    "Missing: policy_schedule, registration_certificate, driving_licence",
     "[TP] Evidence And Facts - TP-DEMO-2026-0010",
     "[TP] Police Fir - TP-DEMO-2026-0010",
-    "[TP] Liability Investigation - TP-DEMO-2026-0010"
+    "[TP] Liability Investigation - TP-DEMO-2026-0010",
+    "Collect missing evidence: policy_schedule, registration_certificate, driving_licence",
+    "Human Coverage / Legal Ambiguity Review' (legal_tp)"
    ],
-   "what_did_ai_do": [],
-   "what_did_ai_find": [],
-   "next_action": "TP Liability Investigation: claims handler action required (human-gated, queue tp_liability_investigation)",
+   "what_did_ai_do": [
+    "fnol_concierge: run_document_intelligence (success)",
+    "document_intelligence: human_fact_verification (escalated_to_human)",
+    "coverage_intelligence: human_coverage_review (escalated_to_human)",
+    "customer_communication: dispatch_notification (success)"
+   ],
+   "what_did_ai_find": [
+    "fnol_concierge: RC_CHANNEL_WEB",
+    "fnol_concierge: RC_LOCALE_EN_IN",
+    "document_intelligence: RC_NO_EXTRACTED_FACTS",
+    "coverage_intelligence: RC_HYBRID_POLICY_RAG_CITED",
+    "coverage_intelligence: RC_POLICY_ACTIVE_IN_PERIOD",
+    "customer_communication: RC_COMM_STATUS_UPDATE",
+    "customer_communication: RC_COMM_STATUS_UPDATE"
+   ],
+   "next_action": "Resolve coverage ambiguity / legal TP review before triage",
    "do_i_need_to_act": {
     "required": false,
     "role": "claims_manager",

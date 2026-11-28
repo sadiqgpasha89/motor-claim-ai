@@ -39,7 +39,7 @@ Management sections (executive dashboard, KPI framework, performance) need the m
 4. EV accident: `CLM-DEMO-2026-0011`.
 5. Third-party injury claim, human-led: `CLM-DEMO-2026-0010`.
 
-A seeded claim has no agent run until you start one (`POST /api/v1/claims/{id}/orchestrate` or `scripts/od_claim_demo.py`). The demo page says so.
+The seed runs the agents once on demos 2 to 5. Each run stops at the first human gate. Demo 1 stays in its approved state, because a run would send it back to document verification. Start a run with `POST /api/v1/claims/{id}/orchestrate` or `scripts/od_claim_demo.py`.
 
 ## Capability model and honest assessment
 
